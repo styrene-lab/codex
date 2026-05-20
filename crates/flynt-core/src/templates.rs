@@ -125,6 +125,42 @@ date = "{{date}}"
 "#,
     )?;
 
+    fs::write(
+        dir.join("Source.md"),
+        r#"+++
+title = "{{title}}"
+kind = "source"
+source_type = "webpage"
+url = ""
+doi = ""
+isbn = ""
+authors = []
+editors = []
+publication = ""
+publisher = ""
+published = ""
+accessed = "{{date}}"
+captured = "{{date}}T{{time}}:00"
+citation_key = ""
+zotero_key = ""
+zotero_library = ""
+zotero_version = ""
+tags = ["source", "research"]
++++
+
+# {{title}}
+
+## Summary
+
+## Notes
+
+## Annotations
+
+## Synthesis
+
+"#,
+    )?;
+
     Ok(())
 }
 
@@ -171,16 +207,17 @@ mod tests {
     }
 
     #[test]
-    fn ensure_default_templates_creates_three() {
+    fn ensure_default_templates_creates_four() {
         let tmp = TempDir::new().unwrap();
         ensure_default_templates(tmp.path()).unwrap();
 
         let templates = list_templates(tmp.path());
-        assert_eq!(templates.len(), 3);
+        assert_eq!(templates.len(), 4);
         let names: Vec<&str> = templates.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"Note"));
         assert!(names.contains(&"Daily"));
         assert!(names.contains(&"Meeting"));
+        assert!(names.contains(&"Source"));
     }
 
     #[test]

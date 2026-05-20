@@ -1521,6 +1521,18 @@ fn flynt_surface_guide() -> Value {
                 "use_for": "ordinary markdown notes, research, project docs"
             },
             {
+                "kind": "source_note",
+                "paths": ["sources/*.md", "*.md with kind=source"],
+                "tools": ["get_document", "create_document", "list_documents"],
+                "use_for": "research sources imported from Zotero/BibTeX/CSL or captured from the web",
+                "rules": [
+                    "Use kind=source frontmatter for source-backed research notes.",
+                    "Prefer a sources/ folder for new source notes, but treat kind=source as authoritative.",
+                    "Keep first-slice source metadata flat: source_type, url, doi, isbn, authors, publication, published, accessed, citation_key, zotero_key.",
+                    "Do not encode typed source relationships as nested generic metadata; future graph support owns those edges."
+                ]
+            },
+            {
                 "kind": "drawing",
                 "paths": ["drawings/<name>.md", "drawings/<name>.excalidraw"],
                 "tools": ["create_drawing", "drawing_active", "drawing_get", "drawing_set_scene", "drawing_create_spec", "drawing_get_spec", "drawing_render_spec", "drawing_patch_spec", "drawing_validate_spec"],
@@ -2196,6 +2208,9 @@ mod tests {
         assert!(names.contains(&"find_document_by_slug".to_string()));
         assert!(names.contains(&"flynt_surface_guide".to_string()));
         assert!(names.contains(&"move_document".to_string()));
+        let guide = ext.handle_rpc("flynt_surface_guide", json!({})).await.unwrap();
+        let surfaces = guide["surfaces"].as_array().unwrap();
+        assert!(surfaces.iter().any(|surface| surface["kind"] == "source_note"));
         assert!(names.contains(&"store_memory_fact".to_string()));
         assert!(names.contains(&"store_agent_communication".to_string()));
         assert!(names.contains(&"get_task".to_string()));
