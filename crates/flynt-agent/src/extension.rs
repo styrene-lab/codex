@@ -2208,9 +2208,16 @@ mod tests {
         assert!(names.contains(&"find_document_by_slug".to_string()));
         assert!(names.contains(&"flynt_surface_guide".to_string()));
         assert!(names.contains(&"move_document".to_string()));
-        let guide = ext.handle_rpc("flynt_surface_guide", json!({})).await.unwrap();
+        let guide = ext
+            .handle_rpc("execute_flynt_surface_guide", json!({}))
+            .await
+            .unwrap();
         let surfaces = guide["surfaces"].as_array().unwrap();
-        assert!(surfaces.iter().any(|surface| surface["kind"] == "source_note"));
+        assert!(
+            surfaces
+                .iter()
+                .any(|surface| surface["kind"] == "source_note")
+        );
         assert!(names.contains(&"store_memory_fact".to_string()));
         assert!(names.contains(&"store_agent_communication".to_string()));
         assert!(names.contains(&"get_task".to_string()));

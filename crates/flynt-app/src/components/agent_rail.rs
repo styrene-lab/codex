@@ -138,23 +138,15 @@ fn persist_config(ctx: &AppContext, config_id: &str, value: &str) {
     }
 }
 
-fn ensure_explicit_acp_defaults(
+fn load_acp_overrides(
     omegon: &crate::bootstrap::OmegonRuntimeContext,
-    mut settings: flynt_core::models::FlyntOperatorSettings,
 ) -> flynt_core::models::FlyntOperatorSettings {
-    let profile = omegon.load_project_profile();
-    let config =
-        crate::components::omegon::config_bridge::UnifiedOmegonConfig::load(&profile, &settings);
-    let explicit_config = config.to_acp_config();
-
-    if settings.acp_config != explicit_config {
-        settings.acp_config = explicit_config;
-        if let Err(e) = omegon.save_operator_settings(&settings) {
-            tracing::warn!("Failed to persist explicit ACP defaults: {e}");
-        }
-    }
-
-    settings
+    // Omegon 0.23 owns ACP profile defaults. Flynt should only replay
+    // operator-selected overrides, not materialize fallback defaults into
+    // acp_config on every session start. Persisting synthetic defaults here
+    // makes Flynt override newer Omegon profile defaults before the agent has
+    // a chance to advertise them through ACP ConfigOptionUpdate.
+    omegon.load_operator_settings()
 }
 
 fn is_transport_disconnect(msg: &str) -> bool {
@@ -209,8 +201,7 @@ fn reconnect_acp_session(
         *session_title.write() = None;
 
         let project = ctx.project_root();
-        let operator_settings =
-            ensure_explicit_acp_defaults(&ctx.omegon(), ctx.omegon().load_operator_settings());
+        let operator_settings = load_acp_overrides(&ctx.omegon());
         let saved_config = operator_settings.acp_config.clone();
         let agent_id = operator_settings.agent_id.clone();
 
@@ -492,8 +483,7 @@ pub fn AgentRail() -> Element {
             project.display(),
             binary.display()
         );
-        let operator_settings =
-            ensure_explicit_acp_defaults(&ctx.omegon(), ctx.omegon().load_operator_settings());
+        let operator_settings = load_acp_overrides(&ctx.omegon());
         let saved_config = operator_settings.acp_config.clone();
         let agent_id = operator_settings.agent_id.clone();
 
@@ -968,7 +958,7 @@ pub fn AgentRail() -> Element {
                                     *agent_status.write() = AgentStatus::Connecting;
                                     drop(sess);
                                     *session.write() = None;
-                                    let reconnect_settings = use_context::<AppContext>().omegon().load_operator_settings();
+                                    let reconnect_settings = load_acp_overrides(&use_context::<AppContext>().omegon());
                                     let saved_config = reconnect_settings.acp_config.clone();
                                     let agent_id = reconnect_settings.agent_id.clone();
                                     match AcpSession::connect(binary.clone(), project, agent_id).await {

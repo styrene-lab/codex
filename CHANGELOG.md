@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.11.0 — 2026-05-22
+
+### Added
+- **Research workspace groundwork** — source-note templates and Flynt agent surface guidance now establish the first source-backed research workspace path.
+- **Portable analysis bundle design** — documented provenance-preserving bundles with source manifests, access scope, authorization notes, artifacts, and analysis outputs.
+- **Source task/canvas projection design** — documented how source-backed artifacts project into task and canvas workflows without duplicating source truth.
+- **Eidolon embedded viewer integration design** — defined the boundary for reviewing captured/source-backed evidence through an embedded viewer.
+- **Omegon 0.23 ACP alignment** — Flynt now preserves Omegon-owned profile defaults on ACP session startup and only replays explicit operator-selected config overrides.
+
+### Fixed
+- **Flynt surface guide execution test** — the agent extension test now calls the executable `execute_flynt_surface_guide` RPC while still advertising the user-facing `flynt_surface_guide` tool.
+
 ## 0.10.8 — 2026-05-20
 
 ### Fixed
