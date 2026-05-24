@@ -289,7 +289,7 @@ impl Project {
         }
 
         let mut tasks = self.store.list_tasks(&TaskFilter::default())?;
-        tasks.sort_by(|a, b| a.title.cmp(&b.title).then_with(|| a.id.0.cmp(&b.id.0)));
+        tasks.sort_by(|a, b| a.id.0.cmp(&b.id.0));
         for task in tasks {
             lines.push(serde_json::to_string(&IndexSnapshotRecord::Task {
                 id: task.id.0.to_string(),
@@ -2349,14 +2349,15 @@ fn replace_frontmatter_tags(content: &str, new_tags: &[String]) -> Option<String
 mod tests {
     use super::{
         Project, canonical_document_source, import_destination_path, markdown_to_micron,
-        resolve_index_db_path,
+        normalized_relative_path, resolve_index_db_path,
     };
     use chrono::Utc;
     use flynt_core::{
         models::{
             BookmarkTarget, Document, DocumentId, Frontmatter, LensColumn, LensFilter,
             LensFilterOp, LensLayout, LensSort, LensSortDirection, LensSource, LocalRuntimeConfig,
-            MetadataValue, ProjectLens, PublicationConfig, PublicationRule, PublicationVisibility,
+            MetadataValue, ProjectConfig, ProjectLens, PublicationConfig, PublicationRule,
+            PublicationVisibility,
         },
         store::ProjectStore,
     };
@@ -3044,6 +3045,112 @@ position = 0
         );
 
         assert_eq!(resolved, local_state_root.join("flynt/flynt-index.db"));
+    }
+
+    #[test]
+    fn index_snapshot_is_not_written_by_default() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().join("project");
+        let project = Project::open(&root).unwrap();
+        std::fs::write(project.root.join("README.md"), "# Readme\n").unwrap();
+
+        let (_indexed, errors) = project.reindex().unwrap();
+
+        assert!(errors.is_empty(), "reindex errors: {errors:?}");
+        assert!(!project.index_snapshot_path().exists());
+    }
+
+    #[test]
+    fn tracked_index_snapshot_writes_deterministic_jsonl_without_absolute_paths() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().join("project");
+        let project = Project::open(&root).unwrap();
+        let mut config: ProjectConfig = project.config.clone();
+        config.indexing.track_index_snapshot = true;
+        project.save_config(&config).unwrap();
+        let project = Project::open(&root).unwrap();
+
+        std::fs::create_dir_all(project.root.join("docs")).unwrap();
+        std::fs::write(
+            project.root.join("docs/design.md"),
+            "+++\ntitle = \"Design\"\ntags = [\"alpha\"]\n+++\n\n# Design\n",
+        )
+        .unwrap();
+
+        let (_indexed, errors) = project.reindex().unwrap();
+        assert!(errors.is_empty(), "reindex errors: {errors:?}");
+        let first = std::fs::read_to_string(project.index_snapshot_path()).unwrap();
+
+        let (_indexed, errors) = project.reindex().unwrap();
+        assert!(errors.is_empty(), "second reindex errors: {errors:?}");
+        let second = std::fs::read_to_string(project.index_snapshot_path()).unwrap();
+
+        assert_eq!(first, second, "snapshot should be deterministic");
+        assert!(first.lines().count() >= 2, "snapshot lines:\n{first}");
+        assert!(
+            first
+                .lines()
+                .next()
+                .unwrap()
+                .contains("flynt.index.snapshot.v1")
+        );
+        assert!(
+            first.contains("\"type\":\"document\""),
+            "snapshot:\n{first}"
+        );
+        assert!(
+            first.contains("\"path\":\"docs/design.md\""),
+            "snapshot:\n{first}"
+        );
+        assert!(
+            !first.contains(tmp.path().to_string_lossy().as_ref()),
+            "snapshot leaked absolute project path:\n{first}"
+        );
+        assert!(
+            !first.contains(".db"),
+            "snapshot should not serialize DB paths:\n{first}"
+        );
+    }
+
+    #[test]
+    fn tracked_index_snapshot_includes_task_metadata() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().join("project");
+        let project = Project::open(&root).unwrap();
+        let mut config: ProjectConfig = project.config.clone();
+        config.indexing.track_index_snapshot = true;
+        project.save_config(&config).unwrap();
+        let project = Project::open(&root).unwrap();
+
+        let board = flynt_core::models::Board::minimalist("Release");
+        project.store.save_board(&board).unwrap();
+        let mut task =
+            flynt_core::models::Task::new(board.id.clone(), "Active", "Validate snapshot");
+        task.tags = vec!["release".into(), "storage".into()];
+        project.store.save_task(&task).unwrap();
+
+        project.write_index_snapshot().unwrap();
+        let snapshot = std::fs::read_to_string(project.index_snapshot_path()).unwrap();
+
+        assert!(
+            snapshot.contains("\"type\":\"task\""),
+            "snapshot:\n{snapshot}"
+        );
+        assert!(
+            snapshot.contains("Validate snapshot"),
+            "snapshot:\n{snapshot}"
+        );
+        assert!(snapshot.contains("release"), "snapshot:\n{snapshot}");
+        assert!(
+            !snapshot.contains(tmp.path().to_string_lossy().as_ref()),
+            "snapshot leaked absolute project path:\n{snapshot}"
+        );
+    }
+
+    #[test]
+    fn normalized_relative_path_uses_forward_slashes() {
+        let path = PathBuf::from("docs").join("nested").join("note.md");
+        assert_eq!(normalized_relative_path(&path), "docs/nested/note.md");
     }
 
     #[test]
