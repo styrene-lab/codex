@@ -100,3 +100,4 @@ jobs:
     with:
       paths: "crates/"
       threshold: 1000
+      diff-threshold: 400
