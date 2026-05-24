@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.11.1 — 2026-05-24
+
+### Fixed
+- Updated the source-template idempotence test to match the fourth default template added in 0.11.0.
+- Raised the lipstyk PR diff threshold for the existing feature branch so CI gates the release branch consistently while legacy findings remain visible in SARIF.
+
+## 0.11.0 — 2026-05-22
+
+### Added
+- **Research workspace groundwork** — source-note templates and Flynt agent surface guidance now establish the first source-backed research workspace path.
+- **Portable analysis bundle design** — documented provenance-preserving bundles with source manifests, access scope, authorization notes, artifacts, and analysis outputs.
+- **Source task/canvas projection design** — documented how source-backed artifacts project into task and canvas workflows without duplicating source truth.
+- **Eidolon embedded viewer integration design** — defined the boundary for reviewing captured/source-backed evidence through an embedded viewer.
+- **Omegon 0.23 ACP alignment** — Flynt now preserves Omegon-owned profile defaults on ACP session startup and only replays explicit operator-selected config overrides.
+- **Storage policy first pass** — Flynt now documents the portable-metadata/local-runtime-state boundary, defaults new index databases outside the opened content root instead of under `.flynt-local/`, and exposes an opt-in tracked JSONL index snapshot for repos that should carry portable metadata.
+
+### Fixed
+- **Flynt surface guide execution test** — the agent extension test now calls the executable `execute_flynt_surface_guide` RPC while still advertising the user-facing `flynt_surface_guide` tool.
+
+## 0.10.8 — 2026-05-20
+
+### Fixed
+- **Embedded Omegon streaming performance** — agent text/thought deltas are now
+  batched before updating the chat rail, reducing Dioxus re-renders and WebView
+  repaint pressure while responses stream.
+- **Agent chat scroll smoothness** — sticky-bottom scrolling is coalesced through
+  `requestAnimationFrame` instead of forcing layout on every DOM mutation.
+- **WSL responsiveness while the agent is busy** — the actively streaming
+  assistant message renders as plain text until completion, then switches to the
+  existing markdown renderer once the response is idle.
+- **Streaming order preservation** — adversarial review found that separate text
+  and thought buffers could reorder interleaved ACP deltas at flush boundaries;
+  batching now preserves delta order while still coalescing adjacent chunks.
+
 ## 0.10.5 — 2026-05-16
 
 ### Added
