@@ -100,13 +100,10 @@ impl Project {
                 // Fall through: flynt_dir won't exist, so create_dir_all below will create it
             }
         }
-        // Also migrate .codex-local/ → .flynt-local/
-        let old_local = root.join(".codex-local");
-        let new_local = root.join(".flynt-local");
-        if old_local.exists() && !new_local.exists() {
-            info!("Migrating local state: .codex-local/ → .flynt-local/");
-            let _ = fs::rename(&old_local, &new_local);
-        }
+        // Legacy `.codex-local/` and `.flynt-local/` directories are still
+        // read when explicitly configured, but opening a folder must not
+        // create a second in-project local-state root. Runtime state now
+        // defaults to the platform app-data directory.
 
         fs::create_dir_all(&flynt_dir)?;
 
@@ -2155,9 +2152,27 @@ fn resolve_index_db_path(root: &Path, runtime: &LocalRuntimeConfig) -> PathBuf {
         return local_state_root.join("flynt").join("flynt-index.db");
     }
 
-    root.join(".flynt-local")
+    external_project_state_root(root)
         .join("flynt")
         .join("flynt-index.db")
+}
+
+fn external_project_state_root(root: &Path) -> PathBuf {
+    let project_key = stable_project_key(root);
+    dirs::data_local_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("flynt")
+        .join("projects")
+        .join(project_key)
+}
+
+fn stable_project_key(root: &Path) -> String {
+    use std::hash::{Hash, Hasher};
+
+    let canonical = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    canonical.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
 }
 
 fn is_hidden(entry: &walkdir::DirEntry) -> bool {
@@ -2915,6 +2930,18 @@ position = 0
         );
 
         assert_eq!(resolved, explicit);
+    }
+
+    #[test]
+    fn defaults_index_db_to_external_project_state() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().join("project");
+
+        let resolved = resolve_index_db_path(&root, &LocalRuntimeConfig::default());
+
+        assert!(resolved.is_absolute());
+        assert!(resolved.ends_with("flynt/flynt-index.db"));
+        assert!(!resolved.starts_with(root.join(".flynt-local")));
     }
 
     #[test]

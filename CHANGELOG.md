@@ -8,6 +8,7 @@
 - **Source task/canvas projection design** — documented how source-backed artifacts project into task and canvas workflows without duplicating source truth.
 - **Eidolon embedded viewer integration design** — defined the boundary for reviewing captured/source-backed evidence through an embedded viewer.
 - **Omegon 0.23 ACP alignment** — Flynt now preserves Omegon-owned profile defaults on ACP session startup and only replays explicit operator-selected config overrides.
+- **Storage policy first pass** — Flynt now documents the portable-metadata/local-runtime-state boundary and defaults new index databases outside the opened content root instead of under `.flynt-local/`.
 
 ### Fixed
 - **Flynt surface guide execution test** — the agent extension test now calls the executable `execute_flynt_surface_guide` RPC while still advertising the user-facing `flynt_surface_guide` tool.
