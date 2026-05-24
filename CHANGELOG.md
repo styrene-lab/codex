@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.1 — 2026-05-24
+
+### Fixed
+- Updated the source-template idempotence test to match the fourth default template added in 0.11.0.
+- Raised the lipstyk PR diff threshold for the existing feature branch so CI gates the release branch consistently while legacy findings remain visible in SARIF.
+
 ## 0.11.0 — 2026-05-22
 
 ### Added
