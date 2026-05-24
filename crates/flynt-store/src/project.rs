@@ -16,6 +16,19 @@ use std::{
 };
 use tracing::{debug, info, warn};
 
+#[derive(Debug, Clone, Copy)]
+struct ProjectOpenOptions {
+    create_portable_metadata: bool,
+}
+
+impl Default for ProjectOpenOptions {
+    fn default() -> Self {
+        Self {
+            create_portable_metadata: true,
+        }
+    }
+}
+
 /// Project manages the root directory layout:
 ///
 ///   <project_root>/
@@ -92,6 +105,22 @@ impl Project {
 
     /// Open (or create) a project rooted at `root`.
     pub fn open(root: &Path) -> Result<Self> {
+        Self::open_with_options(root, ProjectOpenOptions::default())
+    }
+
+    /// Open a folder without creating portable `.flynt/` metadata when it does
+    /// not already exist. This is for existing work repositories where Flynt
+    /// should stay read/index-only unless the operator opts into metadata.
+    pub fn open_read_only(root: &Path) -> Result<Self> {
+        Self::open_with_options(
+            root,
+            ProjectOpenOptions {
+                create_portable_metadata: false,
+            },
+        )
+    }
+
+    fn open_with_options(root: &Path, options: ProjectOpenOptions) -> Result<Self> {
         fs::create_dir_all(root)?;
 
         // Auto-migrate from .codex/ → .flynt/ (pre-Flynt projects)
@@ -108,8 +137,6 @@ impl Project {
         // read when explicitly configured, but opening a folder must not
         // create a second in-project local-state root. Runtime state now
         // defaults to the platform app-data directory.
-
-        fs::create_dir_all(&flynt_dir)?;
 
         let config_path = flynt_dir.join("config.toml");
         let config = if config_path.exists() {
@@ -145,14 +172,22 @@ impl Project {
                 indexing,
                 visualization: Default::default(),
             };
-            fs::write(&config_path, toml::to_string(&cfg)?)?;
+            if options.create_portable_metadata {
+                fs::create_dir_all(&flynt_dir)?;
+                fs::write(&config_path, toml::to_string(&cfg)?)?;
+            }
             cfg
         };
 
-        // Ensure .gitignore exists so local state is never committed
+        // Ensure .gitignore exists so legacy in-project local state is never committed
         let gitignore = root.join(".gitignore");
-        if !gitignore.exists() {
-            if let Err(e) = fs::write(&gitignore, ".flynt-local/\n.DS_Store\n*.swp\n*~\n") {
+        if !gitignore.exists()
+            && (root.join(".flynt-local").exists() || root.join(".codex-local").exists())
+        {
+            if let Err(e) = fs::write(
+                &gitignore,
+                ".flynt-local/\n.codex-local/\n.DS_Store\n*.swp\n*~\n",
+            ) {
                 tracing::warn!(
                     "Could not create .gitignore at {}: {e} — local state may be committed if git sync is enabled",
                     gitignore.display()
@@ -1236,6 +1271,9 @@ impl Project {
     /// value is managed by callers via signals). Call this from the settings view.
     pub fn save_config(&self, config: &ProjectConfig) -> Result<()> {
         let config_path = self.root.join(".flynt").join("config.toml");
+        if let Some(parent) = config_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
         fs::write(&config_path, toml::to_string_pretty(config)?)?;
         Ok(())
     }
@@ -2743,6 +2781,38 @@ Original body content.
         assert_eq!(
             doc.title, "Renamed",
             "indexed title reflects the new [data].title"
+        );
+    }
+
+    #[test]
+    fn open_read_only_does_not_create_portable_metadata() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().join("work-repo");
+
+        let project = Project::open_read_only(&root).unwrap();
+
+        assert_eq!(project.config.project_name, "work-repo");
+        assert!(!root.join(".flynt/config.toml").exists());
+        assert!(!root.join(".flynt").exists());
+        assert!(project.store.list_documents().unwrap().is_empty());
+    }
+
+    #[test]
+    fn save_config_creates_portable_metadata_on_demand() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().join("work-repo");
+        let project = Project::open_read_only(&root).unwrap();
+        let mut config = project.config.clone();
+        config.indexing.track_index_snapshot = true;
+
+        project.save_config(&config).unwrap();
+
+        let config_path = root.join(".flynt/config.toml");
+        assert!(config_path.exists());
+        let raw = std::fs::read_to_string(config_path).unwrap();
+        assert!(
+            raw.contains("track_index_snapshot = true"),
+            "config:\n{raw}"
         );
     }
 
