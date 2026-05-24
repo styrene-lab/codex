@@ -93,6 +93,8 @@ pub fn SettingsView() -> Element {
     let _project_profile_state = use_context::<Signal<OmegonProfile>>();
     // Indexing
     let mut write_frontmatter = use_signal(|| ctx.project().config.indexing.write_frontmatter);
+    let mut track_index_snapshot =
+        use_signal(|| ctx.project().config.indexing.track_index_snapshot);
     let indexing_scopes = use_signal(|| ctx.project().config.indexing.scopes.clone());
 
     // Raw config editor
@@ -223,6 +225,7 @@ pub fn SettingsView() -> Element {
             indexing: IndexingConfig {
                 write_frontmatter: *write_frontmatter.read(),
                 scopes: indexing_scopes.read().clone(),
+                track_index_snapshot: *track_index_snapshot.read(),
             },
             visualization: VisualizationConfig {
                 excalidraw_auto_export: *excalidraw_auto_export.read(),
@@ -746,6 +749,17 @@ pub fn SettingsView() -> Element {
                         }
                         span { class: "settings-hint muted", "Disable for code repos — then use scopes below to opt in specific directories" }
                     }
+                    SettingsRow { label: "Track index snapshot",
+                        label { class: "checkbox-label",
+                            input {
+                                r#type: "checkbox",
+                                checked: *track_index_snapshot.read(),
+                                onchange: move |e| *track_index_snapshot.write() = e.checked(),
+                            }
+                            "Write .flynt/index.snapshot.jsonl for portable metadata review"
+                        }
+                        span { class: "settings-hint muted", "The SQLite database stays local. Enable this only when the repo should carry a deterministic JSONL snapshot of Flynt's indexed metadata." }
+                    }
                     SettingsRow { label: "Managed scopes",
                         IndexingScopesEditor { scopes: indexing_scopes }
                     }
@@ -966,7 +980,7 @@ pub fn SettingsView() -> Element {
                 SettingsSection { heading: "Local paths",
                     SettingsRow {
                         label: "State root",
-                        hint: "Override for the per-project local-state directory (defaults to <project>/.flynt-local/). Holds the index DB and ephemeral runtime state. Useful only when isolating workspaces.",
+                        hint: "Override for the per-project local-state directory. Defaults to the platform app-data directory keyed by project path; the opened content root is not mutated for local DB state. Useful only when isolating workspaces.",
                         input {
                             class: "input settings-input",
                             r#type: "text",

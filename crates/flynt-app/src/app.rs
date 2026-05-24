@@ -735,7 +735,7 @@ pub fn App() -> Element {
                                         .and_then(|name| name.to_str())
                                         .unwrap_or("Flynt"),
                                     flynt_core::models::SyncConfig::None,
-                                    flynt_core::models::IndexingConfig { write_frontmatter: false, scopes: Vec::new() },
+                                    flynt_core::models::IndexingConfig { write_frontmatter: false, scopes: Vec::new(), track_index_snapshot: false },
                                 ) {
                                     *welcome_error.write() = Some(format!("Could not open project: {e}"));
                                     return;

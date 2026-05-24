@@ -43,6 +43,7 @@ The 0.11.0 starting point is intentionally narrow:
 3. Preserve explicit absolute `local_runtime.flynt_index_db_path` overrides.
 4. Preserve explicit absolute `local_runtime.local_state_root` overrides.
 5. Keep existing `.flynt/config.toml` compatibility.
+6. Add a settings toggle for writing a deterministic `.flynt/index.snapshot.jsonl` metadata snapshot when a project should carry portable Flynt index metadata.
 
 This does not yet remove every `.flynt-local/` writer. Canvas capture assets, UI-state mirroring, and other runtime mirrors still need the same state-root abstraction. They should follow this policy in subsequent 0.11.x work.
 

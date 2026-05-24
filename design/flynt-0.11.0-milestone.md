@@ -164,7 +164,8 @@ Dogfooding Flynt in its own repository exposed a general product issue: opening 
 | F11-08.1 | Storage policy design | `design/flynt-storage-policy.md` | Policy distinguishes content root, portable metadata, local runtime state, and canonical truth without special-casing this repo. |
 | F11-08.2 | Index DB default | `crates/flynt-store/src/project.rs` | New default index DB path resolves outside the content root. |
 | F11-08.3 | Compatibility | `crates/flynt-store/src/project.rs` | Explicit absolute `flynt_index_db_path` and `local_state_root` overrides still work. |
-| F11-08.4 | Follow-up boundary | milestone/changelog | Remaining `.flynt-local` writers are called out as follow-up work, not silently treated as solved. |
+| F11-08.4 | Track index snapshot | `crates/flynt-core/src/models.rs`, `crates/flynt-app/src/views/settings.rs`, `crates/flynt-store/src/project.rs` | Settings expose an opt-in deterministic JSONL metadata snapshot while SQLite remains local runtime state. |
+| F11-08.5 | Follow-up boundary | milestone/changelog | Remaining `.flynt-local` writers are called out as follow-up work, not silently treated as solved. |
 
 ## Non-goals for 0.11.0
 

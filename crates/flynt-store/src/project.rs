@@ -3,7 +3,11 @@ use crate::task_file;
 use anyhow::{Context, Result};
 use chrono::Utc;
 use comrak::{Options, markdown_to_html};
-use flynt_core::{models::*, parser::parse_document_source, store::ProjectStore};
+use flynt_core::{
+    models::*,
+    parser::parse_document_source,
+    store::{ProjectStore, TaskFilter},
+};
 use serde::Serialize;
 use std::{
     fs,
@@ -125,6 +129,7 @@ impl Project {
                 IndexingConfig {
                     write_frontmatter: false,
                     scopes: Vec::new(),
+                    track_index_snapshot: false,
                 }
             } else {
                 IndexingConfig::default()
@@ -245,8 +250,58 @@ impl Project {
         // inner Project entity dissolved, the outer reindex above
         // covers everything.)
 
+        if self.config.indexing.track_index_snapshot {
+            if let Err(e) = self.write_index_snapshot() {
+                errors.push(format!("index snapshot: {e}"));
+            }
+        }
+
         info!("Reindex complete: {indexed} files, {} errors", errors.len());
         Ok((indexed, errors))
+    }
+
+    pub fn index_snapshot_path(&self) -> PathBuf {
+        self.root.join(".flynt").join("index.snapshot.jsonl")
+    }
+
+    pub fn write_index_snapshot(&self) -> Result<()> {
+        let path = self.index_snapshot_path();
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        let mut lines = Vec::new();
+        lines.push(serde_json::to_string(&IndexSnapshotRecord::Header {
+            schema: "flynt.index.snapshot.v1",
+            project_name: &self.config.project_name,
+        })?);
+
+        let mut documents = self.store.list_documents()?;
+        documents.sort_by(|a, b| a.path.cmp(&b.path).then_with(|| a.id.0.cmp(&b.id.0)));
+        for doc in documents {
+            lines.push(serde_json::to_string(&IndexSnapshotRecord::Document {
+                id: doc.id.0.to_string(),
+                path: normalized_relative_path(&doc.path),
+                title: doc.title,
+                tags: doc.tags,
+                entity_kind: doc.entity_kind.map(|kind| kind.as_str().to_string()),
+            })?);
+        }
+
+        let mut tasks = self.store.list_tasks(&TaskFilter::default())?;
+        tasks.sort_by(|a, b| a.title.cmp(&b.title).then_with(|| a.id.0.cmp(&b.id.0)));
+        for task in tasks {
+            lines.push(serde_json::to_string(&IndexSnapshotRecord::Task {
+                id: task.id.0.to_string(),
+                title: task.title,
+                status: serde_json::to_value(task.status)?,
+                column: task.column,
+                tags: task.tags,
+            })?);
+        }
+
+        fs::write(path, format!("{}\n", lines.join("\n")))?;
+        Ok(())
     }
 
     /// Parse and upsert a single markdown file into the store.
@@ -2133,6 +2188,36 @@ fn rewrite_wikilinks_for_publication(
 
     rendered.push_str(remaining);
     Ok(rendered)
+}
+
+#[derive(Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum IndexSnapshotRecord<'a> {
+    Header {
+        schema: &'a str,
+        project_name: &'a str,
+    },
+    Document {
+        id: String,
+        path: String,
+        title: String,
+        tags: Vec<String>,
+        entity_kind: Option<String>,
+    },
+    Task {
+        id: String,
+        title: String,
+        status: serde_json::Value,
+        column: String,
+        tags: Vec<String>,
+    },
+}
+
+fn normalized_relative_path(path: &Path) -> String {
+    path.components()
+        .map(|component| component.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 fn resolve_index_db_path(root: &Path, runtime: &LocalRuntimeConfig) -> PathBuf {

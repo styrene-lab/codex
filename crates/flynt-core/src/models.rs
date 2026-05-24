@@ -602,6 +602,12 @@ pub struct IndexingConfig {
     /// When empty, all files follow the project-wide setting.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<IndexScope>,
+
+    /// When true, Flynt writes a deterministic JSONL snapshot of indexed
+    /// metadata to `.flynt/index.snapshot.jsonl`. The SQLite database remains
+    /// local runtime state and should never be committed.
+    #[serde(default)]
+    pub track_index_snapshot: bool,
 }
 
 /// A scoped path prefix that opts a subdirectory into (or out of) full
@@ -662,6 +668,7 @@ impl Default for IndexingConfig {
         Self {
             write_frontmatter: true,
             scopes: Vec::new(),
+            track_index_snapshot: false,
         }
     }
 }
@@ -1506,6 +1513,7 @@ mod tests {
         let cfg = IndexingConfig {
             write_frontmatter: true,
             scopes: vec![],
+            track_index_snapshot: false,
         };
         assert!(cfg.should_write_frontmatter(Path::new("README.md")));
         assert_eq!(cfg.file_tier(Path::new("README.md")), FileTier::Managed);
@@ -1513,6 +1521,7 @@ mod tests {
         let cfg = IndexingConfig {
             write_frontmatter: false,
             scopes: vec![],
+            track_index_snapshot: false,
         };
         assert!(!cfg.should_write_frontmatter(Path::new("README.md")));
         assert_eq!(
@@ -1530,6 +1539,7 @@ mod tests {
                 kind: Some("design_node".into()),
                 write_frontmatter: Some(true),
             }],
+            track_index_snapshot: false,
         };
         assert!(cfg.should_write_frontmatter(Path::new("design/omega.md")));
         assert!(!cfg.should_write_frontmatter(Path::new("README.md")));
@@ -1552,6 +1562,7 @@ mod tests {
                     write_frontmatter: Some(false),
                 },
             ],
+            track_index_snapshot: false,
         };
         assert!(cfg.should_write_frontmatter(Path::new("docs/guide.md")));
         assert!(!cfg.should_write_frontmatter(Path::new("docs/internal/notes.md")));
@@ -1566,6 +1577,7 @@ mod tests {
                 kind: Some("design_node".into()),
                 write_frontmatter: None,
             }],
+            track_index_snapshot: false,
         };
         assert!(cfg.should_write_frontmatter(Path::new("design/omega.md")));
 
@@ -1583,6 +1595,7 @@ mod tests {
                 kind: Some("design_node".into()),
                 write_frontmatter: Some(true),
             }],
+            track_index_snapshot: false,
         };
         assert!(cfg.scope_for_path(Path::new("README.md")).is_none());
         assert!(cfg.scope_for_path(Path::new("core/src/main.rs")).is_none());
@@ -1604,6 +1617,7 @@ mod tests {
                     write_frontmatter: None,
                 },
             ],
+            track_index_snapshot: false,
         };
         let toml_str = toml::to_string(&cfg).unwrap();
         let parsed: IndexingConfig = toml::from_str(&toml_str).unwrap();
