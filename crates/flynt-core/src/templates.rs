@@ -226,7 +226,7 @@ mod tests {
         ensure_default_templates(tmp.path()).unwrap();
         // Second call should be a no-op (dir exists)
         ensure_default_templates(tmp.path()).unwrap();
-        assert_eq!(list_templates(tmp.path()).len(), 3);
+        assert_eq!(list_templates(tmp.path()).len(), 4);
     }
 
     #[test]
