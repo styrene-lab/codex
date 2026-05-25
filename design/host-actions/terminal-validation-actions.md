@@ -47,13 +47,20 @@ Omegon already has two terminal paths that Flynt should align with rather than r
 - `core/crates/omegon-extension/src/actions/terminal.rs` defines the public contract: `TerminalCreateParams { command, args, cwd, env, title, placement, reuse_key }` and `TerminalPlacement::{Default, SidePane, BottomPane, NewTab}`.
 - `core/crates/omegon/src/host_context.rs` also exposes ACP host terminal delegation (`create_terminal`, `terminal_output`, `wait_for_terminal_exit`, `kill_terminal`, `release_terminal`) when the ACP client advertises terminal capability.
 
-Flynt's terminal surface should therefore be a visual host/session manager for the same conceptual contract, not a parallel API. The revised working surface is:
+Flynt's terminal surface should therefore be a visual host/session manager for the same conceptual contract, not a parallel API. Because Auspex has the same need for host-managed validation and analysis terminals, the terminal substrate should be kept reusable: app-agnostic PTY/session/parser/rendering code first, Flynt- or Auspex-specific policy and placement adapters second. The revised working surface is:
 
 1. Reuse Omegon's argv-only action shape: `command`, `args`, `cwd`, `env`, `title`, `placement`, `reuse_key`.
 2. Reuse Omegon's result shape: `terminal_id`, `backend`, `actual_placement`, `warnings`.
 3. Mirror Omegon lifecycle verbs in Flynt's terminal subsystem: create, read/output snapshot, wait/observe exit, kill, release/close.
 4. Mirror Omegon safety defaults: no shell-string path for HostAction terminal creation, env deny-by-default, command allowlist, cwd root enforcement, max sessions/input/transcript caps.
-5. Keep Flynt's native renderer (`portable-pty` + `alacritty_terminal`) as the local visual backend when Flynt owns execution; use ACP host terminal delegation only when Flynt is not the executing host or when an upstream host explicitly owns the terminal.
+5. Keep the reusable native renderer (`portable-pty` + `alacritty_terminal`) as the local visual backend when the app owns execution; use ACP host terminal delegation only when Flynt/Auspex is not the executing host or when an upstream host explicitly owns the terminal.
+6. Keep app-specific concepts (Flynt project roots, agent rail cards, action journal placement, Auspex analysis panes) outside the reusable terminal substrate.
+
+### Decision: Keep the terminal substrate reusable for Auspex
+
+Status: accepted
+
+The terminal subsystem should be designed as a reusable Styrene terminal surface rather than a Flynt-only feature. The current spike may live inside `flynt-app` while it matures, but module boundaries should separate reusable terminal contract/session/PTY/parser/renderer code from Flynt-specific HostAction review, project policy, and placement. A future extraction target is a shared terminal crate usable by Flynt and Auspex.
 
 ## Open questions
 

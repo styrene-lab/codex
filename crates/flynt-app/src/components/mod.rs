@@ -1,5 +1,4 @@
 pub mod agent_rail;
-pub mod alacritty_terminal_spike;
 pub mod command_palette;
 pub mod context_menu;
 pub mod daemon_settings;

@@ -1,5 +1,5 @@
 use crate::bootstrap::AppContext;
-use crate::components::alacritty_terminal_spike::AlacrittyTerminal;
+use crate::terminal::AlacrittyTerminal;
 use dioxus::prelude::*;
 use std::path::PathBuf;
 

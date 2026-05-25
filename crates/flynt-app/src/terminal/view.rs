@@ -1,9 +1,9 @@
-//! Flynt-owned terminal spike using portable-pty and alacritty_terminal.
+//! Reusable terminal substrate spike using portable-pty and alacritty_terminal.
 //!
 //! This intentionally avoids `dioxus-terminal`: that crate proved useful for
 //! PTY/layout exploration, but its renderer casts UTF-8 bytes directly to
-//! chars. This module keeps the same spike UI while moving parsing/state to
-//! Alacritty's terminal core.
+//! chars. Keep this module free of Flynt-specific policy so it can be extracted
+//! for Auspex or a shared Styrene terminal crate.
 
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
