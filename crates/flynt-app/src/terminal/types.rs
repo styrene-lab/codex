@@ -72,7 +72,7 @@ pub struct TerminalCreateResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TerminalStatus {
     Running,
-    Exited,
+    Exited(String),
     Failed(String),
 }
 

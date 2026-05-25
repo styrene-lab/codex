@@ -6,6 +6,7 @@
 //! for Auspex or a shared Styrene terminal crate.
 
 use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -17,8 +18,10 @@ use alacritty_terminal::term::test::TermSize;
 use alacritty_terminal::term::Term;
 use alacritty_terminal::vte::ansi::{Color as VteColor, NamedColor, Processor, Rgb};
 use dioxus::prelude::*;
-use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+use portable_pty::{Child, CommandBuilder, ExitStatus, PtySize, native_pty_system};
 use tokio::sync::mpsc;
+
+use super::types::{TerminalCreateParams, TerminalStatus};
 
 const DEFAULT_ROWS: usize = 34;
 const DEFAULT_COLS: usize = 120;
@@ -64,7 +67,7 @@ impl Default for RenderCell {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct TerminalSnapshot {
+pub struct TerminalSnapshot {
     rows: Vec<Vec<RenderCell>>,
     cursor: (usize, usize),
 }
@@ -81,6 +84,7 @@ impl TerminalSnapshot {
 struct PtyHandle {
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
     rx: mpsc::Receiver<Vec<u8>>,
+    child: Arc<Mutex<Box<dyn Child + Send + Sync>>>,
 }
 
 pub struct AlacrittyTerminalSession {
@@ -91,6 +95,20 @@ pub struct AlacrittyTerminalSession {
 
 impl AlacrittyTerminalSession {
     pub fn spawn(command: &str, args: &[String], rows: usize, cols: usize) -> anyhow::Result<Self> {
+        Self::spawn_with_params(
+            TerminalCreateParams::new(command.to_string()).with_args(args.iter().cloned()),
+            None,
+            rows,
+            cols,
+        )
+    }
+
+    pub fn spawn_with_params(
+        params: TerminalCreateParams,
+        fallback_cwd: Option<&Path>,
+        rows: usize,
+        cols: usize,
+    ) -> anyhow::Result<Self> {
         let size = PtySize {
             rows: rows as u16,
             cols: cols as u16,
@@ -98,9 +116,18 @@ impl AlacrittyTerminalSession {
             pixel_height: 0,
         };
         let pair = native_pty_system().openpty(size)?;
-        let mut cmd = CommandBuilder::new(command);
-        cmd.args(args.iter().map(String::as_str));
-        let _child = pair.slave.spawn_command(cmd)?;
+        let mut cmd = CommandBuilder::new(&params.command);
+        cmd.args(params.args.iter().map(String::as_str));
+        if let Some(cwd) = params.cwd.as_deref() {
+            let cwd = PathBuf::from(cwd);
+            cmd.cwd(cwd.as_os_str());
+        } else if let Some(cwd) = fallback_cwd {
+            cmd.cwd(cwd.as_os_str());
+        }
+        for (key, value) in &params.env {
+            cmd.env(key, value);
+        }
+        let child = pair.slave.spawn_command(cmd)?;
 
         let writer = Arc::new(Mutex::new(pair.master.take_writer()?));
         let mut reader = pair.master.try_clone_reader()?;
@@ -123,11 +150,15 @@ impl AlacrittyTerminalSession {
         Ok(Self {
             term: Term::new(Default::default(), &size, VoidListener),
             processor: Processor::new(),
-            pty: PtyHandle { writer, rx },
+            pty: PtyHandle {
+                writer,
+                rx,
+                child: Arc::new(Mutex::new(child)),
+            },
         })
     }
 
-    fn poll(&mut self) -> bool {
+    pub fn poll(&mut self) -> bool {
         let mut changed = false;
         while let Ok(bytes) = self.pty.rx.try_recv() {
             self.processor.advance(&mut self.term, &bytes);
@@ -136,14 +167,14 @@ impl AlacrittyTerminalSession {
         changed
     }
 
-    fn write_input(&self, input: &str) {
+    pub fn write_input(&self, input: &str) {
         if let Ok(mut writer) = self.pty.writer.lock() {
             let _ = writer.write_all(input.as_bytes());
             let _ = writer.flush();
         }
     }
 
-    fn snapshot(&self, rows: usize, cols: usize) -> TerminalSnapshot {
+    pub fn snapshot(&self, rows: usize, cols: usize) -> TerminalSnapshot {
         let content = self.term.renderable_content();
         let cursor = (
             (content.cursor.point.line.0.max(0) as usize).min(rows.saturating_sub(1)),
@@ -188,6 +219,31 @@ impl AlacrittyTerminalSession {
         }
         snapshot.cursor = cursor;
         snapshot
+    }
+    pub fn try_wait_status(&self) -> TerminalStatus {
+        let mut child = self.pty.child.lock().unwrap();
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                TerminalStatus::Exited(exit_status_label(&status))
+            }
+            Ok(None) => TerminalStatus::Running,
+            Err(err) => TerminalStatus::Failed(err.to_string()),
+        }
+    }
+
+    pub fn kill(&self) -> anyhow::Result<()> {
+        self.pty.child.lock().unwrap().kill()?;
+        Ok(())
+    }
+
+}
+
+
+fn exit_status_label(status: &ExitStatus) -> String {
+    if let Some(signal) = status.signal() {
+        format!("signal {signal}")
+    } else {
+        format!("exit code {}", status.exit_code())
     }
 }
 
