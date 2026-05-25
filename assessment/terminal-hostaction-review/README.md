@@ -1,8 +1,13 @@
----
-title: Terminal HostAction Review Assessment
-status: ready
-tags: [assessment, host-actions, terminal, acp]
----
++++
+id = "2d9df4fa-c672-4dc4-a363-b93ed21bdd9e"
+tags = []
+aliases = []
+imported_reference = false
+
+[publication]
+enabled = false
+visibility = "private"
++++
 
 # Terminal HostAction Review Assessment
 
@@ -97,3 +102,23 @@ term-cargo-check-flynt-app
 ```
 
 Use the Terminal Lab **Kill** / **Release** buttons to clean up sessions after testing.
+
+## 2026-05-25 assessment note
+
+Observed during the first live run:
+
+- Flynt ACP/reconnect no longer panics after the `Signal::set` reconnect fix.
+- Flynt initially resolved an older `~/.omegon/versions/v0.21.2/omegon`; this was patched so Flynt prefers the active user install before stale version-dir installs.
+- Omegon did not emit a `terminal.create@1` permission request from the prompt. It searched/pondered instead, indicating the HostAction is not currently advertised as an ACP-visible tool/action in the active Omegon runtime.
+
+Next blocker to resolve before this test can pass:
+
+- Install/point Flynt at the Omegon build that actually exposes `terminal.create@1` HostAction proposals over ACP, or implement that Omegon-side action emission path.
+
+If a newer Omegon binary exists outside PATH, launch Flynt with:
+
+```bash
+OMEGON_BIN=/absolute/path/to/omegon \
+FLYNT_PROJECT="$PWD/assessment/terminal-hostaction-review" \
+cargo run -p flynt-app
+```
