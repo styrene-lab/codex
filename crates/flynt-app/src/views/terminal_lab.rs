@@ -1,7 +1,7 @@
 use crate::bootstrap::AppContext;
 use crate::terminal::{
-    TerminalCreateParams, TerminalManager, TerminalPlacement, TerminalSnapshotView,
-    TerminalStatus,
+    TerminalCreateParams, TerminalManager, TerminalPlacement, TerminalSessionInfo,
+    TerminalSnapshotView, TerminalStatus,
 };
 use dioxus::prelude::*;
 use std::path::PathBuf;
@@ -40,6 +40,7 @@ pub fn TerminalLabView() -> Element {
     let script_path = ensure_diagnostic_script(&project_root);
     let script_display = script_path.display().to_string();
     let mut terminal_id = use_signal(|| None::<String>);
+    let mut sessions = use_signal(Vec::<TerminalSessionInfo>::new);
     let mut status = use_signal(|| TerminalStatus::Failed("not started".to_string()));
     let mut snapshot = use_signal(|| crate::terminal::view::TerminalSnapshot::blank(TERMINAL_ROWS, TERMINAL_COLS));
     let mut error = use_signal(|| None::<String>);
@@ -58,6 +59,7 @@ pub fn TerminalLabView() -> Element {
             match manager.create(params) {
                 Ok(result) => {
                     terminal_id.set(Some(result.terminal_id));
+                    sessions.set(manager.list());
                     error.set(None);
                 }
                 Err(err) => {
@@ -81,7 +83,8 @@ pub fn TerminalLabView() -> Element {
                         status.set(next_status);
                     }
                 }
-                tokio::time::sleep(std::time::Duration::from_millis(33)).await;
+                sessions.set(manager.list());
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             }
             }
         });
@@ -142,6 +145,27 @@ pub fn TerminalLabView() -> Element {
                     }
                 }
             }
+
+            div { class: "terminal-session-strip",
+                span { class: "terminal-session-label", "Sessions:" }
+                for session in sessions.read().iter() {
+                    {
+                        let id = session.terminal_id.clone();
+                        let selected = terminal_id.read().as_deref() == Some(id.as_str());
+                        let status_text = terminal_status_label(&session.status);
+                        rsx! {
+                            button {
+                                key: "term-session-{id}",
+                                class: if selected { "terminal-session-btn active" } else { "terminal-session-btn" },
+                                onclick: move |_| terminal_id.set(Some(id.clone())),
+                                span { class: "terminal-session-title", "{session.title}" }
+                                span { class: "terminal-session-command", "{session.command_line}" }
+                                span { class: "terminal-session-status", "{status_text}" }
+                            }
+                        }
+                    }
+                }
+            }
             if let Some(err) = error.read().clone() {
                 div { class: "terminal-error", "Terminal error: {err}" }
             }
@@ -158,6 +182,14 @@ pub fn TerminalLabView() -> Element {
                 }
             }
         }
+    }
+}
+
+fn terminal_status_label(status: &TerminalStatus) -> String {
+    match status {
+        TerminalStatus::Running => "running".to_string(),
+        TerminalStatus::Exited(label) => format!("exited {label}"),
+        TerminalStatus::Failed(err) => format!("failed {err}"),
     }
 }
 
