@@ -781,8 +781,8 @@ impl OmegonChannel {
 /// Priority:
 ///   1. Explicit binary path override
 ///   2. OMEGON_BIN environment variable
-///   3. Channel-matched version in ~/.omegon/versions/
-///   4. `omegon` on PATH or well-known locations
+///   3. Active `omegon` install on PATH or well-known user locations
+///   4. Channel-matched version in ~/.omegon/versions/
 pub fn resolve_omegon_binary(config: &LocalRuntimeConfig) -> std::path::PathBuf {
     // 1. Explicit override
     if let Some(ref p) = config.omegon_bin_override {
@@ -800,16 +800,11 @@ pub fn resolve_omegon_binary(config: &LocalRuntimeConfig) -> std::path::PathBuf 
         }
     }
 
-    // 3. Channel-matched version in ~/.omegon/versions/
+    // 3. Prefer the user's active PATH/well-known install before stale channel installs.
+    // During local development the current Omegon is often installed at ~/.local/bin/omegon
+    // while ~/.omegon/versions may contain older app-bundled binaries. HostAction/ACP
+    // compatibility depends on using the active binary unless the operator explicitly pins.
     let home = std::env::var("HOME").unwrap_or_default();
-    let versions_dir = std::path::PathBuf::from(&home).join(".omegon/versions");
-    if versions_dir.is_dir() {
-        if let Some(path) = resolve_from_versions_dir(&versions_dir, &config.omegon_channel) {
-            return path;
-        }
-    }
-
-    // 4. Bare `omegon` on PATH or well-known locations
     let candidates = [
         format!("{home}/.local/bin/omegon"),
         format!("{home}/.cargo/bin/omegon"),
@@ -829,6 +824,14 @@ pub fn resolve_omegon_binary(config: &LocalRuntimeConfig) -> std::path::PathBuf 
             if candidate.exists() {
                 return candidate;
             }
+        }
+    }
+
+    // 4. Channel-matched version in ~/.omegon/versions/ as a fallback.
+    let versions_dir = std::path::PathBuf::from(&home).join(".omegon/versions");
+    if versions_dir.is_dir() {
+        if let Some(path) = resolve_from_versions_dir(&versions_dir, &config.omegon_channel) {
+            return path;
         }
     }
 
