@@ -196,8 +196,8 @@ fn reconnect_acp_session(
 
         tracing::warn!("Reconnecting ACP session after transport disconnect");
         *agent_status.write() = AgentStatus::Connecting;
-        *session.write() = None;
-        *shared_session.write() = None;
+        session.set(None);
+        shared_session.set(None);
         available_commands.write().clear();
         config_options.write().clear();
         *session_title.write() = None;
@@ -214,8 +214,8 @@ fn reconnect_acp_session(
                     sess.set_config(cfg_id, value).await;
                 }
 
-                *session.write() = Some(sess.clone());
-                *shared_session.write() = Some(sess);
+                session.set(Some(sess.clone()));
+                shared_session.set(Some(sess));
                 start_event_loop(
                     rx,
                     ctx.clone(),
