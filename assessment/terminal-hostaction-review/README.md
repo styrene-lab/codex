@@ -127,3 +127,23 @@ Flynt follow-up remains:
 
 - Detect HostAction metadata/outcomes from ACP tool-call updates.
 - Separately consider whether the built-in Omegon `terminal` tool should be host-delegated to Flynt through ACP rather than launching an Omegon-owned background PTY.
+
+## 2026-05-25 live observation — reader_doctor
+
+Prompt used:
+
+> Run reader_doctor and report whether HostActions are available.
+
+Observed result:
+
+- `reader_doctor` was callable from AgentRail.
+- Bookokrat was found at `/opt/homebrew/bin/bookokrat`.
+- The HostAction command is `bookokrat`.
+- The command matches the reader extension manifest policy.
+- Omegon reported: HostActions are available.
+
+Conclusion:
+
+- The 0.24.x Omegon runtime and `omegon-reader` extension are correctly loaded.
+- HostAction readiness is confirmed at the extension/manifest policy layer.
+- Proceed to `reader_open_dry_run` to inspect the declarative `terminal.create@1` envelope path.
