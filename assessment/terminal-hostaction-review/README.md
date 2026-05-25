@@ -15,120 +15,75 @@ Use this workspace to test the end-to-end Flynt/Omegon terminal HostAction flow.
 
 ## Purpose
 
-Verify that real Omegon 0.24 HostAction output is visible to Flynt, and determine whether Flynt must consume HostActions from ACP permission requests, tool-result metadata, or both.
+Verify that a real Omegon ACP permission request for `terminal.create@1` is reviewed by Flynt, approved by the operator, executed through `TerminalManager`, and opened in Terminal Lab.
 
-Target flow for Flynt:
-
-```text
-Omegon/extension emits terminal.create@1
-→ Flynt shows AgentRail review card or HostAction outcome card
-→ operator can inspect the action/result
-→ approved/executed terminal is visible in Terminal Lab or reported as background_session
-```
-
-## Launch setup
-
-Use the local Omegon 0.24+ worktree binary, not stale `~/.omegon/versions/v0.21.2`:
-
-```bash
-FLYNT_PROJECT="$PWD/assessment/terminal-hostaction-review" \
-OMEGON_BIN="$HOME/workspace/styrene-labs/omegon/target/debug/omegon" \
-RUST_BACKTRACE=1 \
-cargo run -p flynt-app
-```
-
-Known local binaries:
+Expected flow:
 
 ```text
-~/workspace/styrene-labs/omegon/target/release/omegon  → 0.24.0
-~/workspace/styrene-labs/omegon/target/debug/omegon    → 0.24.1
+Omegon requests terminal.create@1
+→ Flynt shows AgentRail review card
+→ operator clicks Approve
+→ TerminalManager creates session
+→ Flynt switches to Terminal Lab
+→ created terminal is selected and interactive
 ```
 
-## Correct Omegon 0.24 HostAction exercise path
+## Test prompt to send in AgentRail
 
-Do **not** test by asking for a generic terminal or `ls`. The model will choose the ordinary `bash` tool, which bypasses HostActions entirely.
+Ask Omegon something like:
 
-The HostAction-producing extension installed on this machine is `omegon-reader`. Exercise HostActions through its tools.
+> Request a reviewed terminal.create@1 HostAction to run `cargo check -p flynt-app` in this workspace. Do not run it directly; ask Flynt to open a terminal for the command.
 
-### Step 1 — readiness
+If Omegon does not emit the HostAction, try the more explicit version:
 
-Send in AgentRail:
-
-> Run `reader_doctor` and report whether HostActions are available.
-
-Expected:
-
-- The agent calls `reader_doctor`.
-- Output reports whether Bookokrat and HostAction support are available.
-- No Flynt terminal review card is expected yet.
-
-### Step 2 — declarative terminal.create dry run
-
-Send in AgentRail:
-
-> Use `reader_open_dry_run` with path `/Users/wilson/workspace/styrene-labs/omegon-extensions/omegon-reader/validation/sample-book.txt`.
-
-Expected:
-
-- The agent calls `reader_open_dry_run`.
-- The tool result should contain a declarative `terminal.create@1` HostAction envelope.
-- If Flynt shows only ordinary tool output and no HostAction/review card, record that as evidence that Flynt is not yet reading HostActions from tool-result metadata.
-
-### Step 3 — execution path
-
-Send in AgentRail:
-
-> Use `reader_open` with path `/Users/wilson/workspace/styrene-labs/omegon-extensions/omegon-reader/validation/sample-book.txt` and `execute = true`.
-
-Expected with current Omegon 0.24.x:
-
-- The agent calls `reader_open`.
-- Omegon may execute the HostAction inside its own HostAction runtime.
-- The result may report `actual_placement = "background_session"`.
-- If Flynt does not show a review card, the result likely arrived as `host_action_outcomes`, not ACP `request_permission`.
+> Use the host action `terminal.create@1` with params `{ "command": "cargo", "args": ["check", "-p", "flynt-app"], "cwd": "/Users/wilson/workspace/styrene-labs/flynt", "placement": "bottom_pane", "reuse_key": "cargo-check-flynt-app", "title": "cargo check flynt-app" }`. Request permission from Flynt before execution.
 
 ## What to verify
 
-- [ ] Flynt is running against Omegon 0.24.x, not v0.21.2.
-- [ ] `reader_doctor` is visible/callable.
-- [ ] `reader_open_dry_run` returns a `terminal.create@1` HostAction envelope.
-- [ ] `reader_open execute=true` returns a HostAction outcome.
-- [ ] Note whether Flynt renders a review card, an outcome card, or only plain tool output.
-- [ ] If execution happens, note whether placement is `background_session` or a Flynt-visible terminal.
-- [ ] Note whether Terminal Lab lists any new session.
+- [ ] AgentRail displays a permission review card instead of auto-allowing.
+- [ ] The card summarizes command, args, cwd, placement, and reuse key.
+- [ ] Reject path returns reject/cancel and creates no terminal.
+- [ ] Approve path creates a terminal session.
+- [ ] Flynt switches to Terminal Lab after approval.
+- [ ] The created terminal appears in the session strip.
+- [ ] The created terminal is selected automatically.
+- [ ] Terminal output is readable and interactive.
+- [ ] Reusing the same `reuse_key` reuses the existing session instead of spawning duplicates.
 
-## Expected raw HostAction shape
+## Expected raw input shape
 
-The reader extension should produce an action like:
+Flynt currently recognizes either wrapped action input:
 
 ```json
 {
-  "id": "open-reader",
-  "type": "terminal.create@1",
+  "action": "terminal.create@1",
   "params": {
-    "command": "bookokrat",
-    "args": ["/Users/wilson/workspace/styrene-labs/omegon-extensions/omegon-reader/validation/sample-book.txt"],
-    "cwd": "/Users/wilson/workspace/styrene-labs/omegon-extensions/omegon-reader"
+    "command": "cargo",
+    "args": ["check", "-p", "flynt-app"],
+    "cwd": "/Users/wilson/workspace/styrene-labs/flynt",
+    "placement": "bottom_pane",
+    "reuse_key": "cargo-check-flynt-app",
+    "title": "cargo check flynt-app"
   }
 }
 ```
 
-## Likely Flynt follow-up if no review card appears
+or direct params:
 
-Flynt currently handles ACP `request_permission` events. Omegon 0.24 HostActions may instead arrive through ACP tool-call output/details metadata as:
-
-```text
-host_actions
-host_action_outcomes
-_meta["omegon/hostActions"]
+```json
+{
+  "command": "cargo",
+  "args": ["check", "-p", "flynt-app"],
+  "cwd": "/Users/wilson/workspace/styrene-labs/flynt",
+  "placement": "bottom_pane",
+  "reuse_key": "cargo-check-flynt-app",
+  "title": "cargo check flynt-app"
+}
 ```
 
-If no review card appears, patch Flynt to:
+## Likely mismatch to watch for
 
-1. Preserve ACP tool-call raw output/details metadata.
-2. Detect `host_actions` and `host_action_outcomes` in tool-call updates.
-3. Render those as AgentRail HostAction cards.
-4. For pending executable actions, route approved `terminal.create@1` into `TerminalManager`.
+If the review card appears but approval does not create a terminal, inspect the ACP `raw_input` shape in the card. The likely next patch is to expand `host_actions::terminal::extract_terminal_create` to match Omegon's actual emitted shape.
 
 ## Useful local validation commands
 
@@ -140,6 +95,35 @@ cargo check -p flynt-app
 
 ## Cleanup
 
-Use Terminal Lab **Kill** / **Release** buttons for Flynt-created sessions.
+The test may create or reuse terminal sessions with ids like:
 
-Omegon-native HostAction execution may create background terminal sessions owned by Omegon rather than Flynt; inspect Omegon output for transcript/session ids if needed.
+```text
+term-cargo-check-flynt-app
+```
+
+Use the Terminal Lab **Kill** / **Release** buttons to clean up sessions after testing.
+
+## 2026-05-25 live observation — generic HostAction prompt
+
+Prompt used:
+
+> Run a `cargo check -p flynt-app` in a new terminal using HostAction
+
+Observed result:
+
+- Omegon used its own `terminal` tool directly.
+- It started an Omegon-managed background terminal session named `cargo-check-flynt-app` with session id `31f2e34a-1899-42a4-9527-f6bbce921950`.
+- It then called `terminal read` to inspect progress.
+- Flynt did **not** show a HostAction review card.
+- Terminal Lab did **not** become the placement surface for this session.
+
+Conclusion:
+
+- Generic “use HostAction” prompts are still resolved by Omegon as the built-in `terminal` tool, not as a `terminal.create@1` HostAction envelope for Flynt review.
+- This is useful evidence but does **not** exercise Flynt's HostAction review path.
+- Continue with the reader-extension path (`reader_doctor`, `reader_open_dry_run`, `reader_open execute=true`) to force actual HostAction metadata.
+
+Flynt follow-up remains:
+
+- Detect HostAction metadata/outcomes from ACP tool-call updates.
+- Separately consider whether the built-in Omegon `terminal` tool should be host-delegated to Flynt through ACP rather than launching an Omegon-owned background PTY.
