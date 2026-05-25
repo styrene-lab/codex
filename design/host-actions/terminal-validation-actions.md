@@ -38,6 +38,23 @@ The Dioxus-terminal crate was useful for a quick embedded PTY proof, but it is n
 
 This preserves the right ownership boundary: Flynt owns terminal execution, review UI, rendering, lifecycle, and policy; ACP/HostActions are proposal transport only.
 
+### Research: Omegon terminal substrate alignment
+
+Omegon already has two terminal paths that Flynt should align with rather than reinventing ad hoc:
+
+- `core/crates/omegon/src/tools/terminal.rs` owns an interactive background terminal registry using `portable_pty`, session ids/names, transcript files, bounded tail buffers, max session/input/transcript limits, stop/list/read/send actions, exit recording, and secure transcript directory/file permissions.
+- `core/crates/omegon/src/extensions/host_actions.rs` implements `terminal.create@1` through policy validation before spawn, then converts an argv-only `TerminalCreateLaunchPlan` into a `HostTerminalCreateRequest` with `command`, `args`, `cwd`, `env`, and optional name. It returns `TerminalCreateResult { terminal_id, backend, actual_placement, warnings }`.
+- `core/crates/omegon-extension/src/actions/terminal.rs` defines the public contract: `TerminalCreateParams { command, args, cwd, env, title, placement, reuse_key }` and `TerminalPlacement::{Default, SidePane, BottomPane, NewTab}`.
+- `core/crates/omegon/src/host_context.rs` also exposes ACP host terminal delegation (`create_terminal`, `terminal_output`, `wait_for_terminal_exit`, `kill_terminal`, `release_terminal`) when the ACP client advertises terminal capability.
+
+Flynt's terminal surface should therefore be a visual host/session manager for the same conceptual contract, not a parallel API. The revised working surface is:
+
+1. Reuse Omegon's argv-only action shape: `command`, `args`, `cwd`, `env`, `title`, `placement`, `reuse_key`.
+2. Reuse Omegon's result shape: `terminal_id`, `backend`, `actual_placement`, `warnings`.
+3. Mirror Omegon lifecycle verbs in Flynt's terminal subsystem: create, read/output snapshot, wait/observe exit, kill, release/close.
+4. Mirror Omegon safety defaults: no shell-string path for HostAction terminal creation, env deny-by-default, command allowlist, cwd root enforcement, max sessions/input/transcript caps.
+5. Keep Flynt's native renderer (`portable-pty` + `alacritty_terminal`) as the local visual backend when Flynt owns execution; use ACP host terminal delegation only when Flynt is not the executing host or when an upstream host explicitly owns the terminal.
+
 ## Open questions
 
 - [assumption] Flynt can surface HostAction cards in the agent rail from Omegon ACP/tool result metadata.
