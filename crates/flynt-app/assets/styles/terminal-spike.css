@@ -1,0 +1,110 @@
+.terminal-spike-view {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    background: var(--background);
+    color: var(--foreground);
+    overflow: hidden;
+}
+
+.terminal-spike-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: flex-start;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--card);
+    padding: 14px 16px;
+}
+
+.terminal-spike-header h2 {
+    margin: 0 0 4px 0;
+    color: var(--primary);
+    font-size: 18px;
+}
+
+.terminal-spike-header p,
+.terminal-spike-meta {
+    margin: 0;
+    color: var(--muted-foreground);
+    font-size: 12px;
+}
+
+.terminal-spike-engine {
+    display: inline-flex;
+    margin-top: 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px 8px;
+    color: var(--primary);
+    background: var(--background);
+    font-size: 11px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.terminal-spike-meta {
+    text-align: right;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    max-width: 50%;
+    overflow-wrap: anywhere;
+}
+
+.terminal-spike-checks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    color: var(--muted-foreground);
+    font-size: 12px;
+}
+
+.terminal-spike-checks span:not(:first-child) {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--foreground);
+    padding: 3px 8px;
+}
+
+.terminal-spike-frame {
+    flex: 1;
+    min-height: 0;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: #06080e;
+}
+
+.flynt-terminal-spike,
+.flynt-alacritty-terminal {
+    height: 100%;
+    width: 100%;
+}
+
+.flynt-alacritty-terminal {
+    box-sizing: border-box;
+    padding: 0;
+}
+
+.flynt-terminal-row {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    height: 1.2em;
+    min-height: 1.2em;
+}
+
+.flynt-terminal-row > span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex: 0 0 1ch;
+    width: 1ch;
+    min-width: 1ch;
+    max-width: 1ch;
+    height: 1.2em;
+    overflow: visible;
+}

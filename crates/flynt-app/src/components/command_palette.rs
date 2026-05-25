@@ -134,6 +134,7 @@ fn execute_command(
         "view-board" => *active_route.write() = Route::Kanban,
         "view-lenses" => *active_route.write() = Route::Lenses,
         "view-graph" => *active_route.write() = Route::Graph,
+        "view-terminal-spike" => *active_route.write() = Route::TerminalSpike,
         "view-settings" => *settings_open.write() = crate::state::SettingsOpen(true),
         "view-welcome" => *active_route.write() = Route::Welcome,
         "note-inspector-toggle" => {
@@ -582,6 +583,11 @@ pub fn CommandPalette(mut open: Signal<bool>, mode: Signal<PaletteMode>) -> Elem
                 category: "Navigate".into(),
             },
             Cmd {
+                id: "view-terminal-spike".into(),
+                label: "Terminal Spike".into(),
+                category: "Navigate".into(),
+            },
+            Cmd {
                 id: "view-settings".into(),
                 label: "Settings".into(),
                 category: "Navigate".into(),
@@ -866,6 +872,7 @@ pub fn CommandPalette(mut open: Signal<bool>, mode: Signal<PaletteMode>) -> Elem
                                             match *route {
                                                 Route::Kanban => ctx_parts.push("[On: Tasks view]".into()),
                                                 Route::Graph => ctx_parts.push("[On: Graph view]".into()),
+                                                Route::TerminalSpike => ctx_parts.push("[On: Terminal spike view]".into()),
                                                 _ => {}
                                             }
                                             if settings_open.read().0 {

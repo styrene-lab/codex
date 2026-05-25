@@ -28,6 +28,16 @@ The agent can say “Run validation” as an action card instead of dumping a co
 - Start `dioxus serve` or local docs viewers.
 - Launch artifact readers such as Bookokrat/Eidolon side viewers.
 
+## Decision log
+
+### Decision: Build Flynt terminal surfaces on portable-pty + alacritty_terminal
+
+Status: accepted
+
+The Dioxus-terminal crate was useful for a quick embedded PTY proof, but it is not suitable as Flynt's production terminal widget. Its renderer processes PTY output byte-by-byte and casts bytes directly to `char`, which corrupts UTF-8 prompt glyphs and other Kitty-adjacent terminal output. Flynt will keep the learning but move terminal parsing/state to `alacritty_terminal` and PTY ownership to `portable-pty`, with a Flynt-owned Dioxus renderer.
+
+This preserves the right ownership boundary: Flynt owns terminal execution, review UI, rendering, lifecycle, and policy; ACP/HostActions are proposal transport only.
+
 ## Open questions
 
 - [assumption] Flynt can surface HostAction cards in the agent rail from Omegon ACP/tool result metadata.

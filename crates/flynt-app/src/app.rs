@@ -8,7 +8,7 @@ use crate::{
         Route, SettingsOpen, SettingsPage, SyncActivityState, SyncRunOutcome, SyncStatus, TabState,
         ThemeName,
     },
-    views::{GraphView, KanbanView, LensesView, NotesView, SearchView, SettingsView, WelcomeView},
+    views::{GraphView, KanbanView, LensesView, NotesView, SearchView, SettingsView, TerminalSpikeView, WelcomeView},
 };
 use dioxus::prelude::*;
 use flynt_core::store::ProjectStore;
@@ -590,6 +590,7 @@ pub fn App() -> Element {
         document::Stylesheet { href: asset!("/assets/styles/graph.css") }
         document::Stylesheet { href: asset!("/assets/styles/welcome.css") }
         document::Stylesheet { href: asset!("/assets/styles/canvas.css") }
+        document::Stylesheet { href: asset!("/assets/styles/terminal-spike.css") }
         // Reveal body after stylesheets are loaded
         document::Script { "document.body.classList.add('ready');" }
 
@@ -809,6 +810,7 @@ pub fn App() -> Element {
                         Route::Lenses   => rsx! { LensesView {} },
                         Route::Kanban   => rsx! { KanbanView {} },
                         Route::Graph    => rsx! { GraphView {} },
+                        Route::TerminalSpike => rsx! { TerminalSpikeView {} },
                     }
                 }
                 // Settings modal — overlays the active route so operators
