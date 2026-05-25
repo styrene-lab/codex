@@ -52,6 +52,14 @@ pub struct PublicationPreviewCommand {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct BookmarkRefresh(pub u64);
 
+
+/// One-shot command bus for opening/selecting a terminal session.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct TerminalOpenCommand {
+    pub version: u64,
+    pub terminal_id: Option<String>,
+}
+
 /// Whether the settings modal is currently open. Settings used to be
 /// a top-level Route, but that meant entering settings replaced the
 /// whole main content area (including the project sidebar and tab

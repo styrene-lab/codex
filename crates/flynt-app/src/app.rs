@@ -62,6 +62,7 @@ pub fn App() -> Element {
         let root = current_runtime.project.root.clone();
         crate::terminal::TerminalManager::new(root, 34, 120)
     });
+    use_context_provider(|| Signal::new(crate::state::TerminalOpenCommand::default()));
 
     // Shared ACP session — populated by AgentRail, used by CommandPalette agent mode
     use_context_provider(|| Signal::new(None::<std::rc::Rc<crate::acp::AcpSession>>));

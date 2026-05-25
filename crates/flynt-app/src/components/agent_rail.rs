@@ -1,7 +1,7 @@
 use crate::acp::{AcpEvent, AcpSession, ConfigOption, PermissionDecision, PendingPermissionRequest, SlashCommand};
 use crate::host_actions::terminal::extract_terminal_create;
 use crate::bootstrap::AppContext;
-use crate::state::SettingsPage;
+use crate::state::{Route, SettingsPage, TerminalOpenCommand};
 use comrak::{Options, markdown_to_html};
 use dioxus::prelude::*;
 use std::path::{Path, PathBuf};
@@ -490,6 +490,8 @@ pub fn AgentRail() -> Element {
     let config_options = use_context::<Signal<Vec<ConfigOption>>>();
     let terminal_manager = use_context::<TerminalManager>();
     let terminal_manager_for_connect = terminal_manager.clone();
+    let mut active_route = use_context::<Signal<Route>>();
+    let mut terminal_open = use_context::<Signal<TerminalOpenCommand>>();
 
     // Input history (up/down arrow)
     let mut history: Signal<Vec<String>> = use_signal(Vec::new);
@@ -840,6 +842,11 @@ pub fn AgentRail() -> Element {
                                                         };
                                                         match result {
                                                             Ok(message) => {
+                                                                if let Some(id) = message.strip_prefix("terminal ").map(str::to_string) {
+                                                                    let next_version = terminal_open.read().version.wrapping_add(1);
+                                                                    terminal_open.set(TerminalOpenCommand { version: next_version, terminal_id: Some(id) });
+                                                                    *active_route.write() = Route::TerminalLab;
+                                                                }
                                                                 request_for_approve.respond(PermissionDecision::Approve);
                                                                 update_permission_review_status(&mut items_for_approve, &approve_request_id, PermissionReviewStatus::Approved(message));
                                                             }

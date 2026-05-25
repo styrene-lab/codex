@@ -1,4 +1,5 @@
 use crate::bootstrap::AppContext;
+use crate::state::TerminalOpenCommand;
 use crate::terminal::{
     TerminalCreateParams, TerminalManager, TerminalPlacement, TerminalSessionInfo,
     TerminalSnapshotView, TerminalStatus,
@@ -40,6 +41,8 @@ pub fn TerminalLabView() -> Element {
     let script_path = ensure_diagnostic_script(&project_root);
     let script_display = script_path.display().to_string();
     let mut terminal_id = use_signal(|| None::<String>);
+    let terminal_open = use_context::<Signal<TerminalOpenCommand>>();
+    let mut last_open_version = use_signal(|| 0_u64);
     let mut sessions = use_signal(Vec::<TerminalSessionInfo>::new);
     let mut status = use_signal(|| TerminalStatus::Failed("not started".to_string()));
     let mut snapshot = use_signal(|| crate::terminal::view::TerminalSnapshot::blank(TERMINAL_ROWS, TERMINAL_COLS));
@@ -67,6 +70,17 @@ pub fn TerminalLabView() -> Element {
                 }
             }
         });
+    }
+
+
+    {
+        let command = terminal_open.read().clone();
+        if command.version != *last_open_version.read() {
+            last_open_version.set(command.version);
+            if let Some(id) = command.terminal_id {
+                terminal_id.set(Some(id));
+            }
+        }
     }
 
     {
