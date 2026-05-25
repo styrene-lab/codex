@@ -4,6 +4,11 @@
 //! Styrene terminal crate. Flynt-specific policy, HostAction review cards, and
 //! placement decisions should live outside this module.
 
+pub mod types;
 pub mod view;
 
+pub use types::{
+    TERMINAL_CREATE_V1, TerminalCreateParams, TerminalCreateResult, TerminalPlacement,
+    TerminalStatus,
+};
 pub use view::{AlacrittyTerminal, AlacrittyTerminalProps, AlacrittyTerminalSession};
