@@ -1,4 +1,4 @@
-//! Reusable terminal substrate spike.
+//! Reusable terminal substrate.
 //!
 //! Keep this module app-agnostic enough to extract for Auspex or a shared
 //! Styrene terminal crate. Flynt-specific policy, HostAction review cards, and

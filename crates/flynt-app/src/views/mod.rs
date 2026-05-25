@@ -9,7 +9,7 @@ pub mod notes;
 pub mod publication_rules;
 pub mod search;
 pub mod settings;
-pub mod terminal_spike;
+pub mod terminal_lab;
 pub mod welcome;
 
 pub use canvas::CanvasView;
@@ -23,5 +23,5 @@ pub use notes::NotesView;
 pub use publication_rules::PublicationRulesEditor;
 pub use search::SearchView;
 pub use settings::SettingsView;
-pub use terminal_spike::TerminalSpikeView;
+pub use terminal_lab::TerminalLabView;
 pub use welcome::WelcomeView;

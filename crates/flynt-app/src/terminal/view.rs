@@ -1,4 +1,4 @@
-//! Reusable terminal substrate spike using portable-pty and alacritty_terminal.
+//! Reusable terminal substrate using portable-pty and alacritty_terminal.
 //!
 //! This intentionally avoids `dioxus-terminal`: that crate proved useful for
 //! PTY/layout exploration, but its renderer casts UTF-8 bytes directly to

@@ -27,7 +27,7 @@ Terminal execution should be modeled as host-owned execution behind a shared Hos
 
 ### Reusable terminal substrate for Auspex
 
-The terminal subsystem should be designed as a reusable Styrene terminal surface rather than a Flynt-only feature. The current spike may mature inside `flynt-app`, but module boundaries should separate reusable terminal contract/session/PTY/parser/renderer code from app-specific HostAction review, project policy, and placement. Auspex should be able to reuse the same `portable-pty` + `alacritty_terminal` substrate with its own analysis-pane placement and policy adapters.
+The terminal subsystem should be designed as a reusable Styrene terminal surface rather than a Flynt-only feature. The current implementation may mature inside `flynt-app`, but module boundaries should separate reusable terminal contract/session/PTY/parser/renderer code from app-specific HostAction review, project policy, and placement. Auspex should be able to reuse the same `portable-pty` + `alacritty_terminal` substrate with its own analysis-pane placement and policy adapters.
 
 ## Decisions
 

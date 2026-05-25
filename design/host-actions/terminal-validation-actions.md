@@ -60,7 +60,7 @@ Flynt's terminal surface should therefore be a visual host/session manager for t
 
 Status: accepted
 
-The terminal subsystem should be designed as a reusable Styrene terminal surface rather than a Flynt-only feature. The current spike may live inside `flynt-app` while it matures, but module boundaries should separate reusable terminal contract/session/PTY/parser/renderer code from Flynt-specific HostAction review, project policy, and placement. A future extraction target is a shared terminal crate usable by Flynt and Auspex.
+The terminal subsystem should be designed as a reusable Styrene terminal surface rather than a Flynt-only feature. The current implementation may live inside `flynt-app` while it matures, but module boundaries should separate reusable terminal contract/session/PTY/parser/renderer code from Flynt-specific HostAction review, project policy, and placement. A future extraction target is a shared terminal crate usable by Flynt and Auspex.
 
 ## Open questions
 

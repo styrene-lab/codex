@@ -71,7 +71,7 @@ pub enum Route {
     Lenses,
     Kanban,
     Graph,
-    TerminalSpike,
+    TerminalLab,
 }
 
 /// Top-level settings category. Each category may render as a single

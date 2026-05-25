@@ -131,9 +131,9 @@ pub fn Sidebar(mut active_route: Signal<Route>) -> Element {
                     span { class: "nav-icon", dangerous_inner_html: crate::icons::ICON_GRAPH }
                 }
                 button {
-                    class: if *active_route.read() == Route::TerminalSpike { "nav-btn active" } else { "nav-btn" },
-                    title: "Terminal Spike",
-                    onclick: move |_| *active_route.write() = Route::TerminalSpike,
+                    class: if *active_route.read() == Route::TerminalLab { "nav-btn active" } else { "nav-btn" },
+                    title: "Terminal",
+                    onclick: move |_| *active_route.write() = Route::TerminalLab,
                     span { class: "nav-icon", "⌁" }
                 }
                 button {

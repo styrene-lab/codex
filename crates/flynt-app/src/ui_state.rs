@@ -46,7 +46,7 @@ fn route_label(route: &Route) -> &'static str {
         Route::Lenses => "lenses",
         Route::Kanban => "kanban",
         Route::Graph => "graph",
-        Route::TerminalSpike => "terminal-spike",
+        Route::TerminalLab => "terminal",
     }
 }
 
