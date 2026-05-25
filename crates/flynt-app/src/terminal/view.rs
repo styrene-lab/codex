@@ -9,7 +9,8 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+
+use dioxus::prelude::ModifiersInteraction;
 
 use alacritty_terminal::event::VoidListener;
 use alacritty_terminal::index::Point;
@@ -17,63 +18,23 @@ use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::term::test::TermSize;
 use alacritty_terminal::term::Term;
 use alacritty_terminal::vte::ansi::{Color as VteColor, NamedColor, Processor, Rgb};
-use dioxus::prelude::*;
 use portable_pty::{Child, CommandBuilder, ExitStatus, PtySize, native_pty_system};
 use tokio::sync::mpsc;
 
+use super::render::{RenderCell, TermColor};
 use super::types::{TerminalCreateParams, TerminalStatus};
 
-const DEFAULT_ROWS: usize = 34;
-const DEFAULT_COLS: usize = 120;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct TermColor(u8, u8, u8);
-
-impl TermColor {
-    const BG: Self = Self(6, 8, 14);
-    const FG: Self = Self(196, 216, 228);
-    const MUTED: Self = Self(96, 120, 136);
-
-    fn css(self) -> String {
-        format!("rgb({}, {}, {})", self.0, self.1, self.2)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct RenderCell {
-    text: String,
-    fg: TermColor,
-    bg: TermColor,
-    bold: bool,
-    italic: bool,
-    underline: bool,
-    inverse: bool,
-    wide_spacer: bool,
-}
-
-impl Default for RenderCell {
-    fn default() -> Self {
-        Self {
-            text: " ".to_string(),
-            fg: TermColor::FG,
-            bg: TermColor::BG,
-            bold: false,
-            italic: false,
-            underline: false,
-            inverse: false,
-            wide_spacer: false,
-        }
-    }
-}
+pub const DEFAULT_ROWS: usize = 34;
+pub const DEFAULT_COLS: usize = 120;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TerminalSnapshot {
-    rows: Vec<Vec<RenderCell>>,
-    cursor: (usize, usize),
+    pub(crate) rows: Vec<Vec<RenderCell>>,
+    pub(crate) cursor: (usize, usize),
 }
 
 impl TerminalSnapshot {
-    fn blank(rows: usize, cols: usize) -> Self {
+    pub fn blank(rows: usize, cols: usize) -> Self {
         Self {
             rows: vec![vec![RenderCell::default(); cols]; rows],
             cursor: (0, 0),
@@ -307,122 +268,17 @@ fn indexed_color(index: u8) -> TermColor {
     TermColor(gray, gray, gray)
 }
 
-#[component]
-pub fn AlacrittyTerminal(props: AlacrittyTerminalProps) -> Element {
-    let rows = props.rows;
-    let cols = props.cols;
-    let command = props.command.clone();
-    let args = props.args.clone();
-    let session = use_signal(move || {
-        Arc::new(Mutex::new(
-            AlacrittyTerminalSession::spawn(&command, &args, rows, cols).ok(),
-        ))
-    });
-    let mut snapshot = use_signal(|| TerminalSnapshot::blank(rows, cols));
-
-    {
-        let session = session.clone();
-        use_future(move || async move {
-            loop {
-                let next = {
-                    let session_arc = session.read().clone();
-                    let mut guard = session_arc.lock().unwrap();
-                    if let Some(ref mut session) = *guard {
-                        if session.poll() {
-                            Some(session.snapshot(rows, cols))
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                };
-                if let Some(next) = next {
-                    snapshot.set(next);
-                }
-                tokio::time::sleep(Duration::from_millis(16)).await;
-            }
-        });
-    }
-
-    let onkeydown = {
-        let session = session.clone();
-        move |evt: KeyboardEvent| {
-            let input = key_to_terminal_input(&evt);
-            if input.is_empty() {
-                return;
-            }
-            if let Ok(guard) = session.read().lock() {
-                if let Some(ref session) = *guard {
-                    session.write_input(&input);
-                }
-            }
-        }
-    };
-
-    let font_family = "JetBrainsMono Nerd Font, JetBrains Mono, FiraCode Nerd Font, Fira Code, MesloLGS NF, Symbols Nerd Font Mono, Symbols Nerd Font, SF Mono, Menlo, Monaco, Cascadia Code, Consolas, ui-monospace, monospace";
-
-    rsx! {
-        div {
-            class: "flynt-alacritty-terminal {props.class}",
-            tabindex: "0",
-            onkeydown,
-            style: "background: {TermColor::BG.css()}; color: {TermColor::FG.css()}; font-family: {font_family}; font-size: {props.font_size}px; line-height: 1.2; overflow: hidden; white-space: pre;",
-            for (row_idx, row) in snapshot.read().rows.iter().enumerate() {
-                div { key: "row-{row_idx}", class: "flynt-terminal-row",
-                    for (col_idx, cell) in row.iter().enumerate() {
-                        {
-                            let is_cursor = snapshot.read().cursor == (row_idx, col_idx);
-                            let mut fg = cell.fg;
-                            let mut bg = cell.bg;
-                            if is_cursor {
-                                std::mem::swap(&mut fg, &mut bg);
-                            }
-                            let decoration = if cell.underline { "text-decoration: underline;" } else { "" };
-                            let weight = if cell.bold { "font-weight: 700;" } else { "" };
-                            let style = if cell.italic { "font-style: italic;" } else { "" };
-                            let display = if cell.wide_spacer { "" } else { cell.text.as_str() };
-                            rsx! {
-                                span {
-                                    key: "cell-{row_idx}-{col_idx}",
-                                    style: "color: {fg.css()}; background-color: {bg.css()}; {decoration} {weight} {style}",
-                                    "{display}"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-#[derive(Props, Clone, PartialEq)]
-pub struct AlacrittyTerminalProps {
-    pub command: String,
-    #[props(default)]
-    pub args: Vec<String>,
-    #[props(default = DEFAULT_ROWS)]
-    pub rows: usize,
-    #[props(default = DEFAULT_COLS)]
-    pub cols: usize,
-    #[props(default = 13)]
-    pub font_size: u16,
-    #[props(default)]
-    pub class: String,
-}
-
-fn key_to_terminal_input(evt: &KeyboardEvent) -> String {
+pub(crate) fn key_to_terminal_input(evt: &dioxus::prelude::KeyboardEvent) -> String {
     match evt.key() {
-        Key::Enter => "\r".to_string(),
-        Key::Backspace => "\x7f".to_string(),
-        Key::Tab => "\t".to_string(),
-        Key::Escape => "\x1b".to_string(),
-        Key::ArrowUp => "\x1b[A".to_string(),
-        Key::ArrowDown => "\x1b[B".to_string(),
-        Key::ArrowRight => "\x1b[C".to_string(),
-        Key::ArrowLeft => "\x1b[D".to_string(),
-        Key::Character(s) if evt.modifiers().ctrl() && s.len() == 1 => {
+        dioxus::prelude::Key::Enter => "\r".to_string(),
+        dioxus::prelude::Key::Backspace => "\x7f".to_string(),
+        dioxus::prelude::Key::Tab => "\t".to_string(),
+        dioxus::prelude::Key::Escape => "\x1b".to_string(),
+        dioxus::prelude::Key::ArrowUp => "\x1b[A".to_string(),
+        dioxus::prelude::Key::ArrowDown => "\x1b[B".to_string(),
+        dioxus::prelude::Key::ArrowRight => "\x1b[C".to_string(),
+        dioxus::prelude::Key::ArrowLeft => "\x1b[D".to_string(),
+        dioxus::prelude::Key::Character(s) if evt.modifiers().ctrl() && s.len() == 1 => {
             let b = s.as_bytes()[0].to_ascii_uppercase();
             if b.is_ascii_alphabetic() {
                 ((b - b'A' + 1) as char).to_string()
@@ -430,7 +286,7 @@ fn key_to_terminal_input(evt: &KeyboardEvent) -> String {
                 String::new()
             }
         }
-        Key::Character(s) => s,
+        dioxus::prelude::Key::Character(s) => s,
         _ => String::new(),
     }
 }

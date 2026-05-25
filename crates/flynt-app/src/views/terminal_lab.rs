@@ -1,7 +1,14 @@
 use crate::bootstrap::AppContext;
-use crate::terminal::AlacrittyTerminal;
+use crate::terminal::{
+    TerminalCreateParams, TerminalManager, TerminalPlacement, TerminalSnapshotView,
+    TerminalStatus,
+};
 use dioxus::prelude::*;
 use std::path::PathBuf;
+
+const TERMINAL_ROWS: usize = 34;
+const TERMINAL_COLS: usize = 120;
+const TERMINAL_ID: &str = "terminal-diagnostics";
 
 const TERMINAL_DIAGNOSTIC_SCRIPT: &str = r#"printf '\033[1;36mFlynt terminal\033[0m\n'
 printf 'cwd: %s\n' "$PWD"
@@ -29,20 +36,78 @@ exec "${SHELL:-/bin/sh}" -l
 pub fn TerminalLabView() -> Element {
     let ctx = use_context::<AppContext>();
     let project_root = ctx.project_root();
+    let manager = use_context::<TerminalManager>();
     let script_path = ensure_diagnostic_script(&project_root);
     let script_display = script_path.display().to_string();
+    let mut terminal_id = use_signal(|| None::<String>);
+    let mut status = use_signal(|| TerminalStatus::Failed("not started".to_string()));
+    let mut snapshot = use_signal(|| crate::terminal::view::TerminalSnapshot::blank(TERMINAL_ROWS, TERMINAL_COLS));
+    let mut error = use_signal(|| None::<String>);
+
+    {
+        let manager = manager.clone();
+        let project_root = project_root.clone();
+        let script_arg = script_path.to_string_lossy().to_string();
+        use_effect(move || {
+            let mut params = TerminalCreateParams::new("sh");
+            params.args = vec![script_arg.clone()];
+            params.cwd = Some(project_root.display().to_string());
+            params.title = Some("Flynt Terminal".to_string());
+            params.placement = Some(TerminalPlacement::BottomPane);
+            params.reuse_key = Some(TERMINAL_ID.to_string());
+            match manager.create(params) {
+                Ok(result) => {
+                    terminal_id.set(Some(result.terminal_id));
+                    error.set(None);
+                }
+                Err(err) => {
+                    error.set(Some(err.to_string()));
+                }
+            }
+        });
+    }
+
+    {
+        let manager = manager.clone();
+        use_future(move || {
+            let manager = manager.clone();
+            async move {
+            loop {
+                if let Some(id) = terminal_id.read().clone() {
+                    if let Ok(next) = manager.poll_snapshot(&id) {
+                        snapshot.set(next);
+                    }
+                    if let Ok(next_status) = manager.status(&id) {
+                        status.set(next_status);
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(33)).await;
+            }
+            }
+        });
+    }
+
+    let status_label = match &*status.read() {
+        TerminalStatus::Running => "running".to_string(),
+        TerminalStatus::Exited(label) => format!("exited ({label})"),
+        TerminalStatus::Failed(err) => format!("failed ({err})"),
+    };
+    let manager_for_kill = manager.clone();
+    let manager_for_release = manager.clone();
+    let manager_for_input = manager.clone();
 
     rsx! {
         div { class: "terminal-view",
             div { class: "terminal-header",
                 div {
                     h2 { "Terminal" }
-                    p { "MVP Flynt terminal using portable-pty + alacritty_terminal. This is a terminal surface, not the final HostAction terminal UX." }
+                    p { "Flynt terminal dogfoods the reusable TerminalManager lifecycle: create, snapshot, status, input, kill, release." }
                     div { class: "terminal-engine", "Engine: portable-pty + alacritty_terminal + Flynt renderer" }
                 }
                 div { class: "terminal-meta",
                     div { "Project: {project_root.display()}" }
                     div { "Script: {script_display}" }
+                    div { "Status: {status_label}" }
                 }
             }
             div { class: "terminal-checks",
@@ -53,15 +118,43 @@ pub fn TerminalLabView() -> Element {
                 span { "keyboard input" }
                 span { "resize" }
                 span { "interactive shell" }
+                if let Some(id) = terminal_id.read().clone() {
+                    {
+                        let kill_id = id.clone();
+                        let release_id = id.clone();
+                        rsx! {
+                            button {
+                                class: "terminal-action-btn",
+                                onclick: move |_| {
+                                    let _ = manager_for_kill.kill(&kill_id);
+                                },
+                                "Kill"
+                            }
+                            button {
+                                class: "terminal-action-btn",
+                                onclick: move |_| {
+                                    let _ = manager_for_release.release(&release_id);
+                                    terminal_id.set(None);
+                                },
+                                "Release"
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some(err) = error.read().clone() {
+                div { class: "terminal-error", "Terminal error: {err}" }
             }
             div { class: "terminal-frame",
-                AlacrittyTerminal {
-                    command: "/bin/sh".to_string(),
-                    args: vec![script_path.to_string_lossy().to_string()],
-                    rows: 34,
-                    cols: 120,
+                TerminalSnapshotView {
+                    snapshot: snapshot.read().clone(),
                     font_size: 13,
                     class: "flynt-terminal".to_string(),
+                    on_key: move |input: String| {
+                        if let Some(id) = terminal_id.read().clone() {
+                            let _ = manager_for_input.send_input(&id, &input);
+                        }
+                    },
                 }
             }
         }

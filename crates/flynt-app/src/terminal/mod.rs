@@ -5,13 +5,15 @@
 //! placement decisions should live outside this module.
 
 pub mod manager;
+pub mod render;
 pub mod types;
 pub mod view;
 
 pub use manager::{TerminalManager, TerminalSessionInfo};
+pub use render::{AlacrittyTerminalProps, TerminalSnapshotView, TerminalSnapshotViewProps};
 
 pub use types::{
     TERMINAL_CREATE_V1, TerminalCreateParams, TerminalCreateResult, TerminalPlacement,
     TerminalStatus,
 };
-pub use view::{AlacrittyTerminal, AlacrittyTerminalProps, AlacrittyTerminalSession};
+pub use view::AlacrittyTerminalSession;

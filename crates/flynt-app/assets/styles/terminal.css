@@ -69,6 +69,29 @@
     padding: 3px 8px;
 }
 
+.terminal-action-btn {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--foreground);
+    padding: 3px 10px;
+    cursor: pointer;
+}
+
+.terminal-action-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.terminal-error {
+    border: 1px solid var(--destructive, #c83030);
+    border-radius: 8px;
+    background: rgba(200, 48, 48, 0.12);
+    color: var(--destructive, #ff5c5c);
+    padding: 8px 10px;
+    font-size: 12px;
+}
+
 .terminal-frame {
     flex: 1;
     min-height: 0;

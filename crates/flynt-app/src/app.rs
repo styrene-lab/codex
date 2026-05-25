@@ -56,6 +56,13 @@ pub fn App() -> Element {
     use_context_provider(|| Signal::new(None::<u32>));
     use_context_provider(|| Signal::new(None::<String>));
 
+    // Reusable terminal manager — provided at app scope so terminal routes
+    // and future HostAction review cards exercise the same lifecycle path.
+    use_context_provider(|| {
+        let root = current_runtime.project.root.clone();
+        crate::terminal::TerminalManager::new(root, 34, 120)
+    });
+
     // Shared ACP session — populated by AgentRail, used by CommandPalette agent mode
     use_context_provider(|| Signal::new(None::<std::rc::Rc<crate::acp::AcpSession>>));
 
