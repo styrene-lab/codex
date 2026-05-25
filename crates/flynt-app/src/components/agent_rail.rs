@@ -1,4 +1,5 @@
-use crate::acp::{AcpEvent, AcpSession, ConfigOption, SlashCommand};
+use crate::acp::{AcpEvent, AcpSession, ConfigOption, PermissionDecision, PendingPermissionRequest, SlashCommand};
+use crate::host_actions::terminal::extract_terminal_create;
 use crate::bootstrap::AppContext;
 use crate::state::SettingsPage;
 use comrak::{Options, markdown_to_html};
@@ -6,6 +7,7 @@ use dioxus::prelude::*;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::mpsc::TryRecvError;
+use crate::terminal::TerminalManager;
 
 /// Resolve the Omegon binary using the centralized channel-aware resolver.
 pub fn find_omegon_binary_public() -> Option<PathBuf> {
@@ -224,6 +226,7 @@ fn reconnect_acp_session(
                     session_title,
                     session,
                     shared_session,
+                    TerminalManager::new(ctx.project_root(), 34, 120),
                 );
                 items.write().push(ChatItem::Message {
                     role: ChatRole::Assistant,
@@ -256,6 +259,7 @@ fn start_event_loop(
     session_title: Signal<Option<String>>,
     session: Signal<Option<Rc<AcpSession>>>,
     shared_session: Signal<Option<Rc<AcpSession>>>,
+    terminal_manager: TerminalManager,
 ) {
     let mut items = items;
     let mut agent_status = agent_status;
@@ -293,6 +297,7 @@ fn start_event_loop(
                             &mut session_title,
                             session,
                             shared_session,
+                            terminal_manager.clone(),
                         );
                         saw_event = true;
                     }
@@ -393,6 +398,33 @@ struct ToolCallBlock {
 }
 
 #[derive(Clone, PartialEq)]
+enum PermissionReviewStatus {
+    Pending,
+    Approved(String),
+    Rejected,
+    Failed(String),
+}
+
+#[derive(Clone)]
+struct PermissionReviewBlock {
+    request: PendingPermissionRequest,
+    title: String,
+    summary: String,
+    terminal: Option<crate::host_actions::terminal::TerminalCreateReview>,
+    status: PermissionReviewStatus,
+}
+
+impl PartialEq for PermissionReviewBlock {
+    fn eq(&self, other: &Self) -> bool {
+        self.request.request_id == other.request.request_id
+            && self.title == other.title
+            && self.summary == other.summary
+            && self.terminal == other.terminal
+            && self.status == other.status
+    }
+}
+
+#[derive(Clone, PartialEq)]
 enum ChatItem {
     Message {
         role: ChatRole,
@@ -402,6 +434,7 @@ enum ChatItem {
         content: String,
     },
     ToolCall(ToolCallBlock),
+    PermissionReview(PermissionReviewBlock),
     /// The agent's full execution plan. Replaces any prior Plan item
     /// (omegon emits the complete entry list with each update).
     Plan(Vec<crate::acp::PlanItem>),
@@ -455,6 +488,8 @@ pub fn AgentRail() -> Element {
     // clear; rendered in the status bar when present.
     let session_title: Signal<Option<String>> = use_signal(|| None);
     let config_options = use_context::<Signal<Vec<ConfigOption>>>();
+    let terminal_manager = use_context::<TerminalManager>();
+    let terminal_manager_for_connect = terminal_manager.clone();
 
     // Input history (up/down arrow)
     let mut history: Signal<Vec<String>> = use_signal(Vec::new);
@@ -487,6 +522,7 @@ pub fn AgentRail() -> Element {
         let saved_config = operator_settings.acp_config.clone();
         let agent_id = operator_settings.agent_id.clone();
 
+        let terminal_manager_for_loop = terminal_manager_for_connect.clone();
         spawn(async move {
             tracing::info!("ACP connect starting… saved_config={:?}", saved_config);
             match AcpSession::connect(binary, project, agent_id).await {
@@ -512,6 +548,7 @@ pub fn AgentRail() -> Element {
                         session_title,
                         session,
                         shared_session,
+                        terminal_manager_for_loop,
                     );
                     *agent_status.write() = AgentStatus::Idle;
                     tracing::info!("ACP event loop started, agent ready");
@@ -764,6 +801,70 @@ pub fn AgentRail() -> Element {
                                     }
                                 }
                             },
+                            ChatItem::PermissionReview(review) => {
+                                let status_text = match &review.status {
+                                    PermissionReviewStatus::Pending => "pending".to_string(),
+                                    PermissionReviewStatus::Approved(msg) => format!("approved — {msg}"),
+                                    PermissionReviewStatus::Rejected => "rejected".to_string(),
+                                    PermissionReviewStatus::Failed(err) => format!("failed — {err}"),
+                                };
+                                let approve_disabled = !matches!(review.status, PermissionReviewStatus::Pending);
+                                let reject_disabled = approve_disabled;
+                                let approve_request_id = review.request.request_id.clone();
+                                let reject_request_id = review.request.request_id.clone();
+                                let terminal = review.terminal.clone();
+                                let request_for_approve = review.request.clone();
+                                let request_for_reject = review.request.clone();
+                                let mut items_for_approve = items;
+                                let mut items_for_reject = items;
+                                let manager_for_approve = terminal_manager.clone();
+                                rsx! {
+                                    div { key: "perm-{idx}", class: "agent-permission-review",
+                                        div { class: "agent-tool-header",
+                                            span { class: "agent-tool-name", "Review: {review.title}" }
+                                            span { class: format!("agent-tool-status {}", status_text.split_whitespace().next().unwrap_or("pending")), "{status_text}" }
+                                        }
+                                        pre { class: "agent-tool-output", "{review.summary}" }
+                                        if matches!(review.status, PermissionReviewStatus::Pending) {
+                                            div { class: "agent-permission-actions",
+                                                button {
+                                                    class: "btn btn-xs btn-primary",
+                                                    disabled: approve_disabled,
+                                                    onclick: move |_| {
+                                                        let result = if let Some(term) = terminal.clone() {
+                                                            manager_for_approve.create(term.params.clone())
+                                                                .map(|created| format!("terminal {}", created.terminal_id))
+                                                                .map_err(|err| err.to_string())
+                                                        } else {
+                                                            Ok("allowed".to_string())
+                                                        };
+                                                        match result {
+                                                            Ok(message) => {
+                                                                request_for_approve.respond(PermissionDecision::Approve);
+                                                                update_permission_review_status(&mut items_for_approve, &approve_request_id, PermissionReviewStatus::Approved(message));
+                                                            }
+                                                            Err(err) => {
+                                                                request_for_approve.respond(PermissionDecision::Reject);
+                                                                update_permission_review_status(&mut items_for_approve, &approve_request_id, PermissionReviewStatus::Failed(err));
+                                                            }
+                                                        }
+                                                    },
+                                                    "Approve"
+                                                }
+                                                button {
+                                                    class: "btn btn-xs btn-ghost",
+                                                    disabled: reject_disabled,
+                                                    onclick: move |_| {
+                                                        request_for_reject.respond(PermissionDecision::Reject);
+                                                        update_permission_review_status(&mut items_for_reject, &reject_request_id, PermissionReviewStatus::Rejected);
+                                                    },
+                                                    "Reject"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
                             ChatItem::Plan(entries) => {
                                 rsx! {
                                     div { key: "plan-{idx}", class: "agent-plan",
@@ -979,6 +1080,7 @@ pub fn AgentRail() -> Element {
                                                 session_title,
                                                 session,
                                                 shared_session,
+                                                use_context::<TerminalManager>(),
                                             );
                                             items.write().push(ChatItem::Message {
                                                 role: ChatRole::Assistant,
@@ -1082,6 +1184,21 @@ pub fn AgentRail() -> Element {
     }
 }
 
+fn update_permission_review_status(
+    items: &mut Signal<Vec<ChatItem>>,
+    request_id: &str,
+    status: PermissionReviewStatus,
+) {
+    for item in items.write().iter_mut() {
+        if let ChatItem::PermissionReview(review) = item {
+            if review.request.request_id == request_id {
+                review.status = status;
+                break;
+            }
+        }
+    }
+}
+
 fn handle_acp_event(
     event: AcpEvent,
     ctx: AppContext,
@@ -1092,6 +1209,7 @@ fn handle_acp_event(
     session_title: &mut Signal<Option<String>>,
     session: Signal<Option<Rc<AcpSession>>>,
     shared_session: Signal<Option<Rc<AcpSession>>>,
+    _terminal_manager: TerminalManager,
 ) {
     match event {
         AcpEvent::TextDelta(ref text) => {
@@ -1191,6 +1309,22 @@ fn handle_acp_event(
                     *session_title,
                 );
             }
+        }
+        AcpEvent::PermissionRequested(ref request) => {
+            tracing::info!("ACP PermissionRequested: {} ({})", request.title, request.request_id);
+            let terminal = extract_terminal_create(request.raw_input.as_ref());
+            let summary = terminal
+                .as_ref()
+                .map(|review| review.summary.clone())
+                .unwrap_or_else(|| summarize_tool_args(request.raw_input.as_ref()));
+            items.write().push(ChatItem::PermissionReview(PermissionReviewBlock {
+                request: request.clone(),
+                title: request.title.clone(),
+                summary,
+                terminal,
+                status: PermissionReviewStatus::Pending,
+            }));
+            *status.write() = AgentStatus::ToolRunning;
         }
         AcpEvent::PlanUpdated(ref plan) => {
             tracing::info!("ACP PlanUpdated: {} entries", plan.len());

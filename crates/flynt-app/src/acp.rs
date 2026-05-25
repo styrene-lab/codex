@@ -10,14 +10,15 @@ use std::rc::Rc;
 
 use agent_client_protocol::{
     Agent, Client, ClientSideConnection, ContentBlock, ExtRequest, InitializeRequest,
-    NewSessionRequest, PermissionOptionKind, PromptRequest, RequestPermissionOutcome,
-    RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
-    SessionConfigId, SessionConfigKind, SessionConfigOption, SessionConfigSelectOptions,
-    SessionConfigValueId, SessionId, SessionNotification, SessionUpdate,
-    SetSessionConfigOptionRequest, TextContent,
+    NewSessionRequest, PermissionOption, PermissionOptionId, PermissionOptionKind, PromptRequest,
+    RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
+    SelectedPermissionOutcome, SessionConfigId, SessionConfigKind, SessionConfigOption,
+    SessionConfigSelectOptions, SessionConfigValueId, SessionId, SessionNotification,
+    SessionUpdate, SetSessionConfigOptionRequest, TextContent,
 };
 use anyhow::Result;
 use tokio::process::{Child, Command};
+use tokio::sync::oneshot;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 /// Events flowing from the ACP session to the UI.
@@ -47,6 +48,7 @@ pub enum AcpEvent {
         /// have surfaces for those yet.
         output: Option<String>,
     },
+    PermissionRequested(PendingPermissionRequest),
     /// Available slash commands changed.
     CommandsAvailable(Vec<SlashCommand>),
     /// Config options changed (model, thinking, posture, etc).
@@ -109,6 +111,37 @@ pub struct ConfigValue {
     pub name: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct PendingPermissionRequest {
+    pub request_id: String,
+    pub title: String,
+    pub kind: String,
+    pub raw_input: Option<serde_json::Value>,
+    pub options: Vec<PermissionOptionView>,
+    responder: std::sync::Arc<std::sync::Mutex<Option<oneshot::Sender<PermissionDecision>>>>,
+}
+
+impl PendingPermissionRequest {
+    pub fn respond(&self, decision: PermissionDecision) {
+        if let Some(tx) = self.responder.lock().unwrap().take() {
+            let _ = tx.send(decision);
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PermissionOptionView {
+    pub option_id: String,
+    pub name: String,
+    pub kind: PermissionOptionKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PermissionDecision {
+    Approve,
+    Reject,
+}
+
 /// Extract config options from ACP SessionConfigOption list.
 fn extract_config_options(opts: &[SessionConfigOption]) -> Vec<ConfigOption> {
     opts.iter()
@@ -148,6 +181,41 @@ fn extract_config_options(opts: &[SessionConfigOption]) -> Vec<ConfigOption> {
 
 type EventSender = Rc<RefCell<std::sync::mpsc::Sender<AcpEvent>>>;
 
+fn allow_response(options: &[PermissionOption]) -> Option<RequestPermissionResponse> {
+    choose_option(
+        options,
+        &[PermissionOptionKind::AllowOnce, PermissionOptionKind::AllowAlways],
+    )
+    .map(selected_response)
+}
+
+fn reject_response(options: &[PermissionOption]) -> RequestPermissionResponse {
+    choose_option(
+        options,
+        &[PermissionOptionKind::RejectOnce, PermissionOptionKind::RejectAlways],
+    )
+    .map(selected_response)
+    .unwrap_or_else(|| RequestPermissionResponse::new(RequestPermissionOutcome::Cancelled))
+}
+
+fn choose_option(
+    options: &[PermissionOption],
+    preferred: &[PermissionOptionKind],
+) -> Option<PermissionOptionId> {
+    preferred.iter().find_map(|kind| {
+        options
+            .iter()
+            .find(|option| option.kind == *kind)
+            .map(|option| option.option_id.clone())
+    })
+}
+
+fn selected_response(option_id: PermissionOptionId) -> RequestPermissionResponse {
+    RequestPermissionResponse::new(RequestPermissionOutcome::Selected(
+        SelectedPermissionOutcome::new(option_id),
+    ))
+}
+
 struct FlyntAcpClient {
     tx: EventSender,
 }
@@ -158,26 +226,44 @@ impl Client for FlyntAcpClient {
         &self,
         args: RequestPermissionRequest,
     ) -> agent_client_protocol::Result<RequestPermissionResponse> {
-        let option = args
+        let (decision_tx, decision_rx) = oneshot::channel();
+        let options = args
             .options
             .iter()
-            .find(|o| {
-                matches!(
-                    o.kind,
-                    PermissionOptionKind::AllowOnce | PermissionOptionKind::AllowAlways
-                )
+            .map(|option| PermissionOptionView {
+                option_id: option.option_id.to_string(),
+                name: option.name.clone(),
+                kind: option.kind,
             })
-            .or_else(|| args.options.first());
+            .collect::<Vec<_>>();
+        let fallback = reject_response(&args.options);
+        let request = PendingPermissionRequest {
+            request_id: args.tool_call.tool_call_id.to_string(),
+            title: args
+                .tool_call
+                .fields
+                .title
+                .clone()
+                .unwrap_or_else(|| "Permission request".to_string()),
+            kind: args
+                .tool_call
+                .fields
+                .kind
+                .as_ref()
+                .map(|kind| format!("{kind:?}"))
+                .unwrap_or_else(|| "Tool".to_string()),
+            raw_input: args.tool_call.fields.raw_input.clone(),
+            options,
+            responder: std::sync::Arc::new(std::sync::Mutex::new(Some(decision_tx))),
+        };
 
-        match option {
-            Some(o) => Ok(RequestPermissionResponse::new(
-                RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(
-                    o.option_id.clone(),
-                )),
-            )),
-            None => Ok(RequestPermissionResponse::new(
-                RequestPermissionOutcome::Cancelled,
-            )),
+        if self.tx.borrow().send(AcpEvent::PermissionRequested(request)).is_err() {
+            return Ok(fallback);
+        }
+
+        match decision_rx.await {
+            Ok(PermissionDecision::Approve) => Ok(allow_response(&args.options).unwrap_or(fallback)),
+            Ok(PermissionDecision::Reject) | Err(_) => Ok(fallback),
         }
     }
 
@@ -827,5 +913,44 @@ impl AcpSession {
             }),
         )
         .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn choose_allow_prefers_allow_once() {
+        let options = vec![
+            PermissionOption::new("always", "Allow always", PermissionOptionKind::AllowAlways),
+            PermissionOption::new("once", "Allow once", PermissionOptionKind::AllowOnce),
+        ];
+        assert_eq!(
+            choose_option(
+                &options,
+                &[PermissionOptionKind::AllowOnce, PermissionOptionKind::AllowAlways]
+            )
+            .unwrap()
+            .to_string(),
+            "once"
+        );
+    }
+
+    #[test]
+    fn choose_reject_prefers_reject_once() {
+        let options = vec![
+            PermissionOption::new("always", "Reject always", PermissionOptionKind::RejectAlways),
+            PermissionOption::new("once", "Reject once", PermissionOptionKind::RejectOnce),
+        ];
+        assert_eq!(
+            choose_option(
+                &options,
+                &[PermissionOptionKind::RejectOnce, PermissionOptionKind::RejectAlways]
+            )
+            .unwrap()
+            .to_string(),
+            "once"
+        );
     }
 }

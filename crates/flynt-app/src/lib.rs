@@ -5,6 +5,7 @@ pub mod canvas_assets;
 pub mod canvas_capture;
 pub mod components;
 pub mod daemon_manager;
+pub mod host_actions;
 pub mod icons;
 pub mod menu;
 pub mod omegon_setup;
