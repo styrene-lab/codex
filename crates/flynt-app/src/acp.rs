@@ -47,6 +47,7 @@ pub enum AcpEvent {
         /// Raw output/details emitted by the tool update. HostAction metadata is carried here
         /// by Omegon 0.24 so Flynt can render review/outcome cards without scraping prose.
         raw_output: Option<serde_json::Value>,
+        terminal_ids: Vec<String>,
     },
     PermissionRequested(PendingPermissionRequest),
     /// Available slash commands changed.
@@ -300,6 +301,7 @@ impl Client for FlyntAcpClient {
                 // and terminal-embed variants get rendered by the
                 // host-delegated paths once we advertise those
                 // capabilities; for now we surface text only.
+                let mut terminal_ids = Vec::new();
                 let output = update
                     .fields
                     .content
@@ -307,13 +309,19 @@ impl Client for FlyntAcpClient {
                     .map(|blocks| {
                         let mut out = String::new();
                         for block in blocks {
-                            if let agent_client_protocol::ToolCallContent::Content(c) = block {
-                                if let ContentBlock::Text(t) = &c.content {
-                                    if !out.is_empty() {
-                                        out.push('\n');
+                            match block {
+                                agent_client_protocol::ToolCallContent::Content(c) => {
+                                    if let ContentBlock::Text(t) = &c.content {
+                                        if !out.is_empty() {
+                                            out.push('\n');
+                                        }
+                                        out.push_str(&t.text);
                                     }
-                                    out.push_str(&t.text);
                                 }
+                                agent_client_protocol::ToolCallContent::Terminal(t) => {
+                                    terminal_ids.push(t.terminal_id.to_string());
+                                }
+                                _ => {}
                             }
                         }
                         out
@@ -330,6 +338,7 @@ impl Client for FlyntAcpClient {
                     title: update.fields.title,
                     output,
                     raw_output: update.fields.raw_output,
+                    terminal_ids,
                 });
             }
             SessionUpdate::Plan(plan) => {

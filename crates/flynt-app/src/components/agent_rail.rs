@@ -1271,6 +1271,7 @@ fn handle_acp_event(
             ref title,
             ref output,
             ref raw_output,
+            ref terminal_ids,
         } => {
             tracing::debug!("ACP ToolCallUpdated: id={id} status={st}");
             {
@@ -1293,6 +1294,12 @@ fn handle_acp_event(
                 }
             }
 
+            for terminal_id in terminal_ids {
+                items.write().push(ChatItem::Message {
+                    role: ChatRole::Assistant,
+                    content: format!("ACP terminal embedded: `{terminal_id}`"),
+                });
+            }
             for action in extract_host_actions(raw_output.as_ref()) {
                 items.write().push(ChatItem::Message {
                     role: ChatRole::Assistant,
