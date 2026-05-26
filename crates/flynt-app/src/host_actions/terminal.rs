@@ -10,7 +10,14 @@ pub struct TerminalCreateReview {
 
 pub fn extract_terminal_create(raw: Option<&serde_json::Value>) -> Option<TerminalCreateReview> {
     let raw = raw?;
-    let params_value = if raw.get("action").and_then(|v| v.as_str()) == Some(TERMINAL_CREATE_V1) {
+    let params_value = if raw.get("kind").and_then(|v| v.as_str()) == Some("host_action") {
+        let action = raw.get("action")?;
+        if action.get("type").and_then(|v| v.as_str()) == Some(TERMINAL_CREATE_V1) {
+            action.get("params")?
+        } else {
+            return None;
+        }
+    } else if raw.get("action").and_then(|v| v.as_str()) == Some(TERMINAL_CREATE_V1) {
         raw.get("params")?
     } else if raw.get("type").and_then(|v| v.as_str()) == Some(TERMINAL_CREATE_V1) {
         raw.get("params")?
@@ -83,6 +90,21 @@ mod tests {
     fn rejects_shell_string_without_command_field() {
         let raw = json!({ "cmd": "cargo check -p flynt-app" });
         assert!(extract_terminal_create(Some(&raw)).is_none());
+    }
+
+    #[test]
+    fn detects_host_action_permission_raw_input() {
+        let raw = json!({
+            "kind": "host_action",
+            "action": {
+                "id": "open-reader",
+                "type": "terminal.create@1",
+                "params": {"command": "bookokrat", "args": ["sample.txt"]}
+            }
+        });
+        let review = extract_terminal_create(Some(&raw)).unwrap();
+        assert_eq!(review.params.command, "bookokrat");
+        assert_eq!(review.params.args, vec!["sample.txt"]);
     }
 
     #[test]
