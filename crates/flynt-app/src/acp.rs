@@ -42,11 +42,11 @@ pub enum AcpEvent {
         id: String,
         status: String,
         title: Option<String>,
-        /// Text output from the tool, if any. Concatenated from the
-        /// content array's Text blocks; non-text content (Diff,
-        /// terminal embeds) is dropped for now — the renderer doesn't
-        /// have surfaces for those yet.
+        /// Text output from the tool, if any. Concatenated from text content blocks.
         output: Option<String>,
+        /// Raw output/details emitted by the tool update. HostAction metadata is carried here
+        /// by Omegon 0.24 so Flynt can render review/outcome cards without scraping prose.
+        raw_output: Option<serde_json::Value>,
     },
     PermissionRequested(PendingPermissionRequest),
     /// Available slash commands changed.
@@ -329,6 +329,7 @@ impl Client for FlyntAcpClient {
                         .unwrap_or_default(),
                     title: update.fields.title,
                     output,
+                    raw_output: update.fields.raw_output,
                 });
             }
             SessionUpdate::Plan(plan) => {

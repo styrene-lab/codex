@@ -1,4 +1,5 @@
 use crate::acp::{AcpEvent, AcpSession, ConfigOption, PermissionDecision, PendingPermissionRequest, SlashCommand};
+use crate::host_actions::metadata::{extract_host_action_outcomes, extract_host_actions};
 use crate::host_actions::terminal::extract_terminal_create;
 use crate::bootstrap::AppContext;
 use crate::state::{Route, SettingsPage, TerminalOpenCommand};
@@ -1269,6 +1270,7 @@ fn handle_acp_event(
             status: ref st,
             ref title,
             ref output,
+            ref raw_output,
         } => {
             tracing::debug!("ACP ToolCallUpdated: id={id} status={st}");
             {
@@ -1289,6 +1291,29 @@ fn handle_acp_event(
                         }
                     }
                 }
+            }
+
+            for action in extract_host_actions(raw_output.as_ref()) {
+                items.write().push(ChatItem::Message {
+                    role: ChatRole::Assistant,
+                    content: format!(
+                        "HostAction requested: {} ({})\n\n```json\n{}\n```",
+                        action.action_type,
+                        action.id,
+                        serde_json::to_string_pretty(&action.raw).unwrap_or_else(|_| action.raw.to_string())
+                    ),
+                });
+            }
+            for outcome in extract_host_action_outcomes(raw_output.as_ref()) {
+                items.write().push(ChatItem::Message {
+                    role: ChatRole::Assistant,
+                    content: format!(
+                        "HostAction outcome: {} → {}\n\n```json\n{}\n```",
+                        outcome.action_id,
+                        outcome.status,
+                        serde_json::to_string_pretty(&outcome.raw).unwrap_or_else(|_| outcome.raw.to_string())
+                    ),
+                });
             }
 
             let disconnect_msg = output
