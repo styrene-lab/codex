@@ -111,6 +111,7 @@ pub fn TerminalLabView() -> Element {
     };
     let manager_for_kill = manager.clone();
     let manager_for_release = manager.clone();
+    let manager_for_release_exited = manager.clone();
     let manager_for_input = manager.clone();
 
     rsx! {
@@ -135,6 +136,14 @@ pub fn TerminalLabView() -> Element {
                 span { "keyboard input" }
                 span { "resize" }
                 span { "interactive shell" }
+                button {
+                    class: "terminal-action-btn",
+                    onclick: move |_| {
+                        let _ = manager_for_release_exited.release_all_exited();
+                        terminal_id.set(None);
+                    },
+                    "Clear exited"
+                }
                 if let Some(id) = terminal_id.read().clone() {
                     {
                         let kill_id = id.clone();

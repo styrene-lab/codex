@@ -147,3 +147,18 @@ Conclusion:
 - The 0.24.x Omegon runtime and `omegon-reader` extension are correctly loaded.
 - HostAction readiness is confirmed at the extension/manifest policy layer.
 - Proceed to `reader_open_dry_run` to inspect the declarative `terminal.create@1` envelope path.
+
+
+## Local supported reader fixture
+
+A PDF fixture has been copied into this Flynt assessment vault so Omegon/Flynt can reference it directly:
+
+```text
+/Users/wilson/workspace/styrene-labs/flynt/assessment/terminal-hostaction-review/assets/Sovereign_Software_Factory.pdf
+```
+
+Use this prompt for the end-to-end reader HostAction test:
+
+> Use reader_open_dry_run with path /Users/wilson/workspace/styrene-labs/flynt/assessment/terminal-hostaction-review/assets/Sovereign_Software_Factory.pdf.
+
+Then approve the Flynt HostAction review card.

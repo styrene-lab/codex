@@ -133,11 +133,23 @@ impl TerminalManager {
 
     pub fn release(&self, terminal_id: &str) -> Result<()> {
         let mut inner = self.inner.lock().unwrap();
-        inner
+        let record = inner
             .sessions
             .remove(terminal_id)
-            .map(|_| ())
-            .ok_or_else(|| anyhow!("terminal '{terminal_id}' was not found"))
+            .ok_or_else(|| anyhow!("terminal '{terminal_id}' was not found"))?;
+        // Releasing is a UI lifecycle operation. Ensure any still-running child is not
+        // orphaned, but ignore kill failures for already-exited terminals.
+        let _ = record.session.kill();
+        Ok(())
+    }
+
+    pub fn release_all_exited(&self) -> usize {
+        let mut inner = self.inner.lock().unwrap();
+        let before = inner.sessions.len();
+        inner
+            .sessions
+            .retain(|_, record| matches!(record.session.try_wait_status(), TerminalStatus::Running));
+        before - inner.sessions.len()
     }
 
     pub fn list(&self) -> Vec<TerminalSessionInfo> {
