@@ -37,7 +37,8 @@ fn collect_actions(value: &Value, out: &mut Vec<HostActionCandidate>) {
     match value {
         Value::Object(obj) => {
             if let Some(actions) = obj
-                .get("host_actions")
+                .get("actions")
+                .or_else(|| obj.get("host_actions"))
                 .or_else(|| obj.get("hostActions"))
                 .and_then(Value::as_array)
             {
@@ -141,7 +142,7 @@ mod tests {
     fn extracts_host_actions_from_details() {
         let value = json!({
             "details": {
-                "host_actions": [{
+                "actions": [{
                     "id": "open-reader",
                     "type": "terminal.create@1",
                     "params": {"command": "bookokrat"}
