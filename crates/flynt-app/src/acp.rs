@@ -14,7 +14,7 @@ use agent_client_protocol::{
     RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
     SelectedPermissionOutcome, SessionConfigId, SessionConfigKind, SessionConfigOption,
     SessionConfigSelectOptions, SessionConfigValueId, SessionId, SessionNotification,
-    SessionUpdate, SetSessionConfigOptionRequest, TextContent,
+    SessionUpdate, SetSessionConfigOptionRequest, TextContent, ClientCapabilities,
 };
 use anyhow::Result;
 use tokio::process::{Child, Command};
@@ -489,7 +489,8 @@ impl AcpSession {
         let init_resp = conn
             .initialize(
                 InitializeRequest::new(agent_client_protocol::ProtocolVersion::LATEST)
-                    .client_info(agent_client_protocol::Implementation::new("flynt", "0.1.0")),
+                    .client_info(agent_client_protocol::Implementation::new("flynt", "0.1.0"))
+                    .client_capabilities(ClientCapabilities::new().terminal(true)),
             )
             .await
             .map_err(|e| anyhow::anyhow!("ACP init failed: {e}"))?;
