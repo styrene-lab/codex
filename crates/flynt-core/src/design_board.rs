@@ -1,4 +1,4 @@
-//! DesignBoard document model.
+//! Design Board document model.
 //!
 //! A `.board` file is JSON describing a grid of HTML/CSS cells. Both
 //! `flynt-app` (renderer) and `flynt-agent` (design_board_* ACP tools) read and
@@ -12,9 +12,9 @@ use std::path::{Path, PathBuf};
 /// that older readers cannot tolerate. Old files still parse via the
 /// `version` check in `DesignBoard::load`, which surfaces a typed error rather
 /// than silently corrupting data.
-pub const CANVAS_VERSION: u32 = 1;
+pub const DESIGN_BOARD_VERSION: u32 = 1;
 
-/// Top-level design_board document. Lives on disk as `<name>.board` JSON; a
+/// Top-level design board document. Lives on disk as `<name>.board` JSON; a
 /// sibling `<name>.md` wrapper with `![[<name>.board]]` makes it
 /// indexable and routable in the UI (mirrors the Excalidraw pattern).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -59,7 +59,7 @@ pub struct Cell {
 impl Default for DesignBoard {
     fn default() -> Self {
         Self {
-            version: CANVAS_VERSION,
+            version: DESIGN_BOARD_VERSION,
             theme: "default".into(),
             grid: Grid::default(),
             cells: Vec::new(),
@@ -89,12 +89,12 @@ impl DesignBoard {
     /// Parse from a JSON string. Same error semantics as `load`.
     pub fn from_json(data: &str) -> anyhow::Result<Self> {
         let design_board: DesignBoard = serde_json::from_str(data)
-            .map_err(|e| anyhow::anyhow!("parse design_board json: {e}"))?;
-        if design_board.version > CANVAS_VERSION {
+            .map_err(|e| anyhow::anyhow!("parse design board json: {e}"))?;
+        if design_board.version > DESIGN_BOARD_VERSION {
             anyhow::bail!(
-                "design_board version {} is newer than supported version {}",
+                "design board version {} is newer than supported version {}",
                 design_board.version,
-                CANVAS_VERSION
+                DESIGN_BOARD_VERSION
             );
         }
         Ok(design_board)
@@ -106,7 +106,7 @@ impl DesignBoard {
     /// file too and a torn write would surface to it as a parse error.
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {
         let json = serde_json::to_string_pretty(self)?;
-        let tmp = path.with_extension("design_board.tmp");
+        let tmp = path.with_extension("design-board.tmp");
         std::fs::write(&tmp, json.as_bytes())?;
         std::fs::rename(&tmp, path)?;
         Ok(())
@@ -288,7 +288,7 @@ mod tests {
     #[test]
     fn design_board_default_is_v1_with_empty_cells() {
         let c = DesignBoard::default();
-        assert_eq!(c.version, CANVAS_VERSION);
+        assert_eq!(c.version, DESIGN_BOARD_VERSION);
         assert_eq!(c.theme, "default");
         assert_eq!(c.grid.cols, 12);
         assert_eq!(c.grid.rows, 8);
@@ -324,7 +324,7 @@ mod tests {
     #[test]
     fn design_board_load_rejects_malformed_json() {
         let err = DesignBoard::from_json("not json").unwrap_err().to_string();
-        assert!(err.contains("parse design_board json"), "got: {err}");
+        assert!(err.contains("parse design board json"), "got: {err}");
     }
 
     #[test]
@@ -335,7 +335,7 @@ mod tests {
         )
         .unwrap_err()
         .to_string();
-        assert!(err.contains("parse design_board json"), "got: {err}");
+        assert!(err.contains("parse design board json"), "got: {err}");
     }
 
     #[test]
@@ -354,7 +354,7 @@ mod tests {
         let f = NamedTempFile::new().unwrap();
         DesignBoard::default().save(f.path()).unwrap();
 
-        let tmp = f.path().with_extension("design_board.tmp");
+        let tmp = f.path().with_extension("design-board.tmp");
         assert!(!tmp.exists(), "atomic save must clean up its tempfile");
     }
 
@@ -399,7 +399,7 @@ mod tests {
         assert!(design_board_abs.exists());
 
         let design_board = DesignBoard::load(&design_board_abs).unwrap();
-        assert_eq!(design_board.version, CANVAS_VERSION);
+        assert_eq!(design_board.version, DESIGN_BOARD_VERSION);
         assert!(design_board.cells.is_empty());
 
         let md = std::fs::read_to_string(&md_abs).unwrap();

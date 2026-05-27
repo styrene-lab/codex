@@ -62,16 +62,16 @@ async fn process_capture_request(
     use crate::design_board_capture::*;
 
     let request_id = req.request_id.clone();
-    let _ = design_board_rel; // reserved for future per-design_board filtering
+    let _ = design_board_rel; // reserved for future per-design-board filtering
 
-    // ── Step 1: ask the page for design_board-pane bounds + per-cell metrics ──
+    // ── Step 1: ask the page for design-board-pane bounds + per-cell metrics ──
     // One JS round-trip: walks the DOM, posts a measurement message to each
     // cell's iframe, awaits responses with a 600ms total timeout, then
     // serializes the lot back to Rust via dioxus.send.
     let measurement_js = r#"
         (async function(){
             const pane = document.querySelector('.board-pane');
-            if (!pane) { dioxus.send(JSON.stringify({error: 'design_board-pane element not found'})); return; }
+            if (!pane) { dioxus.send(JSON.stringify({error: 'design-board-pane element not found'})); return; }
             const paneRect = pane.getBoundingClientRect();
             // Window position in screen coords. window.screenX/Y are relative to
             // the browser-frame; in wry/Dioxus desktop they map to the OS window
@@ -100,7 +100,7 @@ async fn process_capture_request(
                 const iframe = cellEl.querySelector('iframe');
                 const r = cellEl.getBoundingClientRect();
                 const cellMetric = {
-                    id: cellEl.querySelector('iframe')?.title?.replace('design_board cell ', '') || id,
+                    id: cellEl.querySelector('iframe')?.title?.replace('design-board cell ', '') || id,
                     cell_box: { x: r.x, y: r.y, w: r.width, h: r.height },
                     content_box: null,
                 };
@@ -519,10 +519,10 @@ pub fn DesignBoardView(path: PathBuf) -> Element {
         Err(e) => {
             tracing::warn!("DesignBoardView parse error: {e}");
             return rsx! {
-                div { class: "design_board-pane",
-                    div { class: "design_board-toolbar",
+                div { class: "design-board-pane",
+                    div { class: "design-board-toolbar",
                         span { class: "design-board-meta", "Design Board: {path.display()}" }
-                        span { class: "design_board-error", "Parse error: {e}" }
+                        span { class: "design-board-error", "Parse error: {e}" }
                     }
                 }
             };
@@ -536,19 +536,19 @@ pub fn DesignBoardView(path: PathBuf) -> Element {
     );
 
     rsx! {
-        div { class: "design_board-pane",
-            div { class: "design_board-toolbar",
+        div { class: "design-board-pane",
+            div { class: "design-board-toolbar",
                 span { class: "design-board-meta", "Design Board: {path.display()}" }
                 span { class: "design-board-meta",
                     "v{design_board.version} · theme={design_board.theme} · {design_board.grid.cols}×{design_board.grid.rows} · {design_board.cells.len()} cell(s)"
                 }
             }
             if design_board.cells.is_empty() {
-                div { class: "design_board-empty",
+                div { class: "design-board-empty",
                     "Empty design board. Ask the agent to design something here."
                 }
             } else {
-                div { class: "design_board-grid", style: "{grid_style}",
+                div { class: "design-board-grid", style: "{grid_style}",
                     for cell in design_board.cells.iter() {
                         {
                             let cell_style = format!(
@@ -569,10 +569,10 @@ pub fn DesignBoardView(path: PathBuf) -> Element {
                             rsx! {
                                 div {
                                     key: "{cell.id}",
-                                    class: "design_board-cell",
+                                    class: "design-board-cell",
                                     style: "{cell_style}",
                                     iframe {
-                                        title: "design_board cell {cell.id}",
+                                        title: "design-board cell {cell.id}",
                                         "sandbox": "allow-scripts",
                                         "srcdoc": "{srcdoc}",
                                     }
