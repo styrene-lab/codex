@@ -1,6 +1,9 @@
 use crate::bootstrap::AppContext;
 use crate::state::TerminalOpenCommand;
-use crate::terminal::{TerminalManager, TerminalSessionInfo, TerminalSnapshotView, TerminalStatus};
+use crate::terminal::{
+    TerminalCreateParams, TerminalManager, TerminalPlacement, TerminalSessionInfo,
+    TerminalSnapshotView, TerminalStatus,
+};
 use dioxus::prelude::*;
 
 const TERMINAL_ROWS: usize = 34;
@@ -16,7 +19,32 @@ pub fn TerminalLabView() -> Element {
     let mut sessions = use_signal(Vec::<TerminalSessionInfo>::new);
     let mut status = use_signal(|| TerminalStatus::Failed("not started".to_string()));
     let mut snapshot = use_signal(|| crate::terminal::view::TerminalSnapshot::blank(TERMINAL_ROWS, TERMINAL_COLS));
-    let error = use_signal(|| None::<String>);
+    let mut error = use_signal(|| None::<String>);
+
+    {
+        let manager = manager.clone();
+        let project_root = project_root.clone();
+        use_effect(move || {
+            if !manager.list().is_empty() {
+                sessions.set(manager.list());
+                return;
+            }
+            let mut params = TerminalCreateParams::new(std::env::var("SHELL").unwrap_or_else(|_| "sh".to_string()));
+            params.cwd = Some(project_root.display().to_string());
+            params.title = Some("Shell".to_string());
+            params.placement = Some(TerminalPlacement::BottomPane);
+            params.reuse_key = Some("terminal-shell".to_string());
+            match manager.create(params) {
+                Ok(result) => {
+                    terminal_id.set(Some(result.terminal_id));
+                    sessions.set(manager.list());
+                }
+                Err(err) => {
+                    error.set(Some(err.to_string()));
+                }
+            }
+        });
+    }
 
 
     {
