@@ -279,6 +279,16 @@ Required response:
 - Every component must define resize behavior and minimum useful cell size.
 - Variants should be explicit and schema-published.
 
+## Reference pillars
+
+Keep three upstream product classes on the horizon while building. They are reference pillars, not parity commitments.
+
+1. **Claude Artifacts / Claude Design pillar — generative flexibility.** Design Board must preserve fast idea-to-render flow, tolerate one-off custom layouts, and keep raw HTML as an escape hatch when the component catalog is incomplete.
+2. **Canva pillar — templates, brand, and export.** Design Board must grow toward reusable templates, style-guide/theme-as-brand-kit behavior, media placeholders/assets, and reliable image/PDF-oriented output.
+3. **Figma pillar — layout, variants, and constraints.** Design Board must borrow the rendering lessons of frames, auto-layout-like stacks/columns, variants, minimum sizes, and predictable resize behavior without chasing direct-manipulation editor parity in this slice.
+
+These pillars prevent the implementation from collapsing into a narrow dashboard/research-card system.
+
 ## Updated priority
 
 1. Layout foundation: `Frame`, `TextBlock`, `Columns`, `List/Stack`, `ButtonRow`, `ImagePlaceholder`.
