@@ -29,8 +29,15 @@ pub fn TerminalLabView() -> Element {
                 sessions.set(manager.list());
                 return;
             }
-            let mut params = TerminalCreateParams::new("zsh");
-            params.args = vec!["-f".to_string()];
+            let shell = std::env::var("SHELL")
+                .ok()
+                .and_then(|path| {
+                    std::path::PathBuf::from(path)
+                        .file_name()
+                        .map(|name| name.to_string_lossy().to_string())
+                })
+                .unwrap_or_else(|| "sh".to_string());
+            let mut params = TerminalCreateParams::new(shell);
             params.cwd = Some(project_root.display().to_string());
             params.title = Some("Shell".to_string());
             params.placement = Some(TerminalPlacement::BottomPane);
