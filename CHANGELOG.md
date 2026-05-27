@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.11.2 — 2026-05-27
+
+### Added
+- **ACP HostAction terminal review** — Flynt now advertises ACP terminal host capability, receives Omegon `terminal.create@1` approval requests, renders review cards in the agent rail, and opens approved sessions through Flynt's `TerminalManager`.
+- **Native Flynt terminal substrate** — added a reusable portable-pty + alacritty terminal manager with session listing, snapshot rendering, keyboard input, kill/release, resize, and exited-session cleanup.
+- **Terminal HostAction assessment vault** — added an end-to-end assessment workspace with a PDF fixture for reader-driven `terminal.create@1` validation.
+
+### Fixed
+- **Omegon binary resolution** — Flynt now prefers the active user Omegon binary before stale channel-version installs unless explicitly pinned.
+- **ACP reconnect stability** — reconnect no longer panics when session status UI holds a signal read borrow.
+- **Terminal usability** — Terminal Lab no longer auto-runs diagnostics noise, captures Tab for TUIs, resizes the PTY to the rendered viewport, clears exited sessions, and respects the operator's configured `$SHELL` path.
+
 ## 0.11.1 — 2026-05-24
 
 ### Fixed
