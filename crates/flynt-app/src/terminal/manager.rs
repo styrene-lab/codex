@@ -113,6 +113,15 @@ impl TerminalManager {
         Ok(record.session.snapshot(self.rows, self.cols))
     }
 
+    pub fn resize(&self, terminal_id: &str, rows: usize, cols: usize) -> Result<()> {
+        let mut inner = self.inner.lock().unwrap();
+        let record = inner
+            .sessions
+            .get_mut(terminal_id)
+            .ok_or_else(|| anyhow!("terminal '{terminal_id}' was not found"))?;
+        record.session.resize(rows, cols)
+    }
+
     pub fn status(&self, terminal_id: &str) -> Result<TerminalStatus> {
         let inner = self.inner.lock().unwrap();
         let record = inner

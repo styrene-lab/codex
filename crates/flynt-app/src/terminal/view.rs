@@ -46,6 +46,7 @@ struct PtyHandle {
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
     rx: mpsc::Receiver<Vec<u8>>,
     child: Arc<Mutex<Box<dyn Child + Send + Sync>>>,
+    master: Arc<Mutex<Box<dyn portable_pty::MasterPty + Send>>>,
 }
 
 pub struct AlacrittyTerminalSession {
@@ -92,6 +93,7 @@ impl AlacrittyTerminalSession {
 
         let writer = Arc::new(Mutex::new(pair.master.take_writer()?));
         let mut reader = pair.master.try_clone_reader()?;
+        let master = Arc::new(Mutex::new(pair.master));
         let (tx, rx) = mpsc::channel(512);
         thread::spawn(move || {
             let mut buf = [0_u8; 8192];
@@ -115,6 +117,7 @@ impl AlacrittyTerminalSession {
                 writer,
                 rx,
                 child: Arc::new(Mutex::new(child)),
+                master,
             },
         })
     }
@@ -133,6 +136,19 @@ impl AlacrittyTerminalSession {
             let _ = writer.write_all(input.as_bytes());
             let _ = writer.flush();
         }
+    }
+
+    pub fn resize(&mut self, rows: usize, cols: usize) -> anyhow::Result<()> {
+        let rows = rows.max(1) as u16;
+        let cols = cols.max(1) as u16;
+        self.term.resize(TermSize::new(cols as usize, rows as usize));
+        self.pty.master.lock().unwrap().resize(PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        })?;
+        Ok(())
     }
 
     pub fn snapshot(&self, rows: usize, cols: usize) -> TerminalSnapshot {

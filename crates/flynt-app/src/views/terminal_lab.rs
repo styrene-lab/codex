@@ -113,6 +113,7 @@ pub fn TerminalLabView() -> Element {
     let manager_for_release = manager.clone();
     let manager_for_release_exited = manager.clone();
     let manager_for_input = manager.clone();
+    let manager_for_resize = manager.clone();
 
     rsx! {
         div { class: "terminal-view",
@@ -200,6 +201,11 @@ pub fn TerminalLabView() -> Element {
                     on_key: move |input: String| {
                         if let Some(id) = terminal_id.read().clone() {
                             let _ = manager_for_input.send_input(&id, &input);
+                        }
+                    },
+                    on_size: move |(rows, cols): (usize, usize)| {
+                        if let Some(id) = terminal_id.read().clone() {
+                            let _ = manager_for_resize.resize(&id, rows, cols);
                         }
                     },
                 }
