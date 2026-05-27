@@ -6,7 +6,7 @@
 
 use crate::bootstrap::AppContext;
 use dioxus::prelude::*;
-use flynt_core::design_board::{Cell, DesignBoard};
+use flynt_core::design_board::{Cell, CellContent, DesignBoard};
 use std::path::PathBuf;
 
 /// Tailwind CSS bundled into the app binary. Phase 4 ships a placeholder
@@ -335,9 +335,26 @@ const MEASUREMENT_HOOK: &str = r#"
 /// machine, or run offline.
 pub fn build_srcdoc(cell: &Cell, theme: &str, tailwind_css: &str) -> String {
     let theme = theme_vars(theme);
-    let css = &cell.css;
-    let html = &cell.html;
-    let js = cell.js.as_deref().unwrap_or("");
+    let (html, css, js) = match &cell.content {
+        CellContent::Html { html, css, js } => {
+            (html.as_str(), css.as_str(), js.as_deref().unwrap_or(""))
+        }
+        CellContent::Component {
+            component, variant, ..
+        } => {
+            let variant = variant.as_deref().unwrap_or("default");
+            let html = format!(
+                "<div class=\"h-full flex items-center justify-center rounded-lg border border-border bg-card p-4 text-card-foreground\"><div class=\"text-center\"><div class=\"text-sm font-semibold\">Unsupported component</div><div class=\"mt-1 text-xs text-muted-foreground\">{component} ({variant}) will render after the component registry lands.</div></div></div>"
+            );
+            return format!(
+                "<!doctype html><html><head><meta charset=\"utf-8\">\
+<style>{tailwind_css}</style>\
+<style>:root {{ {theme} }} html,body {{ margin:0; padding:0; height:100%; background:var(--background); color:var(--foreground); font-family:system-ui,sans-serif; }} body > * {{ box-sizing: border-box; }}</style>\
+</head><body>{html}<script>{MEASUREMENT_HOOK}</script></body></html>",
+                MEASUREMENT_HOOK = MEASUREMENT_HOOK
+            );
+        }
+    };
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\">\
 <style>{tailwind_css}</style>\
@@ -653,16 +670,7 @@ mod tests {
     }
 
     fn cell_with(html: &str, css: &str, js: Option<&str>) -> Cell {
-        Cell {
-            id: "t".into(),
-            x: 0,
-            y: 0,
-            w: 1,
-            h: 1,
-            html: html.into(),
-            css: css.into(),
-            js: js.map(|s| s.into()),
-        }
+        Cell::html("t", 0, 0, 1, 1, html, css, js.map(|s| s.into()))
     }
 
     #[test]

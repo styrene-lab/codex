@@ -5,7 +5,7 @@
 //! write these files, so the wire shape lives here in `flynt-core` to
 //! keep the two binaries in lockstep.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::path::{Path, PathBuf};
 
 /// Current on-disk schema version. Bump when the shape changes in a way
@@ -37,7 +37,7 @@ pub struct Grid {
 /// One cell in the design board. The agent owns this — it writes raw HTML, CSS,
 /// and optional JS. Each cell renders inside a sandboxed iframe in the UI,
 /// so cells cannot leak styles or JS into each other or the host.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Cell {
     /// Stable identifier so the agent can apply partial updates without
     /// rewriting the whole document.
@@ -50,10 +50,128 @@ pub struct Cell {
     pub w: u32,
     /// Row span (>= 1).
     pub h: u32,
-    pub html: String,
-    pub css: String,
-    /// Optional vanilla JS that runs scoped to this cell's iframe.
-    pub js: Option<String>,
+    pub content: CellContent,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum CellContent {
+    #[serde(rename = "html")]
+    Html {
+        html: String,
+        #[serde(default)]
+        css: String,
+        #[serde(default)]
+        js: Option<String>,
+    },
+    #[serde(rename = "component")]
+    Component {
+        component: String,
+        #[serde(default)]
+        props: serde_json::Value,
+        #[serde(default)]
+        variant: Option<String>,
+    },
+}
+
+#[derive(Debug, Deserialize)]
+struct CanonicalCell {
+    id: String,
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+    content: CellContent,
+}
+
+#[derive(Debug, Deserialize)]
+struct LegacyCell {
+    id: String,
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+    html: String,
+    #[serde(default)]
+    css: String,
+    #[serde(default)]
+    js: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum CellWire {
+    Canonical(CanonicalCell),
+    Legacy(LegacyCell),
+}
+
+impl<'de> Deserialize<'de> for Cell {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(match CellWire::deserialize(deserializer)? {
+            CellWire::Canonical(cell) => Cell {
+                id: cell.id,
+                x: cell.x,
+                y: cell.y,
+                w: cell.w,
+                h: cell.h,
+                content: cell.content,
+            },
+            CellWire::Legacy(cell) => {
+                tracing::warn!(
+                    cell_id = %cell.id,
+                    "loaded deprecated Design Board legacy cell fields; save rewrites to content.kind=html"
+                );
+                Cell {
+                    id: cell.id,
+                    x: cell.x,
+                    y: cell.y,
+                    w: cell.w,
+                    h: cell.h,
+                    content: CellContent::Html {
+                        html: cell.html,
+                        css: cell.css,
+                        js: cell.js,
+                    },
+                }
+            }
+        })
+    }
+}
+
+impl Cell {
+    pub fn html(
+        id: impl Into<String>,
+        x: u32,
+        y: u32,
+        w: u32,
+        h: u32,
+        html: impl Into<String>,
+        css: impl Into<String>,
+        js: Option<String>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            x,
+            y,
+            w,
+            h,
+            content: CellContent::Html {
+                html: html.into(),
+                css: css.into(),
+                js,
+            },
+        }
+    }
+
+    pub fn raw_html_parts(&self) -> Option<(&str, &str, Option<&str>)> {
+        match &self.content {
+            CellContent::Html { html, css, js } => Some((html, css, js.as_deref())),
+            CellContent::Component { .. } => None,
+        }
+    }
 }
 
 impl Default for DesignBoard {
@@ -273,16 +391,16 @@ mod tests {
     use tempfile::{NamedTempFile, TempDir};
 
     fn sample_cell(id: &str) -> Cell {
-        Cell {
-            id: id.into(),
-            x: 0,
-            y: 0,
-            w: 4,
-            h: 2,
-            html: "<button class=\"btn\">Hi</button>".into(),
-            css: ".btn { color: red; }".into(),
-            js: None,
-        }
+        Cell::html(
+            id,
+            0,
+            0,
+            4,
+            2,
+            "<button class=\"btn\">Hi</button>",
+            ".btn { color: red; }",
+            None,
+        )
     }
 
     #[test]
@@ -299,16 +417,16 @@ mod tests {
     fn design_board_round_trip_through_json() {
         let mut c = DesignBoard::default();
         c.upsert_cell(sample_cell("a"));
-        c.upsert_cell(Cell {
-            id: "b".into(),
-            x: 5,
-            y: 0,
-            w: 3,
-            h: 4,
-            html: "<div>ok</div>".into(),
-            css: "".into(),
-            js: Some("console.log(1)".into()),
-        });
+        c.upsert_cell(Cell::html(
+            "b",
+            5,
+            0,
+            3,
+            4,
+            "<div>ok</div>",
+            "",
+            Some("console.log(1)".into()),
+        ));
         let json = serde_json::to_string(&c).unwrap();
         let back: DesignBoard = serde_json::from_str(&json).unwrap();
         assert_eq!(c, back);
@@ -362,12 +480,14 @@ mod tests {
     fn upsert_replaces_existing() {
         let mut c = DesignBoard::default();
         c.upsert_cell(sample_cell("a"));
-        let mut updated = sample_cell("a");
-        updated.html = "<span>new</span>".into();
+        let updated = Cell::html("a", 0, 0, 4, 2, "<span>new</span>", "", None);
         let was_replaced = c.upsert_cell(updated.clone());
         assert!(was_replaced);
         assert_eq!(c.cells.len(), 1);
-        assert_eq!(c.find_cell("a").unwrap().html, "<span>new</span>");
+        assert_eq!(
+            c.find_cell("a").unwrap().raw_html_parts().unwrap().0,
+            "<span>new</span>"
+        );
     }
 
     #[test]
@@ -385,6 +505,44 @@ mod tests {
         assert!(c.remove_cell("a"));
         assert!(!c.remove_cell("a"));
         assert!(c.cells.is_empty());
+    }
+
+    #[test]
+    fn legacy_cell_fields_canonicalize_to_content() {
+        let legacy = r#"{
+            "id":"legacy", "x":0, "y":0, "w":4, "h":2,
+            "html":"<div>old</div>", "css":".x{}", "js":null
+        }"#;
+        let cell: Cell = serde_json::from_str(legacy).unwrap();
+        assert_eq!(
+            cell.raw_html_parts(),
+            Some(("<div>old</div>", ".x{}", None))
+        );
+
+        let value = serde_json::to_value(&cell).unwrap();
+        assert!(value.get("content").is_some());
+        assert!(value.get("html").is_none());
+        assert!(value.get("css").is_none());
+        assert!(value.get("js").is_none());
+    }
+
+    #[test]
+    fn component_cell_round_trips() {
+        let cell = Cell {
+            id: "metric".into(),
+            x: 0,
+            y: 0,
+            w: 3,
+            h: 2,
+            content: CellContent::Component {
+                component: "MetricCard".into(),
+                props: serde_json::json!({"label":"Revenue", "value":"$128k"}),
+                variant: Some("default".into()),
+            },
+        };
+        let json = serde_json::to_string(&cell).unwrap();
+        let back: Cell = serde_json::from_str(&json).unwrap();
+        assert_eq!(cell, back);
     }
 
     #[test]
@@ -437,12 +595,8 @@ mod tests {
 
     #[test]
     fn cell_serializes_optional_js_only_when_present() {
-        let mut c = sample_cell("x");
-        c.js = None;
+        let c = sample_cell("x");
         let json = serde_json::to_string(&c).unwrap();
-        // serde keeps the null by default; we accept that — round-trip is
-        // what matters, not field omission. This test pins the behavior so
-        // a future serde annotation change is intentional.
         let back: Cell = serde_json::from_str(&json).unwrap();
         assert_eq!(c, back);
     }

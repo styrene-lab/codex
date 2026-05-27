@@ -463,13 +463,16 @@ impl DesignExtension {
 
         // Structural fill check (same heuristic as design_board_set_cells lint).
         for cell in &design_board.cells {
-            if !outermost_fills_cell(&cell.html) {
+            let Some((html, _css, _js)) = cell.raw_html_parts() else {
+                continue;
+            };
+            if !outermost_fills_cell(html) {
                 warnings.push(format!(
                     "cell '{}': outermost element lacks h-full — empty space will show theme bg below content",
                     cell.id
                 ));
             }
-            if html_has_arbitrary_tailwind(&cell.html) {
+            if html_has_arbitrary_tailwind(html) {
                 warnings.push(format!(
                     "cell '{}': uses Tailwind arbitrary-value classes (bg-[#…]) that the curated subset can't resolve",
                     cell.id
@@ -482,11 +485,12 @@ impl DesignExtension {
         let hardcoded_bg_count = design_board
             .cells
             .iter()
-            .filter(|c| {
-                c.html.contains("background:#")
-                    || c.html.contains("background: #")
-                    || c.html.contains("bg-black")
-                    || c.html.contains("bg-white")
+            .filter_map(|c| c.raw_html_parts().map(|(html, _, _)| html))
+            .filter(|html| {
+                html.contains("background:#")
+                    || html.contains("background: #")
+                    || html.contains("bg-black")
+                    || html.contains("bg-white")
             })
             .count();
         if hardcoded_bg_count > 0 {
@@ -495,12 +499,15 @@ impl DesignExtension {
             ));
         }
 
-        // Coverage check: very tall cells with very short content.
+        // Coverage check: very tall raw HTML cells with very short content.
         for cell in &design_board.cells {
-            if cell.h >= 3 && cell.html.len() < 200 {
+            let Some((html, _css, _js)) = cell.raw_html_parts() else {
+                continue;
+            };
+            if cell.h >= 3 && html.len() < 200 {
                 suggestions.push(format!(
                     "cell '{}': h={} but html is {} bytes — likely too tall for its content. Either reduce h or add content that earns the height.",
-                    cell.id, cell.h, cell.html.len()
+                    cell.id, cell.h, html.len()
                 ));
             }
         }
@@ -785,16 +792,16 @@ mod tests {
         let ext = test_ext_inplace(&tmp);
         // Seed a design board with a cell that lacks h-full.
         let mut design_board = flynt_core::design_board::DesignBoard::default();
-        design_board.upsert_cell(flynt_core::design_board::Cell {
-            id: "x".into(),
-            x: 0,
-            y: 0,
-            w: 4,
-            h: 3,
-            html: "<div class=\"bg-card p-4\">x</div>".into(),
-            css: "".into(),
-            js: None,
-        });
+        design_board.upsert_cell(flynt_core::design_board::Cell::html(
+            "x",
+            0,
+            0,
+            4,
+            3,
+            "<div class=\"bg-card p-4\">x</div>",
+            "",
+            None,
+        ));
         std::fs::create_dir_all(tmp.path().join("boards")).unwrap();
         design_board
             .save(&tmp.path().join("boards/Demo.board"))
@@ -820,16 +827,16 @@ mod tests {
         let (tmp, _) = test_ext();
         let ext = test_ext_inplace(&tmp);
         let mut design_board = flynt_core::design_board::DesignBoard::default();
-        design_board.upsert_cell(flynt_core::design_board::Cell {
-            id: "x".into(),
-            x: 0,
-            y: 0,
-            w: 4,
-            h: 3,
-            html: "<div class=\"h-full bg-[#FF0000]\">x</div>".into(),
-            css: "".into(),
-            js: None,
-        });
+        design_board.upsert_cell(flynt_core::design_board::Cell::html(
+            "x",
+            0,
+            0,
+            4,
+            3,
+            "<div class=\"h-full bg-[#FF0000]\">x</div>",
+            "",
+            None,
+        ));
         std::fs::create_dir_all(tmp.path().join("boards")).unwrap();
         design_board
             .save(&tmp.path().join("boards/Demo.board"))

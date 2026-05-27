@@ -2018,7 +2018,9 @@ impl FlyntExtension {
 /// write. Agent sees them in-band and can react on the same turn.
 fn lint_cell(cell: &flynt_core::design_board::Cell) -> Vec<String> {
     let mut warnings = Vec::new();
-    let html = &cell.html;
+    let Some((html, _css, _js)) = cell.raw_html_parts() else {
+        return Vec::new();
+    };
     let id = &cell.id;
 
     // (1) Outermost-fills-cell check. Cheap heuristic: look at the first
@@ -2680,7 +2682,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(got["cells"][0]["id"], "a");
-        assert_eq!(got["cells"][0]["html"], "<div>x</div>");
+        assert_eq!(got["cells"][0]["content"]["html"], "<div>x</div>");
     }
 
     #[tokio::test]
@@ -2712,7 +2714,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(got["cells"][0]["id"], "a");
-        assert_eq!(got["cells"][0]["html"], "<b>x</b>");
+        assert_eq!(got["cells"][0]["content"]["html"], "<b>x</b>");
     }
 
     #[tokio::test]
@@ -2855,16 +2857,16 @@ mod tests {
     async fn design_board_set_cells_upserts_by_id() {
         let (tmp, ext) = test_extension();
         let mut design_board = flynt_core::design_board::DesignBoard::default();
-        design_board.upsert_cell(flynt_core::design_board::Cell {
-            id: "a".into(),
-            x: 0,
-            y: 0,
-            w: 1,
-            h: 1,
-            html: "old".into(),
-            css: "".into(),
-            js: None,
-        });
+        design_board.upsert_cell(flynt_core::design_board::Cell::html(
+            "a",
+            "0".parse().unwrap(),
+            0,
+            1,
+            1,
+            "old",
+            "",
+            None,
+        ));
         write_design_board(
             &tmp,
             "x.board",
@@ -2893,16 +2895,9 @@ mod tests {
         let (tmp, ext) = test_extension();
         let mut design_board = flynt_core::design_board::DesignBoard::default();
         for id in ["a", "b", "c"] {
-            design_board.upsert_cell(flynt_core::design_board::Cell {
-                id: id.into(),
-                x: 0,
-                y: 0,
-                w: 1,
-                h: 1,
-                html: "".into(),
-                css: "".into(),
-                js: None,
-            });
+            design_board.upsert_cell(flynt_core::design_board::Cell::html(
+                id, 0, 0, 1, 1, "", "", None,
+            ));
         }
         write_design_board(
             &tmp,
