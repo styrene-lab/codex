@@ -368,7 +368,7 @@ pub fn SettingsView() -> Element {
                 SettingsSection { heading: "Appearance",
                     SettingsRow {
                         label: "Theme",
-                        hint: "Visual theme applied across the sidebar, editor, canvas, and rendered preview.",
+                        hint: "Visual theme applied across the sidebar, editor, Design Board, and rendered preview.",
                         div { class: "theme-stack",
                             div { class: "theme-actions",
                                 button {

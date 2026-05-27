@@ -27,7 +27,7 @@ pub const NEW_BOARD: &str = "flynt-new-board";
 pub const DAILY_NOTE: &str = "flynt-daily-note";
 
 pub const NEW_DRAWING: &str = "flynt-new-drawing";
-pub const NEW_CANVAS: &str = "flynt-new-canvas";
+pub const NEW_CANVAS: &str = "flynt-new-design-board";
 
 pub const RENAME_NOTE: &str = "flynt-rename-note";
 pub const DELETE_NOTE: &str = "flynt-delete-note";
@@ -93,7 +93,7 @@ pub fn build_menu_bar() -> Menu {
             ),
             &MenuItem::with_id(
                 NEW_CANVAS,
-                "New Canvas",
+                "New Design Board",
                 true,
                 Some(Accelerator::new(
                     Some(Modifiers::META | Modifiers::SHIFT),

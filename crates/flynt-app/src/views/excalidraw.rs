@@ -535,7 +535,7 @@ mod tests {
             "+++\ntags = []\n+++\n\nbody\n"
         ));
         assert!(!frontmatter_has_drawing_tag(
-            "+++\ntags = [\"canvas\"]\n+++\n\nbody\n"
+            "+++\ntags = [\"design_board\"]\n+++\n\nbody\n"
         ));
         assert!(!frontmatter_has_drawing_tag("plain text"));
     }
