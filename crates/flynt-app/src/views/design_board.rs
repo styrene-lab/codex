@@ -7,6 +7,7 @@
 use crate::bootstrap::AppContext;
 use dioxus::prelude::*;
 use flynt_core::design_board::{Cell, CellContent, DesignBoard};
+use flynt_core::design_components;
 use std::path::PathBuf;
 
 /// Tailwind CSS bundled into the app binary. Phase 4 ships a placeholder
@@ -337,23 +338,30 @@ pub fn build_srcdoc(cell: &Cell, theme: &str, tailwind_css: &str) -> String {
     let theme = theme_vars(theme);
     let (html, css, js) = match &cell.content {
         CellContent::Html { html, css, js } => {
-            (html.as_str(), css.as_str(), js.as_deref().unwrap_or(""))
+            (html.clone(), css.clone(), js.clone().unwrap_or_default())
         }
         CellContent::Component {
-            component, variant, ..
-        } => {
-            let variant = variant.as_deref().unwrap_or("default");
-            let html = format!(
-                "<div class=\"h-full flex items-center justify-center rounded-lg border border-border bg-card p-4 text-card-foreground\"><div class=\"text-center\"><div class=\"text-sm font-semibold\">Unsupported component</div><div class=\"mt-1 text-xs text-muted-foreground\">{component} ({variant}) will render after the component registry lands.</div></div></div>"
-            );
-            return format!(
-                "<!doctype html><html><head><meta charset=\"utf-8\">\
-<style>{tailwind_css}</style>\
-<style>:root {{ {theme} }} html,body {{ margin:0; padding:0; height:100%; background:var(--background); color:var(--foreground); font-family:system-ui,sans-serif; }} body > * {{ box-sizing: border-box; }}</style>\
-</head><body>{html}<script>{MEASUREMENT_HOOK}</script></body></html>",
-                MEASUREMENT_HOOK = MEASUREMENT_HOOK
-            );
-        }
+            component,
+            props,
+            variant,
+        } => match design_components::render_component(component, props, variant.as_deref()) {
+            Ok(rendered) => (
+                rendered.html,
+                rendered.css,
+                rendered.js.unwrap_or_default(),
+            ),
+            Err(err) => {
+                let component = escape_html(component);
+                let message = escape_html(&err.to_string());
+                (
+                    format!(
+                        "<div class=\"h-full flex items-center justify-center rounded-lg border border-destructive bg-card p-4 text-card-foreground\"><div class=\"text-center\"><div class=\"text-sm font-semibold text-destructive\">Component render failed</div><div class=\"mt-1 text-xs text-muted-foreground\">{component}</div><pre class=\"mt-3 whitespace-pre-wrap text-xs text-muted-foreground\">{message}</pre></div></div>"
+                    ),
+                    String::new(),
+                    String::new(),
+                )
+            }
+        },
     };
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\">\
@@ -365,6 +373,15 @@ pub fn build_srcdoc(cell: &Cell, theme: &str, tailwind_css: &str) -> String {
 }
 
 /// Extension check for the raw design board data file.
+fn escape_html(input: &str) -> String {
+    input
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
 pub fn is_design_board(path: &std::path::Path) -> bool {
     path.extension().map(|e| e == "board").unwrap_or(false)
 }
@@ -728,6 +745,46 @@ mod tests {
             out.contains("height:100%"),
             "html/body must set height:100%"
         );
+    }
+
+    #[test]
+    fn build_srcdoc_renders_component_cell() {
+        let cell = Cell {
+            id: "panel".into(),
+            x: 0,
+            y: 0,
+            w: 4,
+            h: 2,
+            content: CellContent::Component {
+                component: "Panel".into(),
+                props: serde_json::json!({"title": "Hello", "body": "World"}),
+                variant: Some("default".into()),
+            },
+        };
+        let out = build_srcdoc(&cell, "default", "");
+        assert!(out.contains("Hello"));
+        assert!(out.contains("World"));
+        assert!(out.contains("h-full"));
+        assert!(!out.contains("Unsupported component"));
+    }
+
+    #[test]
+    fn build_srcdoc_shows_component_render_error() {
+        let cell = Cell {
+            id: "bad".into(),
+            x: 0,
+            y: 0,
+            w: 4,
+            h: 2,
+            content: CellContent::Component {
+                component: "Missing".into(),
+                props: serde_json::json!({}),
+                variant: None,
+            },
+        };
+        let out = build_srcdoc(&cell, "default", "");
+        assert!(out.contains("Component render failed"));
+        assert!(out.contains("Missing"));
     }
 
     #[test]

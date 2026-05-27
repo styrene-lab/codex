@@ -462,7 +462,7 @@ impl Extension for FlyntExtension {
                 {
                     "name": "design_board_set_cells",
                     "label": "Design Board: Set Cells",
-                    "description": "Patch a design board file. `cells` upserts by id (matching id replaces, new id appends). `delete_ids` removes cells. `grid` and `theme` are optional and only applied when present. Use this for incremental edits — never rewrite the whole document if you can target specific cells. Each cell must specify x, y, w, h in grid coordinates (0-indexed) plus html and css; js is optional. Response includes `lint_warnings`: an array of advisory strings flagging Flynt-design-board-specific issues (cells lacking h-full will show theme-bg below content; Tailwind arbitrary-value classes that the curated subset can't resolve). Lint never blocks the write — review warnings and fix in your next turn.",
+                    "description": "Patch a design board file. `cells` upserts by id (matching id replaces, new id appends). `delete_ids` removes cells. `grid` and `theme` are optional and only applied when present. Use this for incremental edits — never rewrite the whole document if you can target specific cells. Each cell must specify x, y, w, h in grid coordinates (0-indexed) plus either canonical `content` or legacy `html`/`css`/`js` fields. Component cells use `content: { kind: 'component', component, props, variant? }`. Response includes `lint_warnings`: an array of advisory strings flagging Flynt-design-board-specific issues (raw HTML cells lacking h-full will show theme-bg below content; Tailwind arbitrary-value classes that the curated subset can't resolve). Lint never blocks the write — review warnings and fix in your next turn.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -477,11 +477,34 @@ impl Extension for FlyntExtension {
                                         "y": { "type": "integer", "minimum": 0 },
                                         "w": { "type": "integer", "minimum": 1 },
                                         "h": { "type": "integer", "minimum": 1 },
+                                        "content": {
+                                            "type": "object",
+                                            "oneOf": [
+                                                {
+                                                    "properties": {
+                                                        "kind": { "const": "html" },
+                                                        "html": { "type": "string" },
+                                                        "css": { "type": "string" },
+                                                        "js": { "type": "string" }
+                                                    },
+                                                    "required": ["kind", "html"]
+                                                },
+                                                {
+                                                    "properties": {
+                                                        "kind": { "const": "component" },
+                                                        "component": { "type": "string" },
+                                                        "props": { "type": "object" },
+                                                        "variant": { "type": "string" }
+                                                    },
+                                                    "required": ["kind", "component"]
+                                                }
+                                            ]
+                                        },
                                         "html": { "type": "string" },
                                         "css": { "type": "string" },
                                         "js": { "type": "string" }
                                     },
-                                    "required": ["id", "x", "y", "w", "h", "html", "css"]
+                                    "required": ["id", "x", "y", "w", "h"]
                                 }
                             },
                             "delete_ids": { "type": "array", "items": { "type": "string" } },
@@ -1820,6 +1843,24 @@ impl FlyntExtension {
                 let cell: flynt_core::design_board::Cell = serde_json::from_value(c.clone())
                     .map_err(|e| omegon_extension::Error::invalid_params(format!("cell: {e}")))?;
                 lint_warnings.extend(lint_cell(&cell));
+                if let flynt_core::design_board::CellContent::Component {
+                    component,
+                    props,
+                    variant,
+                } = &cell.content
+                {
+                    flynt_core::design_components::render_component(
+                        component,
+                        props,
+                        variant.as_deref(),
+                    )
+                    .map_err(|e| {
+                        omegon_extension::Error::invalid_params(format!(
+                            "cell '{}': {e}",
+                            cell.id
+                        ))
+                    })?;
+                }
                 let id = cell.id.clone();
                 let replaced = design_board.upsert_cell(cell);
                 upserted.push(json!({ "id": id, "replaced": replaced }));
@@ -1907,6 +1948,18 @@ impl FlyntExtension {
                 .get("cell_authoring_guidance")
                 .cloned()
                 .unwrap_or(json!([])),
+            "components": flynt_core::design_components::list_components()
+                .into_iter()
+                .map(|component| json!({
+                    "name": component.name,
+                    "category": component.category,
+                    "description": component.description,
+                    "variants": component.variants,
+                    "props_schema": component.props_schema,
+                    "examples": component.examples,
+                    "rendering_constraints": component.rendering_constraints,
+                }))
+                .collect::<Vec<_>>(),
             "themes": themes,
         }))
     }
@@ -2686,6 +2739,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn design_board_set_cells_accepts_component_cells() {
+        let (tmp, ext) = test_extension();
+        let out = ext
+            .handle_rpc(
+                "execute_design_board_set_cells",
+                json!({
+                    "path": "boards/Components.board",
+                    "cells": [{
+                        "id": "panel", "x": 0, "y": 0, "w": 4, "h": 2,
+                        "content": {
+                            "kind": "component",
+                            "component": "Panel",
+                            "variant": "default",
+                            "props": {"title": "Hello", "body": "World"}
+                        }
+                    }]
+                }),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(out["cell_count"], 1);
+        assert!(out["lint_warnings"].as_array().unwrap().is_empty());
+        let body = std::fs::read_to_string(tmp.path().join("boards/Components.board")).unwrap();
+        assert!(body.contains("\"kind\": \"component\""));
+        assert!(body.contains("\"component\": \"Panel\""));
+    }
+
+    #[tokio::test]
+    async fn design_board_set_cells_rejects_unknown_component() {
+        let (_tmp, ext) = test_extension();
+        let err = ext
+            .handle_rpc(
+                "execute_design_board_set_cells",
+                json!({
+                    "path": "x.board",
+                    "cells": [{
+                        "id": "bad", "x": 0, "y": 0, "w": 4, "h": 2,
+                        "content": {"kind": "component", "component": "Missing"}
+                    }]
+                }),
+            )
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("unknown Design Board component"));
+    }
+
+    #[tokio::test]
     async fn design_board_set_cells_accepts_stringified_cells_array() {
         // Anthropic's tool-call surface sometimes serializes nested array
         // args as a JSON-encoded string. Without coercion we silently dropped
@@ -3020,6 +3121,11 @@ mod tests {
         assert_eq!(out["themes"][0]["vars"]["--primary"], "#fff");
         // Cell-authoring guidance surfaces alongside primitives + themes.
         assert_eq!(out["cell_authoring_guidance"].as_array().unwrap().len(), 1);
+        assert!(out["components"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|component| component["name"] == "Panel"));
     }
 
     #[tokio::test]
