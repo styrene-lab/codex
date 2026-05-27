@@ -1,76 +1,22 @@
 use crate::bootstrap::AppContext;
 use crate::state::TerminalOpenCommand;
-use crate::terminal::{
-    TerminalCreateParams, TerminalManager, TerminalPlacement, TerminalSessionInfo,
-    TerminalSnapshotView, TerminalStatus,
-};
+use crate::terminal::{TerminalManager, TerminalSessionInfo, TerminalSnapshotView, TerminalStatus};
 use dioxus::prelude::*;
-use std::path::PathBuf;
 
 const TERMINAL_ROWS: usize = 34;
 const TERMINAL_COLS: usize = 120;
-const TERMINAL_ID: &str = "terminal-diagnostics";
-
-const TERMINAL_DIAGNOSTIC_SCRIPT: &str = r#"printf '\033[1;36mFlynt terminal\033[0m\n'
-printf 'cwd: %s\n' "$PWD"
-printf 'shell: %s\n' "${SHELL:-unknown}"
-printf 'term: %s\n' "${TERM:-unset}"
-printf '\n\033[1mRequired behavior checklist\033[0m\n'
-printf '[1] ANSI SGR colors: \033[31mred\033[0m \033[32mgreen\033[0m \033[34mblue\033[0m \033[38;2;42;180;200mtruecolor\033[0m\n'
-printf '[2] Unicode width: ASCII | λ hydra 🜁 | box ┌─┐ │ │ └─┘\n'
-printf '[3] Nerd/powerline glyphs: branch  lock  prompt ❯ separator \n'
-printf '[4] Width stress: emoji 😀 ⚙️ 🧪 | CJK 界面 終端 | combining e\u0301 a\u0308 o\u0302\n'
-printf '[5] OSC/title safety: setting terminal title should not leak raw escapes\n'
-printf '\033]0;Flynt terminal title\007'
-printf '[6] Cursor/control: carriage return overwrite -> start'; printf '\r[6] Cursor/control: carriage return overwrite -> ok   \n'
-printf '[7] Long output / scrollback follows:\n'
-for i in $(seq 1 40); do printf '    scrollback line %02d: terminal output remains readable\n' "$i"; done
-printf '[8] Resize requirement: grid must update rows/cols without corrupting output\n'
-printf '[9] Input requirement: after this script exits, an interactive shell should accept typed commands\n'
-printf '[10] Process lifecycle: Flynt must detect exit status and clean up PTY/threads\n'
-printf '\n\033[1;33mManual checks:\033[0m paste text, run less/vim/top if available, resize window, then exit.\n'
-printf '\nLaunching interactive shell...\n'
-exec "${SHELL:-/bin/sh}" -l
-"#;
-
 #[component]
 pub fn TerminalLabView() -> Element {
     let ctx = use_context::<AppContext>();
     let project_root = ctx.project_root();
     let manager = use_context::<TerminalManager>();
-    let script_path = ensure_diagnostic_script(&project_root);
-    let script_display = script_path.display().to_string();
     let mut terminal_id = use_signal(|| None::<String>);
     let terminal_open = use_context::<Signal<TerminalOpenCommand>>();
     let mut last_open_version = use_signal(|| 0_u64);
     let mut sessions = use_signal(Vec::<TerminalSessionInfo>::new);
     let mut status = use_signal(|| TerminalStatus::Failed("not started".to_string()));
     let mut snapshot = use_signal(|| crate::terminal::view::TerminalSnapshot::blank(TERMINAL_ROWS, TERMINAL_COLS));
-    let mut error = use_signal(|| None::<String>);
-
-    {
-        let manager = manager.clone();
-        let project_root = project_root.clone();
-        let script_arg = script_path.to_string_lossy().to_string();
-        use_effect(move || {
-            let mut params = TerminalCreateParams::new("sh");
-            params.args = vec![script_arg.clone()];
-            params.cwd = Some(project_root.display().to_string());
-            params.title = Some("Flynt Terminal".to_string());
-            params.placement = Some(TerminalPlacement::BottomPane);
-            params.reuse_key = Some(TERMINAL_ID.to_string());
-            match manager.create(params) {
-                Ok(result) => {
-                    terminal_id.set(Some(result.terminal_id));
-                    sessions.set(manager.list());
-                    error.set(None);
-                }
-                Err(err) => {
-                    error.set(Some(err.to_string()));
-                }
-            }
-        });
-    }
+    let error = use_signal(|| None::<String>);
 
 
     {
@@ -125,7 +71,6 @@ pub fn TerminalLabView() -> Element {
                 }
                 div { class: "terminal-meta",
                     div { "Project: {project_root.display()}" }
-                    div { "Script: {script_display}" }
                     div { "Status: {status_label}" }
                 }
             }
@@ -220,26 +165,4 @@ fn terminal_status_label(status: &TerminalStatus) -> String {
         TerminalStatus::Exited(label) => format!("exited {label}"),
         TerminalStatus::Failed(err) => format!("failed {err}"),
     }
-}
-
-fn ensure_diagnostic_script(project_root: &PathBuf) -> PathBuf {
-    let dir = project_root.join(".flynt-local").join("terminal");
-    let path = dir.join("terminal-necessities.sh");
-    if let Err(err) = std::fs::create_dir_all(&dir) {
-        tracing::warn!("Failed to create terminal dir {}: {err}", dir.display());
-        return path;
-    }
-    if let Err(err) = std::fs::write(&path, TERMINAL_DIAGNOSTIC_SCRIPT) {
-        tracing::warn!("Failed to write terminal script {}: {err}", path.display());
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if let Ok(meta) = std::fs::metadata(&path) {
-            let mut perms = meta.permissions();
-            perms.set_mode(0o755);
-            let _ = std::fs::set_permissions(&path, perms);
-        }
-    }
-    path
 }
