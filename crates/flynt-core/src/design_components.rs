@@ -49,7 +49,10 @@ impl DesignComponentDefinition {
         }
     }
 
-    pub fn validate_variant<'a>(&self, variant: Option<&'a str>) -> anyhow::Result<Option<&'a str>> {
+    pub fn validate_variant<'a>(
+        &self,
+        variant: Option<&'a str>,
+    ) -> anyhow::Result<Option<&'a str>> {
         let Some(variant) = variant else {
             return Ok(None);
         };
@@ -66,7 +69,10 @@ impl DesignComponentDefinition {
 }
 
 pub fn list_components() -> Vec<DesignComponentMetadata> {
-    registry().iter().map(|definition| definition.metadata()).collect()
+    registry()
+        .iter()
+        .map(|definition| definition.metadata())
+        .collect()
 }
 
 pub fn get_component(name: &str) -> Option<&'static DesignComponentDefinition> {
@@ -96,7 +102,15 @@ pub fn render_component(
 }
 
 fn registry() -> &'static [DesignComponentDefinition] {
-    &[PANEL]
+    &[
+        PANEL,
+        FRAME,
+        TEXT_BLOCK,
+        COLUMNS,
+        STACK,
+        BUTTON_ROW,
+        IMAGE_PLACEHOLDER,
+    ]
 }
 
 const COMPONENT_CONSTRAINTS: &[&str] = &[
@@ -109,12 +123,83 @@ const COMPONENT_CONSTRAINTS: &[&str] = &[
 const PANEL: DesignComponentDefinition = DesignComponentDefinition {
     name: "Panel",
     category: "layout",
-    description: "Generic shadcn-style card shell with optional title, description, badge, body, and footer.",
+    description:
+        "Generic shadcn-style card shell with optional title, description, badge, body, and footer.",
     variants: &["default", "muted", "accent"],
     props_schema: panel_props_schema,
     examples: panel_examples,
     rendering_constraints: COMPONENT_CONSTRAINTS,
     render: render_panel,
+};
+
+const FRAME: DesignComponentDefinition = DesignComponentDefinition {
+    name: "Frame",
+    category: "layout",
+    description:
+        "Generic visual region for page sections, artboards, brochure panels, and whiteboard zones.",
+    variants: &["plain", "card", "bordered", "hero", "muted", "accent"],
+    props_schema: frame_props_schema,
+    examples: frame_examples,
+    rendering_constraints: COMPONENT_CONSTRAINTS,
+    render: render_frame,
+};
+
+const TEXT_BLOCK: DesignComponentDefinition = DesignComponentDefinition {
+    name: "TextBlock",
+    category: "typography",
+    description:
+        "Structured typography block for headings, body copy, quotes, captions, and fine print.",
+    variants: &["body", "heading", "lead", "quote", "caption", "fine-print"],
+    props_schema: text_block_props_schema,
+    examples: text_block_examples,
+    rendering_constraints: COMPONENT_CONSTRAINTS,
+    render: render_text_block,
+};
+
+const COLUMNS: DesignComponentDefinition = DesignComponentDefinition {
+    name: "Columns",
+    category: "layout",
+    description:
+        "Multi-column content layout for brochures, resumes, comparisons, and web sections.",
+    variants: &["two", "three", "asymmetric-left", "asymmetric-right"],
+    props_schema: columns_props_schema,
+    examples: columns_examples,
+    rendering_constraints: COMPONENT_CONSTRAINTS,
+    render: render_columns,
+};
+
+const STACK: DesignComponentDefinition = DesignComponentDefinition {
+    name: "Stack",
+    category: "layout",
+    description: "Vertical list/stack of simple structured items with optional bullets, checks, or numbering.",
+    variants: &["default", "compact", "bullets", "checklist", "numbered"],
+    props_schema: stack_props_schema,
+    examples: stack_examples,
+    rendering_constraints: COMPONENT_CONSTRAINTS,
+    render: render_stack,
+};
+
+const BUTTON_ROW: DesignComponentDefinition = DesignComponentDefinition {
+    name: "ButtonRow",
+    category: "actions",
+    description:
+        "Primary/secondary action row for website mockups, product one-pagers, and document CTAs.",
+    variants: &["left", "center", "right", "stacked"],
+    props_schema: button_row_props_schema,
+    examples: button_row_examples,
+    rendering_constraints: COMPONENT_CONSTRAINTS,
+    render: render_button_row,
+};
+
+const IMAGE_PLACEHOLDER: DesignComponentDefinition = DesignComponentDefinition {
+    name: "ImagePlaceholder",
+    category: "media",
+    description: "Theme-aware media/screenshot placeholder with aspect and caption support.",
+    variants: &["default", "browser", "device", "plain"],
+    props_schema: image_placeholder_props_schema,
+    examples: image_placeholder_examples,
+    rendering_constraints: COMPONENT_CONSTRAINTS,
+    render: render_image_placeholder,
 };
 
 fn panel_props_schema() -> Value {
@@ -183,7 +268,12 @@ fn render_panel(props: &Value, variant: Option<&str>) -> anyhow::Result<Rendered
 
     let body = body
         .as_deref()
-        .map(|value| format!("<p class=\"text-sm leading-6 text-muted-foreground\">{}</p>", escape_html(value)))
+        .map(|value| {
+            format!(
+                "<p class=\"text-sm leading-6 text-muted-foreground\">{}</p>",
+                escape_html(value)
+            )
+        })
         .unwrap_or_default();
     let footer = footer
         .as_deref()
@@ -197,6 +287,240 @@ fn render_panel(props: &Value, variant: Option<&str>) -> anyhow::Result<Rendered
         css: String::new(),
         js: None,
     })
+}
+
+fn frame_props_schema() -> Value {
+    json!({"type":"object","additionalProperties":false,"properties":{"title":{"type":"string"},"subtitle":{"type":"string"},"body":{"type":"string"},"padding":{"type":"string","enum":["sm","md","lg"]}}})
+}
+fn frame_examples() -> Vec<Value> {
+    vec![
+        json!({"component":"Frame","variant":"card","props":{"title":"Hero section","subtitle":"Above the fold","body":"Use as a flexible artboard region.","padding":"lg"}}),
+    ]
+}
+fn render_frame(props: &Value, variant: Option<&str>) -> anyhow::Result<RenderedCell> {
+    let title = prop_string(props, "title")?;
+    let subtitle = prop_string(props, "subtitle")?;
+    let body = prop_string(props, "body")?;
+    let padding = prop_string(props, "padding")?.unwrap_or_else(|| "md".into());
+    let pad = match padding.as_str() {
+        "sm" => "p-3",
+        "md" => "p-5",
+        "lg" => "p-8",
+        other => bail!("unknown padding '{other}'"),
+    };
+    let classes = match variant.unwrap_or("card") {
+        "plain" => "bg-transparent text-foreground",
+        "card" => "rounded-lg border border-border bg-card text-card-foreground shadow-sm",
+        "bordered" => "rounded-lg border border-border bg-transparent text-foreground",
+        "hero" => "rounded-xl border border-primary bg-card text-card-foreground shadow-sm",
+        "muted" => "rounded-lg border border-border bg-muted text-foreground",
+        "accent" => "rounded-lg border border-primary bg-card text-card-foreground",
+        other => bail!("unknown Frame variant '{other}'"),
+    };
+    Ok(RenderedCell{html:format!("<section class=\"h-full {classes} {pad}\"><div class=\"flex h-full flex-col justify-center gap-3\">{}{}{}</div></section>", opt_h("h2","text-2xl font-bold tracking-tight text-foreground",title), opt_p("text-sm text-muted-foreground",subtitle), opt_p("text-sm leading-6 text-muted-foreground",body)), css:String::new(), js:None})
+}
+
+fn text_block_props_schema() -> Value {
+    json!({"type":"object","additionalProperties":false,"properties":{"eyebrow":{"type":"string"},"heading":{"type":"string"},"body":{"type":"string"},"align":{"type":"string","enum":["left","center","right"]}}})
+}
+fn text_block_examples() -> Vec<Value> {
+    vec![
+        json!({"component":"TextBlock","variant":"lead","props":{"eyebrow":"About","heading":"Senior systems engineer","body":"I design local-first tools for source-backed work.","align":"left"}}),
+    ]
+}
+fn render_text_block(props: &Value, variant: Option<&str>) -> anyhow::Result<RenderedCell> {
+    let eyebrow = prop_string(props, "eyebrow")?;
+    let heading = prop_string(props, "heading")?;
+    let body = prop_string(props, "body")?;
+    let align = prop_string(props, "align")?.unwrap_or_else(|| "left".into());
+    let align_class = match align.as_str() {
+        "left" => "text-left items-start",
+        "center" => "text-center items-center",
+        "right" => "text-right items-end",
+        other => bail!("unknown align '{other}'"),
+    };
+    let (hcls, bcls) = match variant.unwrap_or("body") {
+        "body" => (
+            "text-xl font-semibold tracking-tight text-foreground",
+            "text-sm leading-6 text-muted-foreground",
+        ),
+        "heading" => (
+            "text-3xl font-bold tracking-tight text-foreground",
+            "text-base leading-7 text-muted-foreground",
+        ),
+        "lead" => (
+            "text-2xl font-bold tracking-tight text-foreground",
+            "text-lg leading-7 text-muted-foreground",
+        ),
+        "quote" => (
+            "text-2xl font-semibold italic tracking-tight text-foreground",
+            "text-sm text-muted-foreground",
+        ),
+        "caption" => (
+            "text-sm font-semibold text-foreground",
+            "text-xs text-muted-foreground",
+        ),
+        "fine-print" => (
+            "text-sm font-medium text-foreground",
+            "text-xs leading-5 text-muted-foreground",
+        ),
+        other => bail!("unknown TextBlock variant '{other}'"),
+    };
+    Ok(RenderedCell{html:format!("<section class=\"h-full flex flex-col justify-center gap-3 {align_class}\">{}{}{}</section>", opt_p("text-xs font-semibold uppercase tracking-wide text-primary",eyebrow), opt_h("h2",hcls,heading), opt_p(bcls,body)), css:String::new(), js:None})
+}
+
+fn columns_props_schema() -> Value {
+    json!({"type":"object","additionalProperties":false,"properties":{"columns":{"type":"array","items":{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"}},"required":["title"]}}}})
+}
+fn columns_examples() -> Vec<Value> {
+    vec![
+        json!({"component":"Columns","variant":"two","props":{"columns":[{"title":"Problem","body":"Research fragments across tools."},{"title":"Solution","body":"Compose structured visual projections."}]}}),
+    ]
+}
+fn render_columns(props: &Value, variant: Option<&str>) -> anyhow::Result<RenderedCell> {
+    let cols = props
+        .get("columns")
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow!("property 'columns' must be an array"))?;
+    let grid = match variant.unwrap_or("two") {
+        "two" => "grid-cols-2",
+        "three" => "grid-cols-3",
+        "asymmetric-left" => "grid-cols-3",
+        "asymmetric-right" => "grid-cols-3",
+        other => bail!("unknown Columns variant '{other}'"),
+    };
+    let mut out = String::new();
+    for (i, c) in cols.iter().enumerate() {
+        let title = value_string(c, "title")?;
+        let body = optional_value_string(c, "body")?;
+        let span = match (variant.unwrap_or("two"), i) {
+            ("asymmetric-left", 0) => " md:col-span-2",
+            ("asymmetric-right", 1) => " md:col-span-2",
+            _ => "",
+        };
+        out.push_str(&format!("<div class=\"rounded-lg border border-border bg-card p-4{span}\"><h3 class=\"text-sm font-semibold text-foreground\">{}</h3>{}</div>", escape_html(&title), body.map(|b|format!("<p class=\"mt-2 text-sm leading-6 text-muted-foreground\">{}</p>",escape_html(&b))).unwrap_or_default()));
+    }
+    Ok(RenderedCell {
+        html: format!("<div class=\"h-full grid {grid} gap-4\">{out}</div>"),
+        css: String::new(),
+        js: None,
+    })
+}
+
+fn stack_props_schema() -> Value {
+    json!({"type":"object","additionalProperties":false,"properties":{"title":{"type":"string"},"items":{"type":"array","items":{"type":"string"}}}})
+}
+fn stack_examples() -> Vec<Value> {
+    vec![
+        json!({"component":"Stack","variant":"checklist","props":{"title":"Launch checklist","items":["Frame primitive","TextBlock primitive","Columns primitive"]}}),
+    ]
+}
+fn render_stack(props: &Value, variant: Option<&str>) -> anyhow::Result<RenderedCell> {
+    let title = prop_string(props, "title")?;
+    let items = props
+        .get("items")
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow!("property 'items' must be an array"))?;
+    let variant = variant.unwrap_or("default");
+    let mut lis = String::new();
+    for (idx, item) in items.iter().enumerate() {
+        let text = item
+            .as_str()
+            .ok_or_else(|| anyhow!("stack items must be strings"))?;
+        let marker = match variant {
+            "checklist" => "✓".into(),
+            "numbered" => format!("{}.", idx + 1),
+            "bullets" => "•".into(),
+            "default" | "compact" => "".into(),
+            other => bail!("unknown Stack variant '{other}'"),
+        };
+        lis.push_str(&format!("<li class=\"flex gap-3 text-sm text-muted-foreground\"><span class=\"w-5 shrink-0 text-primary\">{}</span><span>{}</span></li>",marker,escape_html(text)));
+    }
+    Ok(RenderedCell{html:format!("<section class=\"h-full rounded-lg border border-border bg-card p-5\">{}<ul class=\"flex h-full flex-col gap-3\">{lis}</ul></section>", opt_h("h3","mb-3 text-sm font-semibold text-foreground",title)), css:String::new(), js:None})
+}
+
+fn button_row_props_schema() -> Value {
+    json!({"type":"object","additionalProperties":false,"properties":{"primary":{"type":"string"},"secondary":{"type":"string"},"tertiary":{"type":"string"}}})
+}
+fn button_row_examples() -> Vec<Value> {
+    vec![
+        json!({"component":"ButtonRow","variant":"left","props":{"primary":"Get started","secondary":"Learn more"}}),
+    ]
+}
+fn render_button_row(props: &Value, variant: Option<&str>) -> anyhow::Result<RenderedCell> {
+    let primary = prop_string(props, "primary")?;
+    let secondary = prop_string(props, "secondary")?;
+    let tertiary = prop_string(props, "tertiary")?;
+    let layout = match variant.unwrap_or("left") {
+        "left" => "items-center justify-start",
+        "center" => "items-center justify-center",
+        "right" => "items-center justify-end",
+        "stacked" => "items-stretch justify-center flex-col",
+        other => bail!("unknown ButtonRow variant '{other}'"),
+    };
+    let mut buttons = String::new();
+    if let Some(v) = primary {
+        buttons.push_str(&format!("<span class=\"inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground\">{}</span>",escape_html(&v)));
+    }
+    if let Some(v) = secondary {
+        buttons.push_str(&format!("<span class=\"inline-flex items-center justify-center rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground\">{}</span>",escape_html(&v)));
+    }
+    if let Some(v) = tertiary {
+        buttons.push_str(&format!("<span class=\"inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-muted-foreground\">{}</span>",escape_html(&v)));
+    }
+    Ok(RenderedCell {
+        html: format!("<div class=\"h-full flex gap-3 {layout}\">{buttons}</div>"),
+        css: String::new(),
+        js: None,
+    })
+}
+
+fn image_placeholder_props_schema() -> Value {
+    json!({"type":"object","additionalProperties":false,"properties":{"label":{"type":"string"},"caption":{"type":"string"},"aspect":{"type":"string"}}})
+}
+fn image_placeholder_examples() -> Vec<Value> {
+    vec![
+        json!({"component":"ImagePlaceholder","variant":"browser","props":{"label":"Product screenshot","caption":"Dashboard concept","aspect":"16:9"}}),
+    ]
+}
+fn render_image_placeholder(props: &Value, variant: Option<&str>) -> anyhow::Result<RenderedCell> {
+    let label = prop_string(props, "label")?.unwrap_or_else(|| "Image placeholder".into());
+    let caption = prop_string(props, "caption")?;
+    let aspect = prop_string(props, "aspect")?.unwrap_or_else(|| "16:9".into());
+    let aspect_cls = match aspect.as_str() {
+        "1:1" => "aspect-square",
+        "4:3" => "aspect-video",
+        "16:9" => "aspect-video",
+        "auto" => "h-full",
+        other => bail!("unknown aspect '{other}'"),
+    };
+    let chrome=match variant.unwrap_or("default"){"browser"=>"<div class=\"flex gap-1 border-b border-border p-2\"><span class=\"h-2 w-2 rounded-full bg-destructive\"></span><span class=\"h-2 w-2 rounded-full bg-yellow-500\"></span><span class=\"h-2 w-2 rounded-full bg-green-500\"></span></div>","default"|"device"|"plain"=>"",other=>bail!("unknown ImagePlaceholder variant '{other}'")};
+    Ok(RenderedCell{html:format!("<figure class=\"h-full rounded-lg border border-dashed border-border bg-muted/40 text-muted-foreground overflow-hidden\">{chrome}<div class=\"flex {aspect_cls} h-full flex-col items-center justify-center gap-2 p-4 text-center\"><div class=\"text-sm font-medium text-foreground\">{}</div>{}</div></figure>",escape_html(&label), caption.map(|c|format!("<figcaption class=\"text-xs\">{}</figcaption>",escape_html(&c))).unwrap_or_default()), css:String::new(), js:None})
+}
+
+fn opt_h(tag: &str, class: &str, value: Option<String>) -> String {
+    value
+        .map(|v| format!("<{tag} class=\"{class}\">{}</{tag}>", escape_html(&v)))
+        .unwrap_or_default()
+}
+fn opt_p(class: &str, value: Option<String>) -> String {
+    value
+        .map(|v| format!("<p class=\"{class}\">{}</p>", escape_html(&v)))
+        .unwrap_or_default()
+}
+fn value_string(value: &Value, key: &str) -> anyhow::Result<String> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| anyhow!("property '{key}' must be a string"))
+}
+fn optional_value_string(value: &Value, key: &str) -> anyhow::Result<Option<String>> {
+    match value.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(v)) => Ok(Some(v.clone())),
+        Some(_) => bail!("property '{key}' must be a string"),
+    }
 }
 
 fn prop_string(props: &Value, key: &str) -> anyhow::Result<Option<String>> {
@@ -221,12 +545,70 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lists_panel_metadata() {
+    fn lists_foundation_metadata() {
         let components = list_components();
-        let panel = components.iter().find(|component| component.name == "Panel").unwrap();
-        assert_eq!(panel.category, "layout");
-        assert!(panel.variants.contains(&"default"));
-        assert!(!panel.examples.is_empty());
+        for expected in [
+            "Panel",
+            "Frame",
+            "TextBlock",
+            "Columns",
+            "Stack",
+            "ButtonRow",
+            "ImagePlaceholder",
+        ] {
+            let component = components
+                .iter()
+                .find(|component| component.name == expected)
+                .unwrap();
+            assert!(
+                !component.examples.is_empty(),
+                "missing example for {expected}"
+            );
+            assert!(
+                !component.variants.is_empty(),
+                "missing variants for {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn foundation_components_render_h_full() {
+        let cases = [
+            ("Frame", json!({"title":"Frame"}), Some("card")),
+            (
+                "TextBlock",
+                json!({"heading":"Heading","body":"Body"}),
+                Some("lead"),
+            ),
+            (
+                "Columns",
+                json!({"columns":[{"title":"A"},{"title":"B"}]}),
+                Some("two"),
+            ),
+            ("Stack", json!({"items":["One","Two"]}), Some("checklist")),
+            (
+                "ButtonRow",
+                json!({"primary":"Go","secondary":"Back"}),
+                Some("center"),
+            ),
+            (
+                "ImagePlaceholder",
+                json!({"label":"Shot","aspect":"16:9"}),
+                Some("browser"),
+            ),
+        ];
+        for (name, props, variant) in cases {
+            let rendered = render_component(name, &props, variant).unwrap();
+            assert!(rendered.html.contains("h-full"), "{name} did not fill cell");
+        }
+    }
+
+    #[test]
+    fn foundation_components_escape_props() {
+        let rendered =
+            render_component("TextBlock", &json!({"heading":"<b>bad</b>"}), None).unwrap();
+        assert!(rendered.html.contains("&lt;b&gt;bad&lt;/b&gt;"));
+        assert!(!rendered.html.contains("<b>bad</b>"));
     }
 
     #[test]
@@ -257,7 +639,9 @@ mod tests {
 
     #[test]
     fn rejects_unknown_component() {
-        let err = render_component("Nope", &json!({}), None).unwrap_err().to_string();
+        let err = render_component("Nope", &json!({}), None)
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("unknown Design Board component"));
     }
 
@@ -274,6 +658,9 @@ mod tests {
         let err = render_component("Panel", &json!({ "title": 42 }), None)
             .unwrap_err()
             .to_string();
-        assert!(err.contains("property 'title' must be a string") || err.contains("render Design Board component 'Panel'"));
+        assert!(
+            err.contains("property 'title' must be a string")
+                || err.contains("render Design Board component 'Panel'")
+        );
     }
 }
