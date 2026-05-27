@@ -10,7 +10,9 @@ open_questions:
   - "Should D2-backed components accept raw D2 source in the first implementation, semantic node/edge specs only, or both with raw D2 treated as an escape hatch?"
   - "Where should component rendering live long-term: `flynt-core` for shared validation/rendering, `flynt-app` for UI-local rendering, or split with schemas/types in core and renderers in app?"
 dependencies: []
-related: []
+related:
+  - design-board-component-registry
+  - design-board-visual-substrate
 ---
 
 # Design Board component registry
@@ -78,6 +80,14 @@ Introduce a small internal Design Board component registry that combines shadcn-
 - Every built-in component must render an outermost h-full element and avoid Tailwind arbitrary-value classes.
 - D2-backed components must sanitize rendered SVG before embedding.
 - Component definitions must expose schema, examples, category, variants, and rendering constraints to agents.
+
+### Visual substrate expansion
+
+The broader component/template plan for websites, PDFs, resumes, brochures,
+whiteboards, diagrams, and product collateral is tracked in
+[[design-board-visual-substrate]]. That node supersedes the earlier
+research/dashboard-biased primitive ordering while keeping this registry as the
+technical rendering contract.
 
 ## Stable v1 Plan
 
