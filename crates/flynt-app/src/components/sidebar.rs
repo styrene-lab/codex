@@ -65,44 +65,48 @@ pub fn Sidebar(mut active_route: Signal<Route>) -> Element {
             // ── Project selector (compact) ──────────────────────
             ProjectSelector {}
 
-            // ── File tree ─────────────────────────────────────
-            div { class: "file-tree",
-                div { class: "file-tree-header",
-                    button {
-                        class: "file-tree-new-btn",
-                        title: "New note (\u{2318}N)",
-                        onclick: move |_| {
-                            let was = *creating.read();
-                            creating.set(!was);
-                            if !was {
-                                new_name.set(String::new());
-                                create_err.set(None);
+            if *active_route.read() == Route::Design {
+                crate::components::DesignPanel {}
+            } else {
+                // ── File tree ─────────────────────────────────────
+                div { class: "file-tree",
+                    div { class: "file-tree-header",
+                        button {
+                            class: "file-tree-new-btn",
+                            title: "New note (\u{2318}N)",
+                            onclick: move |_| {
+                                let was = *creating.read();
+                                creating.set(!was);
+                                if !was {
+                                    new_name.set(String::new());
+                                    create_err.set(None);
+                                }
+                            },
+                            "+"
+                        }
+                    }
+                    if *creating.read() {
+                        NewNoteInput {
+                            new_name,
+                            create_err,
+                            creating,
+                            refresh,
+                            active_route,
+                        }
+                    }
+                    match docs.read().as_ref() {
+                        None => rsx! { span { class: "tree-item muted", "Loading…" } },
+                        Some(list) if list.is_empty() => rsx! {
+                            div { class: "tree-empty",
+                                "Empty project — press + to create a note"
                             }
                         },
-                        "+"
+                        Some(list) => rsx! { { build_tree(list) } },
                     }
                 }
-                if *creating.read() {
-                    NewNoteInput {
-                        new_name,
-                        create_err,
-                        creating,
-                        refresh,
-                        active_route,
-                    }
-                }
-                match docs.read().as_ref() {
-                    None => rsx! { span { class: "tree-item muted", "Loading…" } },
-                    Some(list) if list.is_empty() => rsx! {
-                        div { class: "tree-empty",
-                            "Empty project — press + to create a note"
-                        }
-                    },
-                    Some(list) => rsx! { { build_tree(list) } },
-                }
-            }
 
-            BookmarksPanel { active_route }
+                BookmarksPanel { active_route }
+            }
 
             // ── Nav (pinned bottom) ───────────────────────────
             div { class: "sidebar-nav",
@@ -111,6 +115,12 @@ pub fn Sidebar(mut active_route: Signal<Route>) -> Element {
                     title: "Notes",
                     onclick: move |_| *active_route.write() = Route::Notes,
                     span { class: "nav-icon", dangerous_inner_html: crate::icons::ICON_SCROLL }
+                }
+                button {
+                    class: if *active_route.read() == Route::Design   { "nav-btn active" } else { "nav-btn" },
+                    title: "Design",
+                    onclick: move |_| *active_route.write() = Route::Design,
+                    span { class: "nav-icon", dangerous_inner_html: crate::icons::ICON_PALETTE }
                 }
                 button {
                     class: if *active_route.read() == Route::Kanban   { "nav-btn active" } else { "nav-btn" },

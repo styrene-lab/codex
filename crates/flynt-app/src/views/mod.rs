@@ -1,3 +1,4 @@
+pub mod design;
 pub mod design_board;
 pub mod excalidraw;
 pub mod flow;
@@ -12,6 +13,7 @@ pub mod settings;
 pub mod terminal_lab;
 pub mod welcome;
 
+pub use design::DesignView;
 pub use design_board::DesignBoardView;
 pub use excalidraw::ExcalidrawView;
 pub use flow::{FlowView, is_flow};

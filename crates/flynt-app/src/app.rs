@@ -9,8 +9,8 @@ use crate::{
         ThemeName,
     },
     views::{
-        GraphView, KanbanView, LensesView, NotesView, SearchView, SettingsView, TerminalLabView,
-        WelcomeView,
+        DesignView, GraphView, KanbanView, LensesView, NotesView, SearchView, SettingsView,
+        TerminalLabView, WelcomeView,
     },
 };
 use dioxus::prelude::*;
@@ -242,6 +242,7 @@ pub fn App() -> Element {
     dioxus::desktop::use_muda_event_handler(move |event| {
         match event.id().0.as_str() {
             crate::menu::VIEW_NOTES => *active_route.write() = Route::Notes,
+            crate::menu::VIEW_DESIGN => *active_route.write() = Route::Design,
             crate::menu::VIEW_BOARD => *active_route.write() = Route::Kanban,
             crate::menu::VIEW_GRAPH => *active_route.write() = Route::Graph,
             crate::menu::VIEW_SETTINGS => *settings_open_menu.write() = SettingsOpen(true),
@@ -818,6 +819,7 @@ pub fn App() -> Element {
                             }
                         },
                         Route::Notes    => rsx! { NotesView {} },
+                        Route::Design   => rsx! { DesignView {} },
 
                         Route::Search   => rsx! { SearchView { search_query } },
                         Route::Lenses   => rsx! { LensesView {} },

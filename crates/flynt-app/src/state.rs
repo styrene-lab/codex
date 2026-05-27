@@ -75,6 +75,7 @@ pub enum Route {
     Welcome,
     #[default]
     Notes,
+    Design,
     Search,
     Lenses,
     Kanban,

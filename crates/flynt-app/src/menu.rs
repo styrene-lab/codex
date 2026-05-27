@@ -16,6 +16,7 @@ pub const SAVE: &str = "flynt-save";
 pub const CLOSE_TAB: &str = "flynt-close-tab";
 
 pub const VIEW_NOTES: &str = "flynt-view-notes";
+pub const VIEW_DESIGN: &str = "flynt-view-design";
 pub const VIEW_BOARD: &str = "flynt-view-board";
 pub const VIEW_GRAPH: &str = "flynt-view-graph";
 pub const VIEW_SETTINGS: &str = "flynt-view-settings";
@@ -161,16 +162,22 @@ pub fn build_menu_bar() -> Menu {
                 Some(Accelerator::new(Some(Modifiers::META), Code::Digit1)),
             ),
             &MenuItem::with_id(
+                VIEW_DESIGN,
+                "Design",
+                true,
+                Some(Accelerator::new(Some(Modifiers::META), Code::Digit2)),
+            ),
+            &MenuItem::with_id(
                 VIEW_BOARD,
                 "Tasks",
                 true,
-                Some(Accelerator::new(Some(Modifiers::META), Code::Digit2)),
+                Some(Accelerator::new(Some(Modifiers::META), Code::Digit3)),
             ),
             &MenuItem::with_id(
                 VIEW_GRAPH,
                 "Graph",
                 true,
-                Some(Accelerator::new(Some(Modifiers::META), Code::Digit3)),
+                Some(Accelerator::new(Some(Modifiers::META), Code::Digit4)),
             ),
             &PredefinedMenuItem::separator(),
             &MenuItem::with_id(

@@ -131,6 +131,7 @@ fn execute_command(
 ) {
     match id {
         "view-notes" => *active_route.write() = Route::Notes,
+        "view-design" => *active_route.write() = Route::Design,
         "view-board" => *active_route.write() = Route::Kanban,
         "view-lenses" => *active_route.write() = Route::Lenses,
         "view-graph" => *active_route.write() = Route::Graph,
@@ -567,6 +568,11 @@ pub fn CommandPalette(mut open: Signal<bool>, mode: Signal<PaletteMode>) -> Elem
             Cmd {
                 id: "view-notes".into(),
                 label: "Notes".into(),
+                category: "Navigate".into(),
+            },
+            Cmd {
+                id: "view-design".into(),
+                label: "Design".into(),
                 category: "Navigate".into(),
             },
             Cmd {
