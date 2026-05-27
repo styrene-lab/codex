@@ -57,6 +57,7 @@ Introduce a small internal Design Board component registry that combines shadcn-
 - [assumption] The existing vendored Tailwind subset includes enough shadcn-compatible classes for the first built-in components; otherwise the component slice must expand the generated Tailwind CSS bundle.
 - Should D2-backed components accept raw D2 source in the first implementation, semantic node/edge specs only, or both with raw D2 treated as an escape hatch?
 - Where should component rendering live long-term: `flynt-core` for shared validation/rendering, `flynt-app` for UI-local rendering, or split with schemas/types in core and renderers in app?
+- Remove legacy top-level `html/css/js` Design Board cell deserialization before declaring the component registry v1 stable. Legacy input is accepted only as a temporary compatibility shim and must canonicalize to `content.kind = "html"` on save.
 
 ## Implementation Notes
 
@@ -93,7 +94,7 @@ Clean up the renamed Design Board foundation before adding component semantics.
 
 ### Phase 1 — Cell content schema
 
-Add an explicit content layer so a cell can be raw markup or a semantic component.
+Add an explicit content layer so a cell can be raw markup or a semantic component. This phase uses a temporary Option-B compatibility shim: legacy top-level `html/css/js` cell fields are accepted only at input boundaries, immediately canonicalized into `CellContent::Html`, and never written back out by normal serialization.
 
 ```rust
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -118,9 +119,20 @@ pub enum CellContent {
 }
 ```
 
-The first implementation may deserialize legacy `html/css/js` fields into `CellContent::Html`; the stable v1 format should prefer `content` as the canonical representation.
+The first implementation may deserialize legacy `html/css/js` fields into `CellContent::Html`; the stable v1 format should prefer `content` as the canonical representation. Legacy support is tracked as a removal gate, not an indefinite dual-format contract.
 
-**Acceptance:** raw cells and component cells both round-trip through `.board` JSON, and invalid content kinds produce clear errors.
+```rust
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum CellWire {
+    V1(Cell),
+    Legacy(LegacyCell),
+}
+```
+
+Only the canonical `Cell` shape implements normal serialization. A board loaded from legacy cells must save back without top-level `html`, `css`, or `js` fields.
+
+**Acceptance:** raw cells and component cells both round-trip through `.board` JSON, invalid content kinds produce clear errors, legacy cells load with a deprecation warning, and canonical serialization drops legacy fields.
 
 ### Phase 2 — Static component registry
 
