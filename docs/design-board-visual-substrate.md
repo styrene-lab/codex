@@ -12,6 +12,7 @@ open_questions:
   - "What minimum template library proves generality across website, document, brochure, whiteboard, and diagram use cases?"
 related:
   - design-board-component-registry
+  - design-sidebar-organization
 ---
 
 # Design Board visual substrate
