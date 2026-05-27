@@ -2059,3 +2059,157 @@
   color:     var(--muted-foreground);
   font-size: var(--font-size-xs);
 }
+
+/* ── Design panel UX pass ────────────────────────────────────────────── */
+.design-panel-intro {
+  padding-bottom: var(--space-1);
+}
+
+.design-tab-bar {
+  display:    grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap:        4px;
+  padding:    3px;
+  border:     1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+}
+
+.design-tab {
+  height:        26px;
+  border-radius: calc(var(--radius) - 2px);
+  color:         var(--muted-foreground);
+  font-size:     10px;
+  font-weight:   var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.design-tab:hover {
+  color:      var(--foreground);
+  background: var(--surface);
+}
+
+.design-tab.active {
+  color:      var(--primary);
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.design-file-actions {
+  display:        flex;
+  flex-direction: column;
+  gap:            var(--space-2);
+}
+
+.design-action-button {
+  min-height:     30px;
+  border:         1px solid var(--border);
+  border-radius:  var(--radius);
+  color:          var(--foreground);
+  background:     var(--card);
+  font-size:      var(--font-size-xs);
+  font-weight:    var(--font-weight-semibold);
+  text-align:     left;
+  padding:        0 var(--space-2);
+}
+
+.design-action-button:hover {
+  border-color: var(--primary-muted);
+  color:        var(--primary);
+}
+
+.design-action-button.primary {
+  border-color: color-mix(in srgb, var(--primary) 60%, var(--border));
+}
+
+.design-empty-state {
+  border:        1px dashed var(--border);
+  border-radius: var(--radius);
+  padding:       var(--space-3);
+  background:    color-mix(in srgb, var(--card) 65%, transparent);
+}
+
+.design-empty-title {
+  color:       var(--foreground);
+  font-size:   var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: 4px;
+}
+
+.design-empty-state p {
+  color:       var(--muted-foreground);
+  font-size:   var(--font-size-xs);
+  line-height: 1.45;
+}
+
+.design-quick-list,
+.design-kind-list {
+  display:        flex;
+  flex-direction: column;
+  gap:            var(--space-1);
+}
+
+.design-quick-row,
+.design-kind-row,
+.design-component-row {
+  display:       flex;
+  align-items:   center;
+  justify-content: space-between;
+  gap:           var(--space-2);
+  border:        1px solid var(--border);
+  border-radius: var(--radius);
+  background:    var(--card);
+  padding:       var(--space-2);
+  min-height:    34px;
+}
+
+.design-kind-row,
+.design-component-row {
+  width:      100%;
+  text-align: left;
+}
+
+.design-kind-row:hover,
+.design-component-row:hover {
+  border-color: var(--primary-muted);
+  background:   var(--surface);
+}
+
+.design-kind-main,
+.design-component-row-main {
+  display:        flex;
+  flex-direction: column;
+  min-width:      0;
+  gap:            2px;
+}
+
+.design-kind-title,
+.design-component-title,
+.design-quick-row strong {
+  color:       var(--foreground);
+  font-size:   var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+.design-kind-description,
+.design-component-description {
+  color:         var(--muted-foreground);
+  font-size:     10px;
+  overflow:      hidden;
+  text-overflow: ellipsis;
+  white-space:   nowrap;
+  max-width:     260px;
+}
+
+.design-kind-exports,
+.design-component-count,
+.design-quick-row span {
+  color:       var(--dim);
+  font-size:   10px;
+  flex-shrink: 0;
+}
+
+.design-component-row {
+  min-height: 30px;
+}
