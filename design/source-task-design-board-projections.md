@@ -1,9 +1,9 @@
 +++
-id = "source-task-canvas-projections"
+id = "source-task-design-board-projections"
 kind = "design_node"
-title = "Source task and Canvas projections"
+title = "Source task and Design Board projections"
 status = "exploring"
-tags = ["research", "sources", "tasks", "canvas", "projection"]
+tags = ["research", "sources", "tasks", "design-board", "projection"]
 
 [data]
 parent = "zotero-research-workspace"
@@ -12,17 +12,17 @@ priority = 2
 trigger = "operator-design-question"
 +++
 
-# Source task and Canvas projections
+# Source task and Design Board projections
 
 ## Thesis
 
 Flynt should treat source documents as canonical research objects. Research
-tasks and Canvas cells should reference source documents and render projections
+tasks and Design Board cells should reference source documents and render projections
 of them rather than duplicating bibliographic metadata or owning independent
 source state.
 
 ```text
-Source note             Research task              Canvas component
+Source note             Research task              Design Board component
 -----------             -------------              ----------------
 kind = "source"   --->  source refs + status  ---> renderable source card
 canonical markdown      workflow/action layer      visual projection layer
@@ -36,7 +36,7 @@ A source note owns bibliographic metadata, annotations, summaries, extracted
 claims, and durable synthesis. It remains ordinary markdown with `kind =
 "source"` frontmatter and flat indexed fields.
 
-Research tasks and Canvas cells should link to the source by stable document
+Research tasks and Design Board cells should link to the source by stable document
 identity where available, with path/citation-key fallback for portability and
 human readability.
 
@@ -58,14 +58,14 @@ Tasks should reference sources but not duplicate bibliographic fields. Their
 state is workflow state (`todo`, `doing`, `blocked`, `done`, priority, due date,
 assigned context), not source truth.
 
-### Accepted: Canvas cells are visual projections
+### Accepted: Design Board cells are visual projections
 
-Canvas should render source documents as components such as source cards,
+Design Board should render source documents as components such as source cards,
 evidence cards, reading-task cards, annotation cards, and source clusters. A
-Canvas cell may cache generated HTML for rendering, but it must retain enough
+Design Board cell may cache generated HTML for rendering, but it must retain enough
 reference metadata to refresh from the source document.
 
-The Canvas is the layout/composition layer. It should not become a second
+The Design Board is the layout/composition layer. It should not become a second
 research database.
 
 ## Source-to-task reference convention
@@ -107,9 +107,9 @@ Extract reusable claims and implementation notes from
 Write durable synthesis back to the source note under `## Synthesis`.
 ```
 
-## Canvas source component model
+## Design Board source component model
 
-A source-backed Canvas cell should store both its rendered card and a stable
+A source-backed Design Board cell should store both its rendered card and a stable
 reference payload. Candidate cell metadata:
 
 ```json
@@ -126,7 +126,7 @@ reference payload. Candidate cell metadata:
 }
 ```
 
-The initial implementation can generate ordinary Canvas HTML/CSS, but the cell
+The initial implementation can generate ordinary Design Board HTML/CSS, but the cell
 should preserve the `source_ref` so a refresh command can re-read the source and
 regenerate the card without changing its grid position.
 
@@ -162,7 +162,7 @@ semantic.
 
 ### Reading-task card
 
-Use for research planning Canvas boards.
+Use for research planning Design Board boards.
 
 Shows:
 
@@ -191,13 +191,13 @@ can be added after typed relationships land.
 
 ## Refresh semantics
 
-Canvas source cards should be refreshable:
+Design Board source cards should be refreshable:
 
-1. Find Canvas cells with `source_ref`.
+1. Find Design Board cells with `source_ref`.
 2. Resolve by `document_id`, then path, then citation/Zotero key fallback.
 3. Load the source document.
 4. Re-render card HTML from source metadata/body excerpt.
-5. Preserve Canvas position, size, theme, and variant.
+5. Preserve Design Board position, size, theme, and variant.
 6. Report unresolved or duplicate references instead of guessing silently.
 
 ## Recommended implementation phases
@@ -206,13 +206,13 @@ Canvas source cards should be refreshable:
 
 - Document task source reference fields.
 - Teach the agent to create source-linked research tasks.
-- Teach the agent to render a source note into a Canvas source card.
+- Teach the agent to render a source note into a Design Board source card.
 - Prefer `sources/` for new source notes, but treat `kind = "source"` as the
   authority.
 
 ### Phase 2: source card refresh
 
-- Add Canvas cell metadata for `source_ref` if not already available.
+- Add Design Board cell metadata for `source_ref` if not already available.
 - Add a refresh command/tool that regenerates source cards from source docs.
 - Preserve cell geometry and only replace projected content.
 
@@ -226,7 +226,7 @@ Add lenses for:
 - annotated but not synthesized
 - research tasks grouped by source
 
-### Phase 4: relationship-aware Canvas maps
+### Phase 4: relationship-aware Design Board maps
 
 After [[typed-source-relationships]] is implemented:
 
@@ -237,22 +237,22 @@ After [[typed-source-relationships]] is implemented:
 
 ## Open questions
 
-- [assumption] Canvas cells can retain structured metadata such as `source_ref`
+- [assumption] Design Board cells can retain structured metadata such as `source_ref`
   without breaking the current HTML/CSS cell rendering model.
 - Should source card generation be an agent-only workflow first, or a native
-  Canvas command?
+  Design Board command?
 - Should task source references be flat fields forever, or migrate to a
   `[source_refs]` table once task indexing supports it cleanly?
-- What is the smallest source card variant that remains useful at low Canvas
+- What is the smallest source card variant that remains useful at low Design Board
   grid sizes?
 - Should source cards display body excerpts, `## Summary`, or only frontmatter
   in v1?
 
 ## Anti-goals
 
-- Do not copy full source metadata into tasks or Canvas cells as independent
+- Do not copy full source metadata into tasks or Design Board cells as independent
   state.
-- Do not make Canvas the authoritative store for source relationships.
+- Do not make Design Board the authoritative store for source relationships.
 - Do not require typed source relationships before basic source-card rendering.
 - Do not implement a general arbitrary-document renderer before source-specific
   cards prove the projection model.

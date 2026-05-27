@@ -73,15 +73,15 @@ Flynt should support citation keys and markdown citation syntax, but should not
 reimplement CSL or Word/LibreOffice/Google Docs plugins early. Use existing
 interchange formats and external tooling where possible.
 
-### Accepted: source docs are canonical; tasks and Canvas render projections
+### Accepted: source docs are canonical; tasks and Design Board render projections
 
 Source notes own bibliographic metadata, annotations, summaries, extracted
-claims, and durable synthesis. Research tasks and Canvas cells should reference
+claims, and durable synthesis. Research tasks and Design Board cells should reference
 source notes by stable identity/path/citation key and render workflow or visual
 projections instead of duplicating source truth.
 
-The task and Canvas integration design is tracked in
-[[source-task-canvas-projections]].
+The task and Design Board integration design is tracked in
+[[source-task-design-board-projections]].
 
 ### Accepted: defer typed source relationships to a graph design node
 
@@ -164,15 +164,15 @@ A minimal bookmarklet/share flow should precede a full browser extension.
 
 Do not build a full PDF reader until annotation import proves demand.
 
-### 5. Research task and Canvas projections
+### 5. Research task and Design Board projections
 
 - Create research tasks that reference source notes rather than duplicating
   source metadata.
-- Render source notes as Canvas components such as compact source cards,
+- Render source notes as Design Board components such as compact source cards,
   evidence cards, reading-task cards, annotation cards, and source clusters.
-- Preserve source references in Canvas cells so projected cards can be refreshed
+- Preserve source references in Design Board cells so projected cards can be refreshed
   from canonical source notes.
-- Track the detailed projection design in [[source-task-canvas-projections]].
+- Track the detailed projection design in [[source-task-design-board-projections]].
 
 ### 6. Typed source graph
 
@@ -268,7 +268,7 @@ Implement **source note foundation + BibTeX/CSL import**:
 3. Add importer for BibTeX or CSL JSON.
 4. Preserve citation keys.
 5. Add source-linked research task conventions.
-6. Add agent-generated Canvas source cards as refreshable projections.
+6. Add agent-generated Design Board source cards as refreshable projections.
 7. Add agent guidance/tools for creating and querying source notes.
 
 This gives Flynt immediate research leverage while keeping Zotero as the system

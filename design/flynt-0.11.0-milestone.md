@@ -33,7 +33,7 @@ Commits currently queued locally after `v0.10.8`:
 | Commit | Scope | Release note |
 | --- | --- | --- |
 | `b4b7213` | Research/source note groundwork | Starts the source-backed research workspace foundation in Flynt's agent and core templates. |
-| `7454793` | Source task canvas projections | Defines how captured sources project into task/canvas workflows. |
+| `7454793` | Source task Design Board projections | Defines how captured sources project into task/Design Board workflows. |
 | `fd11c89` | Eidolon embedded viewer integration | Lays out the embedded viewer integration path for research artifacts and source review. |
 | `bd20614` | Portable analysis bundles | Defines portable bundles for source artifacts, provenance, manifests, and analysis outputs. |
 
@@ -41,7 +41,7 @@ Changed files in the queued delta:
 
 - `crates/flynt-agent/src/extension.rs`
 - `crates/flynt-core/src/templates.rs`
-- `design/source-task-canvas-projections.md`
+- `design/source-task-design-board-projections.md`
 - `design/typed-source-relationships.md`
 - `design/zotero-research-workspace.md`
 - `docs/eidolon-embedded-viewer-integration.md`
@@ -55,7 +55,7 @@ Flynt 0.11.0 is releasable when all of the following are true:
 - Research workspace design docs describe Flynt as a source-backed research workspace, not a Zotero clone.
 - Portable analysis bundles preserve provenance, source manifests, access scope, authorization notes, and artifacts.
 - Eidolon embedded viewer integration has a documented boundary for viewing captured/source-backed evidence inside Flynt.
-- Source task/canvas projections have a documented data-flow and do not duplicate source truth outside the artifact system.
+- Source task/Design Board projections have a documented data-flow and do not duplicate source truth outside the artifact system.
 - Flynt integrates with Omegon 0.23.x ACP additions.
 - Flynt remains compatible with the 0.10.8 release pipeline: the tag version must match `Cargo.toml` workspace version.
 - `Cargo.toml` and `CHANGELOG.md` are bumped to `0.11.0` before tagging `v0.11.0`.
@@ -70,7 +70,7 @@ Flynt 0.11.0 is releasable when all of the following are true:
 | Research workspace docs | F11-03 | P0 | queued design/docs commits | The research direction is documented as source-backed, artifact-native, and provenance-aware. |
 | Portable analysis bundles | F11-04 | P0 | artifact system | Analysis bundles are specified with provenance and source manifests. |
 | Eidolon embedded viewer | F11-05 | P1 | Eidolon viewer assumptions | Flynt has an integration design for embedded source/artifact viewing. |
-| Source task/canvas projections | F11-06 | P1 | canvas/task surfaces | Captured sources can be represented in task/canvas workflows without duplicating source truth. |
+| Source task/Design Board projections | F11-06 | P1 | Design Board/task surfaces | Captured sources can be represented in task/Design Board workflows without duplicating source truth. |
 | Omegon 0.23 ACP integration | F11-07 | P0 | Omegon 0.23.x ACP additions; GitHub issue #21 | Flynt handles Omegon 0.23 ACP additions for structured plan state and profile defaults. |
 | Storage policy first pass | F11-08 | P0 | dogfooding-generated state sprawl | Opening folders starts moving toward external local runtime state instead of implicit in-project `.flynt-local/` creation. |
 
@@ -125,13 +125,13 @@ Flynt 0.11.0 is releasable when all of the following are true:
 | F11-05.2 | Source review flow | docs/design | The intended review flow for captured/source-backed evidence is explicit. |
 | F11-05.3 | Deferral boundary | docs/design | Any unimplemented viewer work is clearly marked as design/future work. |
 
-## F11-06: Source task/canvas projections
+## F11-06: Source task/Design Board projections
 
 ### Implementation tasks
 
 | Task ID | Scope | Files likely touched | Acceptance |
 | --- | --- | --- | --- |
-| F11-06.1 | Projection model | `design/source-task-canvas-projections.md` | The doc explains how source-backed work appears in task and canvas surfaces. |
+| F11-06.1 | Projection model | `design/source-task-design-board-projections.md` | The doc explains how source-backed work appears in task and Design Board surfaces. |
 | F11-06.2 | Source truth boundary | design docs | Projections reference source artifacts and do not become independent truth copies. |
 | F11-06.3 | Release scope | `CHANGELOG.md` | The release note distinguishes shipped groundwork from future UI implementation. |
 
@@ -172,7 +172,7 @@ Dogfooding Flynt in its own repository exposed a general product issue: opening 
 - Full Zotero replacement behavior.
 - Stealth browser automation or evasion-oriented capture workflows.
 - Full Eidolon viewer implementation if only the integration contract is ready.
-- A complete visual source-task canvas UI if only the projection model is ready.
+- A complete visual source-task Design Board UI if only the projection model is ready.
 - Crates.io publication through `release-plz`; `release-plz` remains dormant unless separately enabled.
 
 ## Release checklist
