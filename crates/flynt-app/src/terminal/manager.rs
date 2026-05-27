@@ -183,8 +183,8 @@ impl TerminalManager {
         if params.command.trim().is_empty() {
             return Err(anyhow!("terminal command is required"));
         }
-        if params.command.contains('/') || params.command.contains('\\') {
-            return Err(anyhow!("terminal command must be an executable name, not a path"));
+        if params.command.contains('\0') {
+            return Err(anyhow!("terminal command must not contain NUL bytes"));
         }
         Ok(())
     }
@@ -234,10 +234,11 @@ mod tests {
     }
 
     #[test]
-    fn rejects_empty_and_path_commands() {
+    fn rejects_empty_and_nul_commands() {
         let manager = TerminalManager::new(".", 24, 80);
         assert!(manager.validate_create(&TerminalCreateParams::new(" ")).is_err());
-        assert!(manager.validate_create(&TerminalCreateParams::new("/bin/sh")).is_err());
+        assert!(manager.validate_create(&TerminalCreateParams::new("bad\0cmd")).is_err());
+        assert!(manager.validate_create(&TerminalCreateParams::new("/bin/sh")).is_ok());
         assert!(manager.validate_create(&TerminalCreateParams::new("cargo")).is_ok());
     }
 }
