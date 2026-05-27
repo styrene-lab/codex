@@ -5,7 +5,7 @@
 //! bytes don't trigger a rewrite (preserves mtime, no spurious file events).
 //!
 //! The skill content is the source of truth for how the agent should behave
-//! when designing on canvas. By bundling and self-installing, the extension
+//! when designing on design_board. By bundling and self-installing, the extension
 //! guarantees the skill is in place before the first prompt — no
 //! `omegon skills install` step required.
 

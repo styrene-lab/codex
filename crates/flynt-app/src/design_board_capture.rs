@@ -1,4 +1,4 @@
-//! Canvas capture pipeline — gives the agent eyes on what the user actually
+//! DesignBoard capture pipeline — gives the agent eyes on what the user actually
 //! sees in the viewport.
 //!
 //! Rust crates over JS bundles: `xcap` is the canonical cross-platform
@@ -6,15 +6,15 @@
 //!
 //! ## Architecture
 //!
-//! Tool side (`omegon-design::canvas_capture_viewport`) writes a request file
+//! Tool side (`omegon-design::design_board_capture_viewport`) writes a request file
 //! to `<project>/.flynt-local/flynt/capture-requests/<id>.json`. Flynt-app's
-//! `CanvasView` watches that directory via the existing project watcher; on
+//! `DesignBoardView` watches that directory via the existing project watcher; on
 //! detection, it:
 //!   1. Queries each cell's iframe via `postMessage` for its body's natural
 //!      width/height (the "content_box"). The response listener is injected
 //!      into every iframe's bootstrap script — see `inject_measurement_hook`
-//!      in `views::canvas`.
-//!   2. Computes the canvas-pane's screen-relative bounds.
+//!      in `views::design_board`.
+//!   2. Computes the design board-pane's screen-relative bounds.
 //!   3. Calls `xcap` to capture the Flynt window, crops to those bounds.
 //!   4. Writes PNG + response JSON to `<project>/.flynt-local/flynt/capture-responses/`.
 //!
@@ -32,7 +32,7 @@
 use serde::{Deserialize, Serialize};
 // Wire types live in flynt-core so the omegon-design tool (separate binary)
 // can construct/parse them too. Re-exported here for ergonomic local use.
-pub use flynt_core::canvas::{
+pub use flynt_core::design_board::{
     BoxXywh, CaptureRequest, CaptureResponse, CellMetric, capture_request_dir, capture_response_dir,
 };
 

@@ -122,12 +122,12 @@
 
 | Element | Behavior | Expected Result |
 |---------|----------|-----------------|
-| Canvas | Full Excalidraw editor | Dark theme, transparent background |
+| Design Board | Full Excalidraw editor | Dark theme, transparent background |
 | Auto-save | 2s interval | Saves `.excalidraw` JSON to disk |
 | SVG auto-export | After each save | Writes `.svg` sidecar next to `.excalidraw` file |
 | Export SVG button | Click | Manual SVG export, opens parent folder in Finder (macOS) |
-| Export PNG button | Click | 2x retina PNG via canvas→blob, opens in Finder |
-| Tab bar | Hidden during drawing | Reclaimed for canvas space |
+| Export PNG button | Click | 2x retina PNG via design board→blob, opens in Finder |
+| Tab bar | Hidden during drawing | Reclaimed for design board space |
 | Navigate away | Close tab or switch view | Tab bar restored, React root unmounted, JS state cleaned up |
 
 **Headless SVG export:** When the agent creates a `.excalidraw` file via MCP tool, the desktop watcher detects the file change and triggers SVG export via the webview's Excalidraw bundle — no editor needs to be open. Concurrent exports are serialized via a JS promise queue.
@@ -387,7 +387,7 @@ Bookmarks are project-portable data stored in `.flynt/bookmarks.toml`.
 
 | Element | Behavior | Expected Result |
 |---------|----------|-----------------|
-| Bookmark row | Click | Opens note/canvas/drawing targets in Notes, or opens Search with a saved query |
+| Bookmark row | Click | Opens note/design board/drawing targets in Notes, or opens Search with a saved query |
 | Bookmark × button | Click | Removes bookmark from `.flynt/bookmarks.toml` |
 | Header | Click | Collapses/expands bookmark list |
 | Count badge | Display | Number of stored project bookmarks |

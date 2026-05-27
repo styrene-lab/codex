@@ -246,7 +246,7 @@ fn target_icon(target: &BookmarkTarget) -> &'static str {
         BookmarkTarget::Heading { .. } => "#",
         BookmarkTarget::Search { .. } => "\u{2315}",
         BookmarkTarget::Graph { .. } => "\u{25CE}",
-        BookmarkTarget::Canvas { .. } => "\u{25A1}",
+        BookmarkTarget::DesignBoard { .. } => "\u{25A1}",
         BookmarkTarget::Drawing { .. } => "\u{270E}",
     }
 }
@@ -283,7 +283,7 @@ fn open_bookmark_target(
         BookmarkTarget::Graph { .. } => {
             *active_route.write() = Route::Graph;
         }
-        BookmarkTarget::Canvas { path } | BookmarkTarget::Drawing { path } => {
+        BookmarkTarget::DesignBoard { path } | BookmarkTarget::Drawing { path } => {
             let project = ctx.project();
             if let Ok(Some(doc)) = project.store.get_document_by_path(path) {
                 tab_state.write().open(doc.id, doc.title);

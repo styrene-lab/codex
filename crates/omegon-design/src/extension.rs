@@ -1,6 +1,6 @@
 //! omegon-design extension — exposes design helper tools over the omegon
-//! ACP extension protocol. Tools deliberately do NOT write canvas content;
-//! that responsibility stays with `flynt-agent`'s `canvas_*` family. These
+//! ACP extension protocol. Tools deliberately do NOT write design_board content;
+//! that responsibility stays with `flynt-agent`'s `design_board_*` family. These
 //! tools inform the agent's design decisions and surface the influences
 //! shaping its behavior so the operator never sees shadow prompts.
 
@@ -68,13 +68,13 @@ impl Extension for DesignExtension {
                 {
                     "name": "design_describe_influences",
                     "label": "Design: Describe Influences",
-                    "description": "Return a structured inventory of EVERYTHING this extension is contributing to the agent's prompt + tool surface right now: the active flynt-design skill (id, version, content hash, summary), loaded style guides at project and user levels (paths, sizes, checksums for drift detection), the current canvas theme + available themes with full var maps, and primitive availability. The operator must always be able to see what's shaping your design behavior — call this on every fresh design turn and emit a one-line summary in the visible response. Pass `full_content: true` to dump the actual skill prompt text and merged style-guide body for deep inspection.",
+                    "description": "Return a structured inventory of EVERYTHING this extension is contributing to the agent's prompt + tool surface right now: the active flynt-design skill (id, version, content hash, summary), loaded style guides at project and user levels (paths, sizes, checksums for drift detection), the current design board theme + available themes with full var maps, and primitive availability. The operator must always be able to see what's shaping your design behavior — call this on every fresh design turn and emit a one-line summary in the visible response. Pass `full_content: true` to dump the actual skill prompt text and merged style-guide body for deep inspection.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "canvas_path": {
+                            "design_board_path": {
                                 "type": "string",
-                                "description": "Optional path to a .canvas file. If provided, the report includes the active theme and its full var map. Otherwise the theme block reports only available presets."
+                                "description": "Optional path to a .board file. If provided, the report includes the active theme and its full var map. Otherwise the theme block reports only available presets."
                             },
                             "full_content": {
                                 "type": "boolean",
@@ -103,33 +103,33 @@ impl Extension for DesignExtension {
                     }
                 },
                 {
-                    "name": "canvas_capture_viewport",
-                    "label": "Canvas: Capture Viewport (agent eyes)",
-                    "description": "Capture the canvas pane as the user actually sees it RIGHT NOW — real post-layout pixels at the user's current viewport size and panel widths. Returns: (1) per-cell metrics with `cell_box` (the grid placement) and `content_box` (the natural extent of the cell's body content) and `fill_ratio` (content_height / cell_height — values < 0.85 mean visible dead space below content), (2) the cropped PNG of the canvas pane, base64-encoded, and (3) image dimensions + window scale factor. Use this AFTER any canvas_set_cells edit to verify your design actually fills correctly. The numeric fill_ratio is the cheap source of truth; the image is for visual hierarchy / color readability checks. First call on macOS triggers the system Screen Recording permission prompt — call `canvas_capture_status` first to surface that to the operator. Linux: no permission required.",
+                    "name": "design_board_capture_viewport",
+                    "label": "Design Board: Capture Viewport (agent eyes)",
+                    "description": "Capture the design board pane as the user actually sees it RIGHT NOW — real post-layout pixels at the user's current viewport size and panel widths. Returns: (1) per-cell metrics with `cell_box` (the grid placement) and `content_box` (the natural extent of the cell's body content) and `fill_ratio` (content_height / cell_height — values < 0.85 mean visible dead space below content), (2) the cropped PNG of the design board pane, base64-encoded, and (3) image dimensions + window scale factor. Use this AFTER any design_board_set_cells edit to verify your design actually fills correctly. The numeric fill_ratio is the cheap source of truth; the image is for visual hierarchy / color readability checks. First call on macOS triggers the system Screen Recording permission prompt — call `design_board_capture_status` first to surface that to the operator. Linux: no permission required.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "canvas_path": { "type": "string", "description": "Path to the .canvas file relative to project root. Optional — when omitted, captures whatever canvas is currently rendered." },
+                            "design_board_path": { "type": "string", "description": "Path to the .board file relative to project root. Optional — when omitted, captures whatever design board is currently rendered." },
                             "include_metrics": { "type": "boolean", "default": true, "description": "When false, skip the per-iframe postMessage round-trip and return image-only. Faster, but you lose the fill_ratio data." }
                         }
                     }
                 },
                 {
-                    "name": "canvas_capture_status",
-                    "label": "Canvas: Capture Status",
-                    "description": "Probe whether canvas viewport capture is available right now. Returns the platform, whether OS permission is granted, and (when denied) instructions for the operator. Skill mandate: call this BEFORE the first canvas_capture_viewport in a session, and surface 'denied' status to the operator with the instructions verbatim. Don't silently fail or retry.",
+                    "name": "design_board_capture_status",
+                    "label": "Design Board: Capture Status",
+                    "description": "Probe whether design_board viewport capture is available right now. Returns the platform, whether OS permission is granted, and (when denied) instructions for the operator. Skill mandate: call this BEFORE the first design_board_capture_viewport in a session, and surface 'denied' status to the operator with the instructions verbatim. Don't silently fail or retry.",
                     "parameters": { "type": "object", "properties": {} }
                 },
                 {
                     "name": "design_critique",
                     "label": "Design: Critique",
-                    "description": "Audit a canvas against structural discipline (cell-fill, h-full coverage), theme coherence (cells using theme tokens vs hardcoded colors fighting the active theme), and style-guide adherence (when a guide is loaded). Returns a structured report grouped by severity: blocker / warning / suggestion. Stronger than the inline lint_warnings from canvas_set_cells — that lint catches per-cell structural issues at write time; this critique evaluates the canvas as a whole. Run after a coherent set of edits, before declaring done.",
+                    "description": "Audit a design board against structural discipline (cell-fill, h-full coverage), theme coherence (cells using theme tokens vs hardcoded colors fighting the active theme), and style-guide adherence (when a guide is loaded). Returns a structured report grouped by severity: blocker / warning / suggestion. Stronger than the inline lint_warnings from design_board_set_cells — that lint catches per-cell structural issues at write time; this critique evaluates the design board as a whole. Run after a coherent set of edits, before declaring done.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "canvas_path": { "type": "string", "description": "Path to the .canvas file relative to project root." }
+                            "design_board_path": { "type": "string", "description": "Path to the .board file relative to project root." }
                         },
-                        "required": ["canvas_path"]
+                        "required": ["design_board_path"]
                     }
                 }
             ])),
@@ -138,8 +138,8 @@ impl Extension for DesignExtension {
             "execute_design_load_style_guide" => self.execute_load_style_guide(),
             "execute_design_suggest_theme" => self.execute_suggest_theme(params),
             "execute_design_critique" => self.execute_critique(params),
-            "execute_canvas_capture_viewport" => self.execute_capture_viewport(params).await,
-            "execute_canvas_capture_status" => self.execute_capture_status(),
+            "execute_design_board_capture_viewport" => self.execute_capture_viewport(params).await,
+            "execute_design_board_capture_status" => self.execute_capture_status(),
 
             _ => Err(omegon_extension::Error::method_not_found(method)),
         }
@@ -172,9 +172,9 @@ impl DesignExtension {
             .join("shadcn-primitives.json")
     }
 
-    fn read_active_theme(&self, canvas_path: &str) -> Option<String> {
+    fn read_active_theme(&self, design_board_path: &str) -> Option<String> {
         // Refuse path traversal; resolve relative to project.
-        let rel = std::path::Path::new(canvas_path);
+        let rel = std::path::Path::new(design_board_path);
         if rel
             .components()
             .any(|c| matches!(c, std::path::Component::ParentDir))
@@ -182,8 +182,8 @@ impl DesignExtension {
             return None;
         }
         let abs = self.project_root.join(rel);
-        let canvas = flynt_core::canvas::Canvas::load(&abs).ok()?;
-        Some(canvas.theme)
+        let design_board = flynt_core::design_board::DesignBoard::load(&abs).ok()?;
+        Some(design_board.theme)
     }
 
     fn execute_describe_influences(&self, params: Value) -> omegon_extension::Result<Value> {
@@ -191,7 +191,7 @@ impl DesignExtension {
             .get("full_content")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        let canvas_path = params.get("canvas_path").and_then(|v| v.as_str());
+        let design_board_path = params.get("design_board_path").and_then(|v| v.as_str());
 
         // Skill block — read installed copy, hash for drift detection.
         let skill_block = match std::fs::read(self.skill_path()) {
@@ -207,7 +207,7 @@ impl DesignExtension {
                     "installed_at": self.skill_path().to_string_lossy(),
                     "size_bytes": bytes.len(),
                     "content_hash": hash,
-                    "summary": "Canvas-aware workflow + structural discipline + aesthetic principles. Full text via full_content=true.",
+                    "summary": "Design Board-aware workflow + structural discipline + aesthetic principles. Full text via full_content=true.",
                     "full_content": if full { Some(content) } else { None },
                 })
             }
@@ -245,7 +245,7 @@ impl DesignExtension {
             .as_object()
             .map(|m| m.keys().cloned().collect())
             .unwrap_or_default();
-        let active_theme = canvas_path.and_then(|p| self.read_active_theme(p));
+        let active_theme = design_board_path.and_then(|p| self.read_active_theme(p));
         let active_vars = active_theme
             .as_deref()
             .and_then(|id| presets.get(id).and_then(|v| v.get("vars").cloned()));
@@ -370,15 +370,15 @@ impl DesignExtension {
     }
 
     /// Trigger a viewport capture by writing a request file and polling for
-    /// the response. Flynt-app's CanvasView watcher does the work — see
-    /// `canvas_capture::process_capture_request` in flynt-app.
+    /// the response. Flynt-app's DesignBoardView watcher does the work — see
+    /// `design_board_capture::process_capture_request` in flynt-app.
     async fn execute_capture_viewport(&self, params: Value) -> omegon_extension::Result<Value> {
-        use flynt_core::canvas::{
+        use flynt_core::design_board::{
             CaptureRequest, CaptureResponse, capture_request_dir, capture_response_dir,
         };
 
-        let canvas_path = params
-            .get("canvas_path")
+        let design_board_path = params
+            .get("design_board_path")
             .and_then(|v| v.as_str())
             .map(String::from);
         let include_metrics = params
@@ -389,7 +389,7 @@ impl DesignExtension {
         let request_id = uuid::Uuid::new_v4().to_string();
         let req = CaptureRequest {
             request_id: request_id.clone(),
-            canvas_path,
+            design_board_path,
             include_metrics,
         };
 
@@ -412,7 +412,7 @@ impl DesignExtension {
 
         // Poll for response. Flynt-app ticks every 200ms; JS measurement +
         // capture typically <1s. 5s budget covers a slow run; longer means
-        // flynt-app isn't running or the canvas pane isn't visible.
+        // flynt-app isn't running or the design board pane isn't visible.
         let resp_path = resp_dir.join(format!("{request_id}.json"));
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         loop {
@@ -428,8 +428,8 @@ impl DesignExtension {
             if std::time::Instant::now() >= deadline {
                 let _ = std::fs::remove_file(&req_path);
                 return Err(omegon_extension::Error::internal_error(
-                    "capture timed out after 5s — is Flynt running with a canvas open? \
-                     If permission has never been granted on macOS, call canvas_capture_status \
+                    "capture timed out after 5s — is Flynt running with a design board open? \
+                     If permission has never been granted on macOS, call design_board_capture_status \
                      and surface the instructions to the operator."
                         .to_string(),
                 ));
@@ -439,9 +439,11 @@ impl DesignExtension {
 
     fn execute_critique(&self, params: Value) -> omegon_extension::Result<Value> {
         let path = params
-            .get("canvas_path")
+            .get("design_board_path")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| omegon_extension::Error::invalid_params("missing 'canvas_path'"))?;
+            .ok_or_else(|| {
+                omegon_extension::Error::invalid_params("missing 'design_board_path'")
+            })?;
         let rel = std::path::Path::new(path);
         if rel
             .components()
@@ -452,15 +454,15 @@ impl DesignExtension {
             ));
         }
         let abs = self.project_root.join(rel);
-        let canvas = flynt_core::canvas::Canvas::load(&abs)
+        let design_board = flynt_core::design_board::DesignBoard::load(&abs)
             .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
 
         let blockers: Vec<String> = Vec::new();
         let mut warnings: Vec<String> = Vec::new();
         let mut suggestions: Vec<String> = Vec::new();
 
-        // Structural fill check (same heuristic as canvas_set_cells lint).
-        for cell in &canvas.cells {
+        // Structural fill check (same heuristic as design_board_set_cells lint).
+        for cell in &design_board.cells {
             if !outermost_fills_cell(&cell.html) {
                 warnings.push(format!(
                     "cell '{}': outermost element lacks h-full — empty space will show theme bg below content",
@@ -477,7 +479,7 @@ impl DesignExtension {
 
         // Theme-coherence check: if cells override bg with hardcoded hex but
         // theme has its own --background, flag.
-        let hardcoded_bg_count = canvas
+        let hardcoded_bg_count = design_board
             .cells
             .iter()
             .filter(|c| {
@@ -489,12 +491,12 @@ impl DesignExtension {
             .count();
         if hardcoded_bg_count > 0 {
             suggestions.push(format!(
-                "{hardcoded_bg_count} cell(s) hardcode background color instead of using theme tokens (bg-card, bg-background). Consider switching the theme via canvas_apply_theme rather than fighting it per-cell."
+                "{hardcoded_bg_count} cell(s) hardcode background color instead of using theme tokens (bg-card, bg-background). Consider switching the theme via design board_apply_theme rather than fighting it per-cell."
             ));
         }
 
         // Coverage check: very tall cells with very short content.
-        for cell in &canvas.cells {
+        for cell in &design_board.cells {
             if cell.h >= 3 && cell.html.len() < 200 {
                 suggestions.push(format!(
                     "cell '{}': h={} but html is {} bytes — likely too tall for its content. Either reduce h or add content that earns the height.",
@@ -515,9 +517,9 @@ impl DesignExtension {
         }
 
         Ok(json!({
-            "canvas_path": path,
-            "cell_count": canvas.cells.len(),
-            "theme": canvas.theme,
+            "design_board_path": path,
+            "cell_count": design_board.cells.len(),
+            "theme": design_board.theme,
             "report": {
                 "blockers": blockers,
                 "warnings": warnings,
@@ -537,7 +539,7 @@ fn read_json(path: &std::path::Path) -> Option<Value> {
         .and_then(|s| serde_json::from_str(&s).ok())
 }
 
-/// Same heuristic as canvas_set_cells lint — kept here as a sibling
+/// Same heuristic as design_board_set_cells lint — kept here as a sibling
 /// implementation rather than depending on flynt-agent (the dep direction
 /// would be wrong; lint is a private helper there).
 fn outermost_fills_cell(html: &str) -> bool {
@@ -649,7 +651,7 @@ mod tests {
 
     fn test_ext() -> (TempDir, DesignExtension) {
         let tmp = TempDir::new().unwrap();
-        // Seed the canvas-asset files the influence-describer expects.
+        // Seed the design board-asset files the influence-describer expects.
         let assets_dir = tmp.path().join(".flynt-local/flynt/assets");
         std::fs::create_dir_all(&assets_dir).unwrap();
         std::fs::write(
@@ -781,9 +783,9 @@ mod tests {
     async fn critique_flags_missing_h_full() {
         let (tmp, _) = test_ext();
         let ext = test_ext_inplace(&tmp);
-        // Seed a canvas with a cell that lacks h-full.
-        let mut canvas = flynt_core::canvas::Canvas::default();
-        canvas.upsert_cell(flynt_core::canvas::Cell {
+        // Seed a design board with a cell that lacks h-full.
+        let mut design_board = flynt_core::design_board::DesignBoard::default();
+        design_board.upsert_cell(flynt_core::design_board::Cell {
             id: "x".into(),
             x: 0,
             y: 0,
@@ -793,15 +795,15 @@ mod tests {
             css: "".into(),
             js: None,
         });
-        std::fs::create_dir_all(tmp.path().join("canvases")).unwrap();
-        canvas
-            .save(&tmp.path().join("canvases/Demo.canvas"))
+        std::fs::create_dir_all(tmp.path().join("boards")).unwrap();
+        design_board
+            .save(&tmp.path().join("boards/Demo.board"))
             .unwrap();
 
         let out = ext
             .handle_rpc(
                 "execute_design_critique",
-                json!({"canvas_path": "canvases/Demo.canvas"}),
+                json!({"design_board_path": "boards/Demo.board"}),
             )
             .await
             .unwrap();
@@ -817,8 +819,8 @@ mod tests {
     async fn critique_flags_arbitrary_tailwind() {
         let (tmp, _) = test_ext();
         let ext = test_ext_inplace(&tmp);
-        let mut canvas = flynt_core::canvas::Canvas::default();
-        canvas.upsert_cell(flynt_core::canvas::Cell {
+        let mut design_board = flynt_core::design_board::DesignBoard::default();
+        design_board.upsert_cell(flynt_core::design_board::Cell {
             id: "x".into(),
             x: 0,
             y: 0,
@@ -828,15 +830,15 @@ mod tests {
             css: "".into(),
             js: None,
         });
-        std::fs::create_dir_all(tmp.path().join("canvases")).unwrap();
-        canvas
-            .save(&tmp.path().join("canvases/Demo.canvas"))
+        std::fs::create_dir_all(tmp.path().join("boards")).unwrap();
+        design_board
+            .save(&tmp.path().join("boards/Demo.board"))
             .unwrap();
 
         let out = ext
             .handle_rpc(
                 "execute_design_critique",
-                json!({"canvas_path": "canvases/Demo.canvas"}),
+                json!({"design_board_path": "boards/Demo.board"}),
             )
             .await
             .unwrap();
@@ -855,7 +857,7 @@ mod tests {
         let err = ext
             .handle_rpc(
                 "execute_design_critique",
-                json!({"canvas_path": "../etc/passwd"}),
+                json!({"design_board_path": "../etc/passwd"}),
             )
             .await
             .unwrap_err();

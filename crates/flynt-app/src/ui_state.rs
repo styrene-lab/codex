@@ -19,8 +19,8 @@ struct DocumentRef {
     /// Path relative to project root. Pass directly to `get_document`.
     path: String,
     /// What kind of document this is from the agent's perspective. Lets
-    /// canvas-aware tools (canvas_active) skip the body-parse hop. Values:
-    /// "canvas", "drawing", or "note" (the default).
+    /// design_board-aware tools (design_board_active) skip the body-parse hop. Values:
+    /// "design-board", "drawing", or "note" (the default).
     document_type: &'static str,
 }
 
@@ -67,7 +67,7 @@ fn resolve_doc_ref(
 
 fn classify_document(project: &Project, rel_path: &Path) -> &'static str {
     // Cheap classification: read the body and look for a single-line embed
-    // (canvas or drawing wrapper). Also recovers drawing wrappers from
+    // (design_board or drawing wrapper). Also recovers drawing wrappers from
     // frontmatter + sibling data file, matching NotesView dispatch.
     let abs = project.root.join(rel_path);
     let Ok(content) = std::fs::read_to_string(&abs) else {
@@ -84,8 +84,8 @@ fn classify_document(project: &Project, rel_path: &Path) -> &'static str {
     if lines.len() == 1 {
         let line = lines[0].trim();
         if line.starts_with("![[") {
-            if line.ends_with(".canvas]]") {
-                return "canvas";
+            if line.ends_with(".board]]") {
+                return "design-board";
             }
             if line.ends_with(".excalidraw]]") {
                 return "drawing";

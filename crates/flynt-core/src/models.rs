@@ -257,7 +257,7 @@ pub enum BookmarkTarget {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         filter: Option<String>,
     },
-    Canvas {
+    DesignBoard {
         path: PathBuf,
     },
     Drawing {
@@ -282,7 +282,7 @@ impl BookmarkTarget {
                 .unwrap_or_else(|| format!("heading:path:{}#{anchor}", path.to_string_lossy())),
             Self::Search { query } => format!("search:{}", query.trim()),
             Self::Graph { filter } => format!("graph:{}", filter.as_deref().unwrap_or_default()),
-            Self::Canvas { path } => format!("canvas:{}", path.to_string_lossy()),
+            Self::DesignBoard { path } => format!("design_board:{}", path.to_string_lossy()),
             Self::Drawing { path } => format!("drawing:{}", path.to_string_lossy()),
         }
     }
@@ -293,7 +293,7 @@ impl BookmarkTarget {
             Self::Heading { .. } => "Heading",
             Self::Search { .. } => "Search",
             Self::Graph { .. } => "Graph",
-            Self::Canvas { .. } => "Canvas",
+            Self::DesignBoard { .. } => "Design Board",
             Self::Drawing { .. } => "Drawing",
         }
     }
@@ -1103,10 +1103,10 @@ pub struct FlyntOperatorSettings {
     /// Operator-selected UI theme plus any imported tweak.cn themes.
     #[serde(default)]
     pub ui_theme: UiThemeSettings,
-    /// Design canvas settings — default theme, grid, asset bootstrap state.
+    /// Design Board settings — default theme, grid, asset bootstrap state.
     /// Phase 1+2 ship the field with defaults; Phase 4 fills it in.
     #[serde(default)]
-    pub canvas: crate::canvas::CanvasSettings,
+    pub design_board: crate::design_board::DesignBoardSettings,
 }
 
 impl Default for FlyntOperatorSettings {
@@ -1121,7 +1121,7 @@ impl Default for FlyntOperatorSettings {
             acp_config: std::collections::HashMap::new(),
             agent_daemon: crate::daemon::AgentDaemonConfig::default(),
             ui_theme: UiThemeSettings::default(),
-            canvas: crate::canvas::CanvasSettings::default(),
+            design_board: crate::design_board::DesignBoardSettings::default(),
         }
     }
 }

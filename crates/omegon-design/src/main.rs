@@ -5,12 +5,12 @@
 //!     `~/.omegon/skills/flynt-design/SKILL.md`. Idempotent and content-aware
 //!     — only writes when bytes differ, so subsequent launches with the same
 //!     bundled content are no-ops.
-//!  2. Serve a small set of canvas-design helper tools over the omegon ACP
+//!  2. Serve a small set of design_board-design helper tools over the omegon ACP
 //!     extension protocol: `design_describe_influences`, `design_load_style_guide`,
-//!     `design_suggest_theme`, `design_critique`. None of these write canvas
+//!     `design_suggest_theme`, `design_critique`. None of these write design_board
 //!     content directly — they inform the agent's design decisions and audit
-//!     the current state. Canvas writes still go through `flynt-agent`'s
-//!     `canvas_set_cells`.
+//!     the current state. DesignBoard writes still go through `flynt-agent`'s
+//!     `design_board_set_cells`.
 
 use anyhow::Result;
 use std::path::PathBuf;
@@ -70,7 +70,9 @@ async fn main() -> Result<()> {
                 .expect("omegon-design MCP server failed");
         }
         Some("--help") | Some("help") | Some("-h") => {
-            println!("omegon-design — canvas design helper tools + flynt-design skill installer");
+            println!(
+                "omegon-design — design_board design helper tools + flynt-design skill installer"
+            );
             println!();
             println!("USAGE:");
             println!("  omegon-design                Run as omegon extension (default)");

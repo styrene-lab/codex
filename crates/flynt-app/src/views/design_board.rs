@@ -1,12 +1,12 @@
-//! Design canvas — a grid of HTML/CSS cells the agent can author and the
-//! user can review. Each `.canvas` file is JSON describing a grid plus a
+//! Design Board — a grid of HTML/CSS cells the agent can author and the
+//! user can review. Each `.board` file is JSON describing a grid plus a
 //! list of cells; cells render as sandboxed iframes with vendored Tailwind
 //! and theme tokens injected. Mirrors the `.excalidraw` document pattern:
 //! data file + sibling `.md` wrapper that embeds it.
 
 use crate::bootstrap::AppContext;
 use dioxus::prelude::*;
-use flynt_core::canvas::{Canvas, Cell};
+use flynt_core::design_board::{Cell, DesignBoard};
 use std::path::PathBuf;
 
 /// Tailwind CSS bundled into the app binary. Phase 4 ships a placeholder
@@ -19,11 +19,11 @@ const TAILWIND_CSS: &str = include_str!("../../assets/vendor/tailwind.css");
 /// Vendored tweakcn-style theme presets. Compiled into the app binary so
 /// theme switching is instant and offline. The JSON map is also copied
 /// into the project on first launch so flynt-agent can read it for
-/// canvas_apply_theme suggestions (phase 5).
+/// design_board_apply_theme suggestions (phase 5).
 const TWEAKCN_PRESETS: &str = include_str!("../../assets/vendor/tweakcn-presets.json");
 
 /// Resolve theme tokens for a given theme id. Falls back to "default" if
-/// the requested theme is unknown so the canvas always renders. Returns
+/// the requested theme is unknown so the design board always renders. Returns
 /// CSS-variable declarations ready to drop inside a `:root { ... }` block.
 fn theme_vars(theme_id: &str) -> String {
     fn render(presets: &serde_json::Value, theme_id: &str) -> Option<String> {
@@ -55,23 +55,23 @@ fn theme_vars(theme_id: &str) -> String {
 /// hang. Runs on the Dioxus async runtime; uses `document::eval` to
 /// execute the cell-measurement protocol against the live DOM.
 async fn process_capture_request(
-    req: crate::canvas_capture::CaptureRequest,
-    canvas_rel: &std::path::Path,
+    req: crate::design_board_capture::CaptureRequest,
+    design_board_rel: &std::path::Path,
     resp_dir: &std::path::Path,
-) -> crate::canvas_capture::CaptureResponse {
-    use crate::canvas_capture::*;
+) -> crate::design_board_capture::CaptureResponse {
+    use crate::design_board_capture::*;
 
     let request_id = req.request_id.clone();
-    let _ = canvas_rel; // reserved for future per-canvas filtering
+    let _ = design_board_rel; // reserved for future per-design_board filtering
 
-    // ── Step 1: ask the page for canvas-pane bounds + per-cell metrics ──
+    // ── Step 1: ask the page for design_board-pane bounds + per-cell metrics ──
     // One JS round-trip: walks the DOM, posts a measurement message to each
     // cell's iframe, awaits responses with a 600ms total timeout, then
     // serializes the lot back to Rust via dioxus.send.
     let measurement_js = r#"
         (async function(){
-            const pane = document.querySelector('.canvas-pane');
-            if (!pane) { dioxus.send(JSON.stringify({error: 'canvas-pane element not found'})); return; }
+            const pane = document.querySelector('.board-pane');
+            if (!pane) { dioxus.send(JSON.stringify({error: 'design_board-pane element not found'})); return; }
             const paneRect = pane.getBoundingClientRect();
             // Window position in screen coords. window.screenX/Y are relative to
             // the browser-frame; in wry/Dioxus desktop they map to the OS window
@@ -79,7 +79,7 @@ async fn process_capture_request(
             const winX = window.screenX || 0;
             const winY = window.screenY || 0;
 
-            const cells = Array.from(document.querySelectorAll('.canvas-cell'));
+            const cells = Array.from(document.querySelectorAll('.board-cell'));
             const pendingByRequestId = new Map();
             const results = [];
 
@@ -100,7 +100,7 @@ async fn process_capture_request(
                 const iframe = cellEl.querySelector('iframe');
                 const r = cellEl.getBoundingClientRect();
                 const cellMetric = {
-                    id: cellEl.querySelector('iframe')?.title?.replace('canvas cell ', '') || id,
+                    id: cellEl.querySelector('iframe')?.title?.replace('design_board cell ', '') || id,
                     cell_box: { x: r.x, y: r.y, w: r.width, h: r.height },
                     content_box: null,
                 };
@@ -267,8 +267,8 @@ async fn process_capture_request(
     }
 }
 
-fn error_response(request_id: &str, error: String) -> crate::canvas_capture::CaptureResponse {
-    use crate::canvas_capture::*;
+fn error_response(request_id: &str, error: String) -> crate::design_board_capture::CaptureResponse {
+    use crate::design_board_capture::*;
     CaptureResponse {
         request_id: request_id.to_string(),
         image_path: String::new(),
@@ -288,7 +288,7 @@ fn error_response(request_id: &str, error: String) -> crate::canvas_capture::Cap
     }
 }
 
-fn write_response(resp_dir: &std::path::Path, resp: &crate::canvas_capture::CaptureResponse) {
+fn write_response(resp_dir: &std::path::Path, resp: &crate::design_board_capture::CaptureResponse) {
     let path = resp_dir.join(format!("{}.json", resp.request_id));
     let tmp = path.with_extension("json.tmp");
     if let Ok(json) = serde_json::to_string(resp) {
@@ -330,7 +330,7 @@ const MEASUREMENT_HOOK: &str = r#"
 ///
 /// Inlines Tailwind, theme tokens, and the cell's CSS into `<head>`, then
 /// the cell's HTML and optional JS into `<body>`. Inlining (vs. a
-/// `project://` link) keeps the canvas portable: it renders identically
+/// `project://` link) keeps the design board portable: it renders identically
 /// across boundaries — exported, screenshotted, run on a different
 /// machine, or run offline.
 pub fn build_srcdoc(cell: &Cell, theme: &str, tailwind_css: &str) -> String {
@@ -347,14 +347,14 @@ pub fn build_srcdoc(cell: &Cell, theme: &str, tailwind_css: &str) -> String {
     )
 }
 
-/// Extension check for the raw canvas data file.
-pub fn is_canvas(path: &std::path::Path) -> bool {
-    path.extension().map(|e| e == "canvas").unwrap_or(false)
+/// Extension check for the raw design board data file.
+pub fn is_design_board(path: &std::path::Path) -> bool {
+    path.extension().map(|e| e == "board").unwrap_or(false)
 }
 
-/// Detect a `.md` wrapper whose body is exactly one `![[...canvas]]` embed.
-/// Returns the embedded canvas filename if so. Mirrors `excalidraw_embed_path`.
-pub fn canvas_embed_path(content: &str) -> Option<String> {
+/// Detect a `.md` wrapper whose body is exactly one `![[...board]]` embed.
+/// Returns the embedded design board filename if so. Mirrors `excalidraw_embed_path`.
+pub fn design_board_embed_path(content: &str) -> Option<String> {
     let body = if let Some(rest) = content.strip_prefix("+++\n") {
         if let Some(end) = rest.find("\n+++") {
             rest[end + 4..].trim()
@@ -368,7 +368,7 @@ pub fn canvas_embed_path(content: &str) -> Option<String> {
     let lines: Vec<&str> = body.lines().filter(|l| !l.trim().is_empty()).collect();
     if lines.len() == 1 {
         let line = lines[0].trim();
-        if line.starts_with("![[") && line.ends_with(".canvas]]") {
+        if line.starts_with("![[") && line.ends_with(".board]]") {
             let inner = &line[3..line.len() - 2];
             return Some(inner.to_string());
         }
@@ -376,13 +376,13 @@ pub fn canvas_embed_path(content: &str) -> Option<String> {
     None
 }
 
-/// Recover a canvas association even when the wrapper body has been
+/// Recover a design board association even when the wrapper body has been
 /// corrupted (e.g. by an unrelated note-view bug stomping the file).
 /// Returns true if the document's frontmatter declares `tags = [...,
-/// "canvas", ...]`. Combined with a sibling `<stem>.canvas` file
-/// existing, this is enough to keep dispatching to CanvasView so a
+/// "design-board", ...]`. Combined with a sibling `<stem>.board` file
+/// existing, this is enough to keep dispatching to DesignBoardView so a
 /// transient body corruption doesn't strand the user's design work.
-pub fn frontmatter_has_canvas_tag(content: &str) -> bool {
+pub fn frontmatter_has_design_board_tag(content: &str) -> bool {
     let Some(rest) = content.strip_prefix("+++\n") else {
         return false;
     };
@@ -393,9 +393,9 @@ pub fn frontmatter_has_canvas_tag(content: &str) -> bool {
     for line in frontmatter.lines() {
         let trimmed = line.trim_start();
         if let Some(rhs) = trimmed.strip_prefix("tags") {
-            // tags = ["a", "b", "canvas"] — accept any whitespace/= between
+            // tags = ["a", "b", "design-board"] — accept any whitespace/= between
             let after_eq = rhs.trim_start().strip_prefix('=').unwrap_or("");
-            if after_eq.contains("\"canvas\"") {
+            if after_eq.contains("\"design_board\"") {
                 return true;
             }
         }
@@ -403,18 +403,18 @@ pub fn frontmatter_has_canvas_tag(content: &str) -> bool {
     false
 }
 
-/// Re-export of `flynt_core::canvas::create_canvas` for callers in this
+/// Re-export of `flynt_core::design_board::create_design_board` for callers in this
 /// crate (menu handler, command palette). The actual implementation lives
 /// in flynt-core so flynt-agent can call into the same code via the
-/// `canvas_create` ACP tool.
-pub use flynt_core::canvas::create_canvas;
+/// `design_board_create` ACP tool.
+pub use flynt_core::design_board::create_design_board;
 
 #[component]
-pub fn CanvasView(path: PathBuf) -> Element {
+pub fn DesignBoardView(path: PathBuf) -> Element {
     let ctx = use_context::<AppContext>();
 
     // Refresh counter — bumped whenever the project watcher reports a write
-    // to our .canvas file (typically by the agent via canvas_set_cells).
+    // to our .board file (typically by the agent via design board_set_cells).
     // Hook into use_memo's deps so reload happens automatically.
     let mut refresh = use_signal(|| 0u64);
 
@@ -447,18 +447,18 @@ pub fn CanvasView(path: PathBuf) -> Element {
 
     // Capture-request handler. Polls the request dir on a slow tick (200ms),
     // processes any pending request by querying iframe metrics via
-    // postMessage, calling xcap to capture the canvas-pane, and writing the
+    // postMessage, calling xcap to capture the design board-pane, and writing the
     // response sidecar. Lives here because only flynt-app has the WebView
-    // window context xcap needs. See `crate::canvas_capture` for the
+    // window context xcap needs. See `crate::design_board_capture` for the
     // request/response shape and the rationale.
     {
         let cap_ctx = ctx.clone();
-        let canvas_path_for_handler = path.clone();
+        let design_board_path_for_handler = path.clone();
         use_effect(move || {
             let project_root = cap_ctx.project().root.clone();
-            let canvas_rel = canvas_path_for_handler.clone();
+            let design_board_rel = design_board_path_for_handler.clone();
             spawn(async move {
-                use crate::canvas_capture::*;
+                use crate::design_board_capture::*;
                 let req_dir = capture_request_dir(&project_root);
                 let resp_dir = capture_response_dir(&project_root);
                 let _ = std::fs::create_dir_all(&req_dir);
@@ -489,7 +489,7 @@ pub fn CanvasView(path: PathBuf) -> Element {
                                 continue;
                             }
                         };
-                        let resp = process_capture_request(req, &canvas_rel, &resp_dir).await;
+                        let resp = process_capture_request(req, &design_board_rel, &resp_dir).await;
                         write_response(&resp_dir, &resp);
                     }
                 }
@@ -502,27 +502,27 @@ pub fn CanvasView(path: PathBuf) -> Element {
         let _ = refresh();
         let project = ctx.project();
         let abs = project.root.join(&path_load);
-        Canvas::load(&abs).map_err(|e| e.to_string())
+        DesignBoard::load(&abs).map_err(|e| e.to_string())
     });
 
-    tracing::info!("CanvasView render: path={}", path.display());
+    tracing::info!("DesignBoardView render: path={}", path.display());
     let parsed_ref = parsed.read();
-    let canvas = match &*parsed_ref {
+    let design_board = match &*parsed_ref {
         Ok(c) => {
             tracing::info!(
-                "CanvasView parsed: {} cells, theme={}",
+                "DesignBoardView parsed: {} cells, theme={}",
                 c.cells.len(),
                 c.theme
             );
             c
         }
         Err(e) => {
-            tracing::warn!("CanvasView parse error: {e}");
+            tracing::warn!("DesignBoardView parse error: {e}");
             return rsx! {
-                div { class: "canvas-pane",
-                    div { class: "canvas-toolbar",
-                        span { class: "canvas-meta", "Canvas: {path.display()}" }
-                        span { class: "canvas-error", "Parse error: {e}" }
+                div { class: "design_board-pane",
+                    div { class: "design_board-toolbar",
+                        span { class: "design-board-meta", "Design Board: {path.display()}" }
+                        span { class: "design_board-error", "Parse error: {e}" }
                     }
                 }
             };
@@ -531,25 +531,25 @@ pub fn CanvasView(path: PathBuf) -> Element {
 
     let grid_style = format!(
         "grid-template-columns: repeat({}, 1fr); grid-auto-rows: minmax(120px, auto); gap: {}px;",
-        canvas.grid.cols.max(1),
-        canvas.grid.gap,
+        design_board.grid.cols.max(1),
+        design_board.grid.gap,
     );
 
     rsx! {
-        div { class: "canvas-pane",
-            div { class: "canvas-toolbar",
-                span { class: "canvas-meta", "Canvas: {path.display()}" }
-                span { class: "canvas-meta",
-                    "v{canvas.version} · theme={canvas.theme} · {canvas.grid.cols}×{canvas.grid.rows} · {canvas.cells.len()} cell(s)"
+        div { class: "design_board-pane",
+            div { class: "design_board-toolbar",
+                span { class: "design-board-meta", "Design Board: {path.display()}" }
+                span { class: "design-board-meta",
+                    "v{design_board.version} · theme={design_board.theme} · {design_board.grid.cols}×{design_board.grid.rows} · {design_board.cells.len()} cell(s)"
                 }
             }
-            if canvas.cells.is_empty() {
-                div { class: "canvas-empty",
-                    "Empty canvas. Ask the agent to design something here."
+            if design_board.cells.is_empty() {
+                div { class: "design_board-empty",
+                    "Empty design board. Ask the agent to design something here."
                 }
             } else {
-                div { class: "canvas-grid", style: "{grid_style}",
-                    for cell in canvas.cells.iter() {
+                div { class: "design_board-grid", style: "{grid_style}",
+                    for cell in design_board.cells.iter() {
                         {
                             let cell_style = format!(
                                 "grid-column: {} / span {}; grid-row: {} / span {};",
@@ -565,14 +565,14 @@ pub fn CanvasView(path: PathBuf) -> Element {
                             // Required dioxus-desktop >= 0.7.9 (earlier versions
                             // ship a navigation handler that cancels iframe
                             // content loads).
-                            let srcdoc = build_srcdoc(cell, &canvas.theme, TAILWIND_CSS);
+                            let srcdoc = build_srcdoc(cell, &design_board.theme, TAILWIND_CSS);
                             rsx! {
                                 div {
                                     key: "{cell.id}",
-                                    class: "canvas-cell",
+                                    class: "design_board-cell",
                                     style: "{cell_style}",
                                     iframe {
-                                        title: "canvas cell {cell.id}",
+                                        title: "design_board cell {cell.id}",
                                         "sandbox": "allow-scripts",
                                         "srcdoc": "{srcdoc}",
                                     }
@@ -592,61 +592,64 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn detects_canvas_wrapper_with_frontmatter() {
-        let content = "+++\ntitle = \"My Canvas\"\ntags = [\"canvas\"]\n+++\n\n![[hero.canvas]]\n";
-        assert_eq!(canvas_embed_path(content), Some("hero.canvas".into()));
+    fn detects_design_board_wrapper_with_frontmatter() {
+        let content =
+            "+++\ntitle = \"My Design Board\"\ntags = [\"design_board\"]\n+++\n\n![[hero.board]]\n";
+        assert_eq!(design_board_embed_path(content), Some("hero.board".into()));
     }
 
     #[test]
-    fn detects_canvas_wrapper_minimal() {
+    fn detects_design_board_wrapper_minimal() {
         assert_eq!(
-            canvas_embed_path("![[test.canvas]]\n"),
-            Some("test.canvas".into())
+            design_board_embed_path("![[test.board]]\n"),
+            Some("test.board".into())
         );
     }
 
     #[test]
-    fn rejects_regular_note_with_canvas_embed() {
+    fn rejects_regular_note_with_design_board_embed() {
         let content =
-            "+++\ntitle = \"Note\"\n+++\n\nText before.\n\n![[hero.canvas]]\n\nText after.\n";
-        assert_eq!(canvas_embed_path(content), None);
+            "+++\ntitle = \"Note\"\n+++\n\nText before.\n\n![[hero.board]]\n\nText after.\n";
+        assert_eq!(design_board_embed_path(content), None);
     }
 
     #[test]
-    fn rejects_non_canvas_embed() {
-        assert_eq!(canvas_embed_path("![[image.png]]"), None);
+    fn rejects_non_design_board_embed() {
+        assert_eq!(design_board_embed_path("![[image.png]]"), None);
     }
 
     #[test]
-    fn frontmatter_has_canvas_tag_detects_simple_tags() {
-        let c = "+++\ntitle = \"Demo\"\ntags = [\"canvas\"]\n+++\n\nbody\n";
-        assert!(frontmatter_has_canvas_tag(c));
+    fn frontmatter_has_design_board_tag_detects_simple_tags() {
+        let c = "+++\ntitle = \"Demo\"\ntags = [\"design_board\"]\n+++\n\nbody\n";
+        assert!(frontmatter_has_design_board_tag(c));
     }
 
     #[test]
-    fn frontmatter_has_canvas_tag_detects_in_multi_tag_array() {
-        let c = "+++\ntags = [\"draft\", \"canvas\", \"design\"]\n+++\n\nbody\n";
-        assert!(frontmatter_has_canvas_tag(c));
+    fn frontmatter_has_design_board_tag_detects_in_multi_tag_array() {
+        let c = "+++\ntags = [\"draft\", \"design_board\", \"design\"]\n+++\n\nbody\n";
+        assert!(frontmatter_has_design_board_tag(c));
     }
 
     #[test]
-    fn frontmatter_has_canvas_tag_rejects_missing_or_other_tags() {
-        assert!(!frontmatter_has_canvas_tag("+++\ntags = []\n+++\n\nbody\n"));
-        assert!(!frontmatter_has_canvas_tag(
+    fn frontmatter_has_design_board_tag_rejects_missing_or_other_tags() {
+        assert!(!frontmatter_has_design_board_tag(
+            "+++\ntags = []\n+++\n\nbody\n"
+        ));
+        assert!(!frontmatter_has_design_board_tag(
             "+++\ntags = [\"draft\"]\n+++\n\nbody\n"
         ));
-        assert!(!frontmatter_has_canvas_tag("plain text"));
+        assert!(!frontmatter_has_design_board_tag("plain text"));
     }
 
     #[test]
-    fn frontmatter_has_canvas_tag_handles_no_frontmatter() {
-        assert!(!frontmatter_has_canvas_tag("just a regular note"));
+    fn frontmatter_has_design_board_tag_handles_no_frontmatter() {
+        assert!(!frontmatter_has_design_board_tag("just a regular note"));
     }
 
     #[test]
-    fn is_canvas_extension() {
-        assert!(is_canvas(std::path::Path::new("canvases/x.canvas")));
-        assert!(!is_canvas(std::path::Path::new("notes/x.md")));
+    fn is_design_board_extension() {
+        assert!(is_design_board(std::path::Path::new("boards/x.board")));
+        assert!(!is_design_board(std::path::Path::new("notes/x.md")));
     }
 
     fn cell_with(html: &str, css: &str, js: Option<&str>) -> Cell {
@@ -736,15 +739,18 @@ mod tests {
     }
 
     #[test]
-    fn create_canvas_produces_both_files() {
-        // create_canvas is now defined in flynt-core; we keep this smoke
+    fn create_design_board_produces_both_files() {
+        // create_design_board is now defined in flynt-core; we keep this smoke
         // check here to confirm the re-export and the wrapper-detection
         // path round-trip end-to-end through the UI crate.
         let tmp = TempDir::new().unwrap();
-        let md_path = create_canvas(tmp.path(), "Hero").unwrap();
+        let md_path = create_design_board(tmp.path(), "Hero").unwrap();
 
         let md_abs = tmp.path().join(&md_path);
         let md_content = std::fs::read_to_string(&md_abs).unwrap();
-        assert_eq!(canvas_embed_path(&md_content), Some("Hero.canvas".into()));
+        assert_eq!(
+            design_board_embed_path(&md_content),
+            Some("Hero.board".into())
+        );
     }
 }

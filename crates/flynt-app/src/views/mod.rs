@@ -1,4 +1,4 @@
-pub mod canvas;
+pub mod design_board;
 pub mod excalidraw;
 pub mod flow;
 pub mod graph;
@@ -12,7 +12,7 @@ pub mod settings;
 pub mod terminal_lab;
 pub mod welcome;
 
-pub use canvas::CanvasView;
+pub use design_board::DesignBoardView;
 pub use excalidraw::ExcalidrawView;
 pub use flow::{FlowView, is_flow};
 pub use graph::GraphView;

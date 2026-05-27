@@ -386,15 +386,17 @@ fn execute_command(
                 }
             });
         }
-        "new-canvas" => {
+        "new-design-board" => {
             let c = ctx;
             let mut ts = *tab_state;
             let mut ar = *active_route;
             spawn(async move {
                 let project = c.project();
                 let ts_suffix = chrono::Local::now().format("%Y%m%d-%H%M%S%3f").to_string();
-                let name = format!("Canvas {ts_suffix}");
-                if let Ok(md_path) = crate::views::canvas::create_canvas(&project.root, &name) {
+                let name = format!("DesignBoard {ts_suffix}");
+                if let Ok(md_path) =
+                    crate::views::design_board::create_design_board(&project.root, &name)
+                {
                     let _ = project.index_file(&project.root.join(&md_path));
                     let _ = c.project_events().send(
                         flynt_store::watcher::ProjectChangeEvent::FileCreated(
@@ -663,8 +665,8 @@ pub fn CommandPalette(mut open: Signal<bool>, mode: Signal<PaletteMode>) -> Elem
                 category: "Create".into(),
             },
             Cmd {
-                id: "new-canvas".into(),
-                label: "New Canvas".into(),
+                id: "new-design-board".into(),
+                label: "New Design Board".into(),
                 category: "Create".into(),
             },
             Cmd {

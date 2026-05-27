@@ -3008,35 +3008,36 @@ pub fn NotesView() -> Element {
         }
     }
 
-    // If this document is a canvas wrapper, render CanvasView directly.
+    // If this document is a design board wrapper, render DesignBoardView directly.
     // Two acceptance paths:
-    //  (1) body is exactly `![[X.canvas]]` (the normal wrapper shape), or
-    //  (2) frontmatter has `tags = [..., "canvas", ...]` AND a sibling
-    //      `<stem>.canvas` file exists. (1) is the happy path; (2) is a
+    //  (1) body is exactly `![[X.board]]` (the normal wrapper shape), or
+    //  (2) frontmatter has `tags = [..., "design-board", ...]` AND a sibling
+    //      `<stem>.board` file exists. (1) is the happy path; (2) is a
     //      recovery for cases where another bug has stomped the body but
     //      the user's design data is still intact on disk — better to
-    //      surface the canvas than dump them into an empty note view.
-    let canvas_file_from_body = crate::views::canvas::canvas_embed_path(&body);
-    let canvas_file_from_recovery = if canvas_file_from_body.is_none()
-        && crate::views::canvas::frontmatter_has_canvas_tag(&body)
+    //      surface the design board than dump them into an empty note view.
+    let design_board_file_from_body = crate::views::design_board::design_board_embed_path(&body);
+    let design_board_file_from_recovery = if design_board_file_from_body.is_none()
+        && crate::views::design_board::frontmatter_has_design_board_tag(&body)
     {
         rel_path
             .file_stem()
-            .map(|s| format!("{}.canvas", s.to_string_lossy()))
+            .map(|s| format!("{}.board", s.to_string_lossy()))
     } else {
         None
     };
-    if let Some(canvas_file) = canvas_file_from_body.or(canvas_file_from_recovery) {
+    if let Some(design_board_file) = design_board_file_from_body.or(design_board_file_from_recovery)
+    {
         let project_root = ctx.project_root();
         let doc_dir = rel_path.parent().unwrap_or(std::path::Path::new(""));
-        let canvas_path = doc_dir.join(&canvas_file);
-        let abs = project_root.join(&canvas_path);
+        let design_board_path = doc_dir.join(&design_board_file);
+        let abs = project_root.join(&design_board_path);
         if abs.exists() {
             is_drawing.set(true);
             return rsx! {
                 div {
                     style: "display:flex;flex-direction:column;flex:1;overflow:hidden;padding:0;min-height:0;height:100%;",
-                    crate::views::CanvasView { path: canvas_path }
+                    crate::views::DesignBoardView { path: design_board_path }
                 }
             };
         }

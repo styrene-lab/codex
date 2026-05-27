@@ -134,7 +134,7 @@ impl Extension for FlyntExtension {
                 {
                     "name": "move_document",
                     "label": "Move Document",
-                    "description": "Move a plain markdown note to a new project-relative `.md` path and update Flynt's index. Use this when reorganizing notes into better folders. Do not use it for Excalidraw drawing wrappers, design canvas wrappers, or non-markdown files.",
+                    "description": "Move a plain markdown note to a new project-relative `.md` path and update Flynt's index. Use this when reorganizing notes into better folders. Do not use it for Excalidraw drawing wrappers, design board wrappers, or non-markdown files.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -340,7 +340,7 @@ impl Extension for FlyntExtension {
                 {
                     "name": "drawing_set_scene",
                     "label": "Drawing: Set Scene",
-                    "description": "Replace an existing Excalidraw scene JSON file. Use drawing_active first for the currently open drawing. Accepts `scene` as either a JSON object or a JSON string. This edits `.excalidraw` scene data, not Flynt design `.canvas` cells.",
+                    "description": "Replace an existing Excalidraw scene JSON file. Use drawing_active first for the currently open drawing. Accepts `scene` as either a JSON object or a JSON string. This edits `.excalidraw` scene data, not Flynt design `.board` cells.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -353,7 +353,7 @@ impl Extension for FlyntExtension {
                 {
                     "name": "create_d2_diagram",
                     "label": "Create D2 Diagram",
-                    "description": "Create a D2 diagram source file. This is for text-authored D2 diagrams and defaults to `diagrams/`; it is not Excalidraw. Use create_drawing for freeform Excalidraw sketches, canvas_create/canvas_set_cells for Flynt design canvases, and flow_create/flow_patch for node-flow diagrams.",
+                    "description": "Create a D2 diagram source file. This is for text-authored D2 diagrams and defaults to `diagrams/`; it is not Excalidraw. Use create_drawing for freeform Excalidraw sketches, design_board_create/design_board_set_cells for Flynt design_boards, and flow_create/flow_patch for node-flow diagrams.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -440,7 +440,7 @@ impl Extension for FlyntExtension {
                 {
                     "name": "flynt_surface_guide",
                     "label": "Flynt Surface Guide",
-                    "description": "Return the operational map for Flynt's document surfaces and tool families. Call this when choosing between notes, drawings, D2 diagrams, design canvases, and flow graphs, or when the user asks what is open/current in Flynt.",
+                    "description": "Return the operational map for Flynt's document surfaces and tool families. Call this when choosing between notes, drawings, D2 diagrams, design_boards, and flow graphs, or when the user asks what is open/current in Flynt.",
                     "parameters": { "type": "object", "properties": {} }
                 },
                 {
@@ -450,9 +450,9 @@ impl Extension for FlyntExtension {
                     "parameters": { "type": "object", "properties": {} }
                 },
                 {
-                    "name": "canvas_get",
-                    "label": "Canvas: Get",
-                    "description": "Read a design canvas file (.canvas JSON) and return its parsed shape: { version, theme, grid: {cols, rows, gap}, cells: [{ id, x, y, w, h, html, css, js? }] }. Pass `path` relative to project root, e.g. 'canvases/Hero.canvas'. Use canvas_active first to discover which canvas the user has open.",
+                    "name": "design_board_get",
+                    "label": "Design Board: Get",
+                    "description": "Read a design board file (.board JSON) and return its parsed shape: { version, theme, grid: {cols, rows, gap}, cells: [{ id, x, y, w, h, html, css, js? }] }. Pass `path` relative to project root, e.g. 'boards/Hero.board'. Use design_board_active first to discover which design board the user has open.",
                     "parameters": {
                         "type": "object",
                         "properties": { "path": { "type": "string" } },
@@ -460,9 +460,9 @@ impl Extension for FlyntExtension {
                     }
                 },
                 {
-                    "name": "canvas_set_cells",
-                    "label": "Canvas: Set Cells",
-                    "description": "Patch a canvas file. `cells` upserts by id (matching id replaces, new id appends). `delete_ids` removes cells. `grid` and `theme` are optional and only applied when present. Use this for incremental edits — never rewrite the whole document if you can target specific cells. Each cell must specify x, y, w, h in grid coordinates (0-indexed) plus html and css; js is optional. Response includes `lint_warnings`: an array of advisory strings flagging Flynt-canvas-specific issues (cells lacking h-full will show theme-bg below content; Tailwind arbitrary-value classes that the curated subset can't resolve). Lint never blocks the write — review warnings and fix in your next turn.",
+                    "name": "design_board_set_cells",
+                    "label": "Design Board: Set Cells",
+                    "description": "Patch a design board file. `cells` upserts by id (matching id replaces, new id appends). `delete_ids` removes cells. `grid` and `theme` are optional and only applied when present. Use this for incremental edits — never rewrite the whole document if you can target specific cells. Each cell must specify x, y, w, h in grid coordinates (0-indexed) plus html and css; js is optional. Response includes `lint_warnings`: an array of advisory strings flagging Flynt-design-board-specific issues (cells lacking h-full will show theme-bg below content; Tailwind arbitrary-value classes that the curated subset can't resolve). Lint never blocks the write — review warnings and fix in your next turn.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -499,9 +499,9 @@ impl Extension for FlyntExtension {
                     }
                 },
                 {
-                    "name": "canvas_apply_theme",
-                    "label": "Canvas: Apply Theme",
-                    "description": "Set the canvas's theme. Theme tokens (--background, --primary, etc.) inject into every cell's iframe and are picked up by Tailwind utility classes. Use canvas_list_primitives to discover available themes (presets ship with the install). Unknown themes fall back to 'default' at render time, but persist as-is so an upcoming preset can take effect later.",
+                    "name": "design_board_apply_theme",
+                    "label": "Design Board: Apply Theme",
+                    "description": "Set the design board's theme. Theme tokens (--background, --primary, etc.) inject into every cell's iframe and are picked up by Tailwind utility classes. Use design_board_list_primitives to discover available themes (presets ship with the install). Unknown themes fall back to 'default' at render time, but persist as-is so an upcoming preset can take effect later.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -512,15 +512,15 @@ impl Extension for FlyntExtension {
                     }
                 },
                 {
-                    "name": "canvas_list_primitives",
-                    "label": "Canvas: List Primitives",
-                    "description": "Return everything you need to design well on a canvas: (1) `primitives` — shadcn-styled HTML snippets (Button, Card, Input, Badge, Alert, Avatar, Separator, etc.) each with a `usage_notes` field calling out CSS-discipline gotchas (especially: wrap cell-outermost elements in `h-full` so cell body bg doesn't show through), (2) `themes` — every available theme preset with its full CSS-variable map under `vars` (so you know what `bg-card`/`text-foreground`/etc. actually resolve to before designing), and (3) `cell_authoring_guidance` — a short array of rules to follow when composing cells (theme/visual-language matching, sizing discipline, the Tailwind subset's lack of arbitrary-value classes). Read all three before writing cell HTML. Use canvas_apply_theme to switch themes.",
+                    "name": "design_board_list_primitives",
+                    "label": "Design Board: List Primitives",
+                    "description": "Return everything you need to design well on a design board: (1) `primitives` — shadcn-styled HTML snippets (Button, Card, Input, Badge, Alert, Avatar, Separator, etc.) each with a `usage_notes` field calling out CSS-discipline gotchas (especially: wrap cell-outermost elements in `h-full` so cell body bg doesn't show through), (2) `themes` — every available theme preset with its full CSS-variable map under `vars` (so you know what `bg-card`/`text-foreground`/etc. actually resolve to before designing), and (3) `cell_authoring_guidance` — a short array of rules to follow when composing cells (theme/visual-language matching, sizing discipline, the Tailwind subset's lack of arbitrary-value classes). Read all three before writing cell HTML. Use design_board_apply_theme to switch themes.",
                     "parameters": { "type": "object", "properties": {} }
                 },
                 {
-                    "name": "canvas_create",
-                    "label": "Canvas: Create",
-                    "description": "Create a new design canvas in the user's project. Writes a `.canvas` data file at `canvases/<name>.canvas` plus a sibling `.md` wrapper that makes it indexable and openable as a tab. Returns { wrapper_path, canvas_path } you can pass to canvas_set_cells immediately. Refuses to overwrite an existing canvas — pick a different name. Use this when the user asks to design something fresh; use canvas_set_cells on the existing canvas when they want to edit what's already open (call canvas_active first to find out).",
+                    "name": "design_board_create",
+                    "label": "Design Board: Create",
+                    "description": "Create a new design board in the user's project. Writes a `.board` data file at `boards/<name>.board` plus a sibling `.md` wrapper that makes it indexable and openable as a tab. Returns { wrapper_path, design_board_path } you can pass to design_board_set_cells immediately. Refuses to overwrite an existing design board — pick a different name. Use this when the user asks to design something fresh; use design_board_set_cells on the existing design board when they want to edit what's already open (call design_board_active first to find out).",
                     "parameters": {
                         "type": "object",
                         "properties": { "name": { "type": "string" } },
@@ -528,9 +528,9 @@ impl Extension for FlyntExtension {
                     }
                 },
                 {
-                    "name": "canvas_active",
-                    "label": "Canvas: Active",
-                    "description": "Resolve the canvas the user is currently viewing. Reads the ui-state mirror, checks whether the active document is a canvas wrapper (.md whose body is exactly `![[X.canvas]]`), and returns the resolved .canvas path you can pass to canvas_get. Returns null if no canvas is active. Cheaper than running get_ui_state + parsing the body yourself.",
+                    "name": "design_board_active",
+                    "label": "Design Board: Active",
+                    "description": "Resolve the design board the user is currently viewing. Reads the ui-state mirror, checks whether the active document is a design board wrapper (.md whose body is exactly `![[X.board]]`), and returns the resolved .board path you can pass to design_board_get. Returns null if no design board is active. Cheaper than running get_ui_state + parsing the body yourself.",
                     "parameters": { "type": "object", "properties": {} }
                 }
                 ]);
@@ -1467,12 +1467,12 @@ impl Extension for FlyntExtension {
                 }
             }
 
-            "execute_canvas_get" => self.execute_canvas_get(params),
-            "execute_canvas_set_cells" => self.execute_canvas_set_cells(params),
-            "execute_canvas_apply_theme" => self.execute_canvas_apply_theme(params),
-            "execute_canvas_list_primitives" => self.execute_canvas_list_primitives(),
-            "execute_canvas_active" => self.execute_canvas_active(),
-            "execute_canvas_create" => self.execute_canvas_create(params),
+            "execute_design_board_get" => self.execute_design_board_get(params),
+            "execute_design_board_set_cells" => self.execute_design_board_set_cells(params),
+            "execute_design_board_apply_theme" => self.execute_design_board_apply_theme(params),
+            "execute_design_board_list_primitives" => self.execute_design_board_list_primitives(),
+            "execute_design_board_active" => self.execute_design_board_active(),
+            "execute_design_board_create" => self.execute_design_board_create(params),
 
             // ── Forge / engagement tools (Phase 3) ────────────────────────
             // The omegon-pushed secret hand-off. Falls through to env fallback
@@ -1553,14 +1553,14 @@ fn flynt_surface_guide() -> Value {
                 "use_for": "text-authored D2 diagrams"
             },
             {
-                "kind": "design_canvas",
-                "paths": ["canvases/<name>.md", "canvases/<name>.canvas"],
-                "tools": ["canvas_create", "canvas_active", "canvas_get", "canvas_set_cells", "canvas_apply_theme", "canvas_list_primitives"],
-                "use_for": "Flynt design canvases made of grid-positioned HTML/CSS cells",
+                "kind": "design-board",
+                "paths": ["boards/<name>.md", "boards/<name>.board"],
+                "tools": ["design_board_create", "design_board_active", "design_board_get", "design_board_set_cells", "design_board_apply_theme", "design_board_list_primitives"],
+                "use_for": "Flynt design_boards made of grid-positioned HTML/CSS cells",
                 "rules": [
                     "This is not Excalidraw.",
-                    "Read canvas_list_primitives before authoring polished cells.",
-                    "Use canvas_active before editing the canvas the operator has open."
+                    "Read design_board_list_primitives before authoring polished cells.",
+                    "Use design_board_active before editing the design board the operator has open."
                 ]
             },
             {
@@ -1623,7 +1623,7 @@ fn drawing_path_arg(params: &Value) -> omegon_extension::Result<&str> {
         })
 }
 
-// ── Canvas tool implementations ───────────────────────────────────────────────
+// ── DesignBoard tool implementations ───────────────────────────────────────────────
 //
 // Pulled out as inherent methods (rather than inline match arms) so each tool
 // is independently unit-testable and the dispatch table above stays scannable.
@@ -1737,7 +1737,7 @@ impl FlyntExtension {
         }))
     }
 
-    fn resolve_canvas_path(
+    fn resolve_design_board_path(
         &self,
         path_arg: &str,
     ) -> Result<std::path::PathBuf, omegon_extension::Error> {
@@ -1755,36 +1755,36 @@ impl FlyntExtension {
         Ok(self.project.root.join(rel))
     }
 
-    fn execute_canvas_get(&self, params: Value) -> omegon_extension::Result<Value> {
-        let path = canvas_path_arg(&params)?;
-        let abs = self.resolve_canvas_path(path)?;
-        let canvas = flynt_core::canvas::Canvas::load(&abs)
+    fn execute_design_board_get(&self, params: Value) -> omegon_extension::Result<Value> {
+        let path = design_board_path_arg(&params)?;
+        let abs = self.resolve_design_board_path(path)?;
+        let design_board = flynt_core::design_board::DesignBoard::load(&abs)
             .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
-        serde_json::to_value(&canvas)
+        serde_json::to_value(&design_board)
             .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))
     }
 
-    fn execute_canvas_set_cells(&self, params: Value) -> omegon_extension::Result<Value> {
-        let path = canvas_path_arg(&params)?;
-        let abs = self.resolve_canvas_path(path)?;
+    fn execute_design_board_set_cells(&self, params: Value) -> omegon_extension::Result<Value> {
+        let path = design_board_path_arg(&params)?;
+        let abs = self.resolve_design_board_path(path)?;
 
         // Load existing or start fresh. Phase 5 lets the agent create cells in
-        // a freshly-touched file by writing a default canvas first; that keeps
-        // the tool useful even when the user hasn't created the canvas via UI.
-        let mut canvas = match flynt_core::canvas::Canvas::load(&abs) {
+        // a freshly-touched file by writing a default design_board first; that keeps
+        // the tool useful even when the user hasn't created the design board via UI.
+        let mut design_board = match flynt_core::design_board::DesignBoard::load(&abs) {
             Ok(c) => c,
-            Err(_) if !abs.exists() => flynt_core::canvas::Canvas::default(),
+            Err(_) if !abs.exists() => flynt_core::design_board::DesignBoard::default(),
             Err(e) => return Err(omegon_extension::Error::internal_error(e.to_string())),
         };
 
         if let Some(theme) = params.get("theme").and_then(|v| v.as_str()) {
-            canvas.theme = theme.to_string();
+            design_board.theme = theme.to_string();
         }
         if let Some(grid_val) = params.get("grid") {
             let grid_val = coerce_to_value(grid_val.clone(), "grid")?;
-            let grid: flynt_core::canvas::Grid = serde_json::from_value(grid_val)
+            let grid: flynt_core::design_board::Grid = serde_json::from_value(grid_val)
                 .map_err(|e| omegon_extension::Error::invalid_params(format!("grid: {e}")))?;
-            canvas.grid = grid;
+            design_board.grid = grid;
         }
 
         // delete_ids accepts either an array or a JSON-stringified array (some
@@ -1798,7 +1798,7 @@ impl FlyntExtension {
             })?;
             for id in ids {
                 if let Some(id_str) = id.as_str() {
-                    if canvas.remove_cell(id_str) {
+                    if design_board.remove_cell(id_str) {
                         deleted.push(id_str.to_string());
                     }
                 }
@@ -1817,11 +1817,11 @@ impl FlyntExtension {
                 .as_array()
                 .ok_or_else(|| omegon_extension::Error::invalid_params("cells: expected array"))?;
             for c in cells {
-                let cell: flynt_core::canvas::Cell = serde_json::from_value(c.clone())
+                let cell: flynt_core::design_board::Cell = serde_json::from_value(c.clone())
                     .map_err(|e| omegon_extension::Error::invalid_params(format!("cell: {e}")))?;
                 lint_warnings.extend(lint_cell(&cell));
                 let id = cell.id.clone();
-                let replaced = canvas.upsert_cell(cell);
+                let replaced = design_board.upsert_cell(cell);
                 upserted.push(json!({ "id": id, "replaced": replaced }));
             }
         }
@@ -1830,13 +1830,13 @@ impl FlyntExtension {
             std::fs::create_dir_all(parent)
                 .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
         }
-        canvas
+        design_board
             .save(&abs)
             .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
 
         Ok(json!({
             "path": path,
-            "cell_count": canvas.cells.len(),
+            "cell_count": design_board.cells.len(),
             "upserted": upserted,
             "deleted": deleted,
             // Lint warnings are advisory — the cells were written. Agent
@@ -1846,24 +1846,24 @@ impl FlyntExtension {
         }))
     }
 
-    fn execute_canvas_apply_theme(&self, params: Value) -> omegon_extension::Result<Value> {
-        let path = canvas_path_arg(&params)?;
+    fn execute_design_board_apply_theme(&self, params: Value) -> omegon_extension::Result<Value> {
+        let path = design_board_path_arg(&params)?;
         let theme = params["theme"]
             .as_str()
             .ok_or_else(|| omegon_extension::Error::invalid_params("missing 'theme'"))?;
-        let abs = self.resolve_canvas_path(path)?;
-        let mut canvas = flynt_core::canvas::Canvas::load(&abs)
+        let abs = self.resolve_design_board_path(path)?;
+        let mut design_board = flynt_core::design_board::DesignBoard::load(&abs)
             .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
-        let previous = canvas.theme.clone();
-        canvas.theme = theme.to_string();
-        canvas
+        let previous = design_board.theme.clone();
+        design_board.theme = theme.to_string();
+        design_board
             .save(&abs)
             .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
         Ok(json!({ "path": path, "theme": theme, "previous_theme": previous }))
     }
 
-    fn execute_canvas_list_primitives(&self) -> omegon_extension::Result<Value> {
-        // Read from the project-side copy that flynt-app's canvas_assets bootstrap
+    fn execute_design_board_list_primitives(&self) -> omegon_extension::Result<Value> {
+        // Read from the project-side copy that flynt-app's design_board_assets bootstrap
         // writes on launch. If the bootstrap hasn't run yet (agent started before
         // app), return an empty primitives list rather than erroring.
         let dir = self
@@ -1911,19 +1911,19 @@ impl FlyntExtension {
         }))
     }
 
-    fn execute_canvas_create(&self, params: Value) -> omegon_extension::Result<Value> {
+    fn execute_design_board_create(&self, params: Value) -> omegon_extension::Result<Value> {
         let name = params["name"]
             .as_str()
             .ok_or_else(|| omegon_extension::Error::invalid_params("missing 'name'"))?;
-        // Refuse names that would escape the canvases/ directory or contain
-        // path separators — same posture as resolve_canvas_path's traversal
+        // Refuse names that would escape the boards/ directory or contain
+        // path separators — same posture as resolve_design_board_path's traversal
         // guard but applied to the name component before it's joined.
         if name.is_empty() || name.contains('/') || name.contains('\\') || name.contains("..") {
             return Err(omegon_extension::Error::invalid_params(
                 "name must not be empty or contain path separators",
             ));
         }
-        let md_rel = flynt_core::canvas::create_canvas(&self.project.root, name)
+        let md_rel = flynt_core::design_board::create_design_board(&self.project.root, name)
             .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
         self.project
             .index_file(&self.project.root.join(&md_rel))
@@ -1934,11 +1934,11 @@ impl FlyntExtension {
             .unwrap_or_else(|| name.to_string());
         Ok(json!({
             "wrapper_path": md_rel.to_string_lossy(),
-            "canvas_path": format!("canvases/{stem}.canvas"),
+            "design_board_path": format!("boards/{stem}.board"),
         }))
     }
 
-    fn execute_canvas_active(&self) -> omegon_extension::Result<Value> {
+    fn execute_design_board_active(&self) -> omegon_extension::Result<Value> {
         let ui_path = self
             .project
             .root
@@ -1956,48 +1956,48 @@ impl FlyntExtension {
             return Ok(Value::Null);
         };
 
-        // Fast path: if flynt-app classified this doc as "canvas" in the
+        // Fast path: if flynt-app classified this doc as "design-board" in the
         // mirror, trust it and skip the body parse. Falls back to parsing
         // the wrapper if the field is missing (older flynt-app, or a
         // foreign tool wrote ui-state.json).
-        let typed_canvas = active
+        let typed_design_board = active
             .and_then(|d| d.get("document_type"))
             .and_then(|v| v.as_str())
-            == Some("canvas");
+            == Some("design-board");
 
-        let canvas_file = if typed_canvas {
-            // The wrapper md and the .canvas data file share a stem, so we can
+        let design_board_file = if typed_design_board {
+            // The wrapper md and the .board data file share a stem, so we can
             // skip the body read entirely.
             std::path::Path::new(md_path)
                 .file_stem()
-                .map(|s| format!("{}.canvas", s.to_string_lossy()))
+                .map(|s| format!("{}.board", s.to_string_lossy()))
         } else {
             let md_abs = self.project.root.join(md_path);
             let md_body = match std::fs::read_to_string(&md_abs) {
                 Ok(s) => s,
                 Err(_) => return Ok(Value::Null),
             };
-            canvas_embed_path(&md_body)
+            design_board_embed_path(&md_body)
         };
-        let Some(canvas_file) = canvas_file else {
+        let Some(design_board_file) = design_board_file else {
             return Ok(Value::Null);
         };
 
         let doc_dir = std::path::Path::new(md_path)
             .parent()
             .unwrap_or(std::path::Path::new(""));
-        let canvas_rel = doc_dir.join(&canvas_file);
+        let design_board_rel = doc_dir.join(&design_board_file);
         Ok(json!({
             "wrapper_path": md_path,
-            "canvas_path": canvas_rel.to_string_lossy(),
+            "design_board_path": design_board_rel.to_string_lossy(),
         }))
     }
 }
 
-/// Structural lint for cell HTML — surfaces Flynt-canvas-specific issues
+/// Structural lint for cell HTML — surfaces Flynt-design-board-specific issues
 /// only. Deliberately NOT a general-purpose visual/CSS/a11y linter:
 /// the rule of thumb is "does this cell behave correctly inside Flynt's
-/// canvas pipeline?", not "is this good design?".
+/// design_board pipeline?", not "is this good design?".
 ///
 /// Currently checks:
 ///   1. The outermost element fills the cell (has `h-full` or `height:100%`).
@@ -2016,7 +2016,7 @@ impl FlyntExtension {
 /// Returns warnings as plain strings prefixed with the cell id. The tool
 /// surfaces these as `lint_warnings` in the response — never blocks the
 /// write. Agent sees them in-band and can react on the same turn.
-fn lint_cell(cell: &flynt_core::canvas::Cell) -> Vec<String> {
+fn lint_cell(cell: &flynt_core::design_board::Cell) -> Vec<String> {
     let mut warnings = Vec::new();
     let html = &cell.html;
     let id = &cell.id;
@@ -2028,7 +2028,7 @@ fn lint_cell(cell: &flynt_core::canvas::Cell) -> Vec<String> {
     if !outermost_fills_cell(html) {
         warnings.push(format!(
             "cell '{id}': outermost element lacks h-full (or height:100%) — \
-             empty space will show the canvas theme --background below your \
+             empty space will show the design board theme --background below your \
              content. Add h-full to the outer element or wrap in <div class=\"h-full\">."
         ));
     }
@@ -2120,17 +2120,19 @@ fn outermost_fills_cell(html: &str) -> bool {
     false
 }
 
-/// Accept the canvas path under either `path` or `canvas_path`. The agent's
+/// Accept the design board path under either `path` or `design_board_path`. The agent's
 /// own tool listing lists `path` as the parameter, but it consistently
-/// reaches for `canvas_path` (likely cued by the field name in canvas_active's
+/// reaches for `design_board_path` (likely cued by the field name in design_board_active's
 /// return shape). Accepting both eliminates a recurring round-trip failure
 /// where the first call errors and the agent retries with the right name.
-fn canvas_path_arg(params: &Value) -> omegon_extension::Result<&str> {
+fn design_board_path_arg(params: &Value) -> omegon_extension::Result<&str> {
     params
         .get("path")
         .and_then(|v| v.as_str())
-        .or_else(|| params.get("canvas_path").and_then(|v| v.as_str()))
-        .ok_or_else(|| omegon_extension::Error::invalid_params("missing 'path' (or 'canvas_path')"))
+        .or_else(|| params.get("design_board_path").and_then(|v| v.as_str()))
+        .ok_or_else(|| {
+            omegon_extension::Error::invalid_params("missing 'path' (or 'design_board_path')")
+        })
 }
 
 /// Accept either a structured JSON value or a stringified JSON value and
@@ -2156,10 +2158,10 @@ fn read_json_or_default(path: &std::path::Path, fallback: Value) -> Value {
         .unwrap_or(fallback)
 }
 
-/// Detect a `.md` wrapper whose body is exactly one `![[...canvas]]` embed.
-/// Mirrors the same logic in flynt-app::views::canvas — duplicated here so
+/// Detect a `.md` wrapper whose body is exactly one `![[...board]]` embed.
+/// Mirrors the same logic in flynt-app::views::design_board — duplicated here so
 /// flynt-agent doesn't take a UI-crate dependency.
-fn canvas_embed_path(content: &str) -> Option<String> {
+fn design_board_embed_path(content: &str) -> Option<String> {
     let body = if let Some(rest) = content.strip_prefix("+++\n") {
         if let Some(end) = rest.find("\n+++") {
             rest[end + 4..].trim()
@@ -2172,7 +2174,7 @@ fn canvas_embed_path(content: &str) -> Option<String> {
     let lines: Vec<&str> = body.lines().filter(|l| !l.trim().is_empty()).collect();
     if lines.len() == 1 {
         let line = lines[0].trim();
-        if line.starts_with("![[") && line.ends_with(".canvas]]") {
+        if line.starts_with("![[") && line.ends_with(".board]]") {
             return Some(line[3..line.len() - 2].to_string());
         }
     }
@@ -2350,7 +2352,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn surface_guide_distinguishes_drawings_diagrams_and_canvases() {
+    async fn surface_guide_distinguishes_drawings_diagrams_and_boards() {
         let (_tmp, ext) = test_extension();
         let guide = ext
             .handle_rpc("execute_flynt_surface_guide", json!({}))
@@ -2359,7 +2361,7 @@ mod tests {
         let body = guide.to_string();
         assert!(body.contains("drawings/<name>.excalidraw"));
         assert!(body.contains("diagrams/<name>.d2"));
-        assert!(body.contains("canvases/<name>.canvas"));
+        assert!(body.contains("boards/<name>.board"));
     }
 
     #[tokio::test]
@@ -2419,9 +2421,9 @@ mod tests {
         assert_eq!(new_doc["path"], "docs/Thing.md");
     }
 
-    // ── Canvas tools ────────────────────────────────────────────────────────
+    // ── DesignBoard tools ────────────────────────────────────────────────────────
 
-    fn write_canvas(tmp: &TempDir, rel: &str, body: &str) {
+    fn write_design_board(tmp: &TempDir, rel: &str, body: &str) {
         let abs = tmp.path().join(rel);
         std::fs::create_dir_all(abs.parent().unwrap()).unwrap();
         std::fs::write(&abs, body).unwrap();
@@ -2565,16 +2567,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn canvas_get_returns_parsed_canvas() {
+    async fn design_board_get_returns_parsed_design_board() {
         let (tmp, ext) = test_extension();
-        let canvas = flynt_core::canvas::Canvas::default();
-        let body = serde_json::to_string(&canvas).unwrap();
-        write_canvas(&tmp, "canvases/Hero.canvas", &body);
+        let design_board = flynt_core::design_board::DesignBoard::default();
+        let body = serde_json::to_string(&design_board).unwrap();
+        write_design_board(&tmp, "boards/Hero.board", &body);
 
         let out = ext
             .handle_rpc(
-                "execute_canvas_get",
-                json!({"path": "canvases/Hero.canvas"}),
+                "execute_design_board_get",
+                json!({"path": "boards/Hero.board"}),
             )
             .await
             .unwrap();
@@ -2584,48 +2586,55 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn canvas_get_rejects_missing_path() {
+    async fn design_board_get_rejects_missing_path() {
         let (_tmp, ext) = test_extension();
         let err = ext
-            .handle_rpc("execute_canvas_get", json!({}))
+            .handle_rpc("execute_design_board_get", json!({}))
             .await
             .unwrap_err();
         assert!(err.to_string().contains("path"));
     }
 
     #[tokio::test]
-    async fn canvas_get_accepts_canvas_path_alias() {
-        // Agent observed reaching for `canvas_path` (the name in
-        // canvas_active's return) even though the tool schema uses `path`.
+    async fn design_board_get_accepts_design_board_path_alias() {
+        // Agent observed reaching for `design_board_path` (the name in
+        // design_board_active's return) even though the tool schema uses `path`.
         // Both must work or the agent wastes a round-trip retrying.
         let (tmp, ext) = test_extension();
-        let canvas = flynt_core::canvas::Canvas::default();
-        write_canvas(&tmp, "x.canvas", &serde_json::to_string(&canvas).unwrap());
+        let design_board = flynt_core::design_board::DesignBoard::default();
+        write_design_board(
+            &tmp,
+            "x.board",
+            &serde_json::to_string(&design_board).unwrap(),
+        );
 
         let by_path = ext
-            .handle_rpc("execute_canvas_get", json!({"path": "x.canvas"}))
+            .handle_rpc("execute_design_board_get", json!({"path": "x.board"}))
             .await
             .unwrap();
-        let by_canvas_path = ext
-            .handle_rpc("execute_canvas_get", json!({"canvas_path": "x.canvas"}))
+        let by_design_board_path = ext
+            .handle_rpc(
+                "execute_design_board_get",
+                json!({"design_board_path": "x.board"}),
+            )
             .await
             .unwrap();
-        assert_eq!(by_path, by_canvas_path);
+        assert_eq!(by_path, by_design_board_path);
     }
 
     #[tokio::test]
-    async fn canvas_apply_theme_accepts_canvas_path_alias() {
+    async fn design_board_apply_theme_accepts_design_board_path_alias() {
         let (tmp, ext) = test_extension();
-        write_canvas(
+        write_design_board(
             &tmp,
-            "x.canvas",
-            &serde_json::to_string(&flynt_core::canvas::Canvas::default()).unwrap(),
+            "x.board",
+            &serde_json::to_string(&flynt_core::design_board::DesignBoard::default()).unwrap(),
         );
 
         let out = ext
             .handle_rpc(
-                "execute_canvas_apply_theme",
-                json!({"canvas_path": "x.canvas", "theme": "amber"}),
+                "execute_design_board_apply_theme",
+                json!({"design_board_path": "x.board", "theme": "amber"}),
             )
             .await
             .unwrap();
@@ -2633,23 +2642,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn canvas_get_rejects_path_traversal() {
+    async fn design_board_get_rejects_path_traversal() {
         let (_tmp, ext) = test_extension();
         let err = ext
-            .handle_rpc("execute_canvas_get", json!({"path": "../etc/passwd"}))
+            .handle_rpc("execute_design_board_get", json!({"path": "../etc/passwd"}))
             .await
             .unwrap_err();
         assert!(err.to_string().contains(".."));
     }
 
     #[tokio::test]
-    async fn canvas_set_cells_creates_file_when_missing() {
+    async fn design_board_set_cells_creates_file_when_missing() {
         let (tmp, ext) = test_extension();
         let out = ext
             .handle_rpc(
-                "execute_canvas_set_cells",
+                "execute_design_board_set_cells",
                 json!({
-                    "path": "canvases/New.canvas",
+                    "path": "boards/New.board",
                     "cells": [{
                         "id": "a", "x": 0, "y": 0, "w": 4, "h": 2,
                         "html": "<div>x</div>", "css": ""
@@ -2660,11 +2669,14 @@ mod tests {
             .unwrap();
 
         assert_eq!(out["cell_count"], 1);
-        assert!(tmp.path().join("canvases/New.canvas").exists());
+        assert!(tmp.path().join("boards/New.board").exists());
 
-        // Round-trip: canvas_get returns the cell we just wrote.
+        // Round-trip: design_board_get returns the cell we just wrote.
         let got = ext
-            .handle_rpc("execute_canvas_get", json!({"path": "canvases/New.canvas"}))
+            .handle_rpc(
+                "execute_design_board_get",
+                json!({"path": "boards/New.board"}),
+            )
             .await
             .unwrap();
         assert_eq!(got["cells"][0]["id"], "a");
@@ -2672,7 +2684,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn canvas_set_cells_accepts_stringified_cells_array() {
+    async fn design_board_set_cells_accepts_stringified_cells_array() {
         // Anthropic's tool-call surface sometimes serializes nested array
         // args as a JSON-encoded string. Without coercion we silently dropped
         // the payload and returned success — caller saw "Completed" but the
@@ -2685,18 +2697,18 @@ mod tests {
 
         let out = ext
             .handle_rpc(
-                "execute_canvas_set_cells",
-                json!({ "path": "x.canvas", "cells": cells_json }),
+                "execute_design_board_set_cells",
+                json!({ "path": "x.board", "cells": cells_json }),
             )
             .await
             .unwrap();
 
         assert_eq!(out["cell_count"], 1);
-        assert!(tmp.path().join("x.canvas").exists());
+        assert!(tmp.path().join("x.board").exists());
 
-        // Round-trip via canvas_get to confirm the cell actually wrote.
+        // Round-trip via design board_get to confirm the cell actually wrote.
         let got = ext
-            .handle_rpc("execute_canvas_get", json!({"path": "x.canvas"}))
+            .handle_rpc("execute_design_board_get", json!({"path": "x.board"}))
             .await
             .unwrap();
         assert_eq!(got["cells"][0]["id"], "a");
@@ -2704,12 +2716,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn canvas_set_cells_rejects_invalid_stringified_cells() {
+    async fn design_board_set_cells_rejects_invalid_stringified_cells() {
         let (_tmp, ext) = test_extension();
         let err = ext
             .handle_rpc(
-                "execute_canvas_set_cells",
-                json!({ "path": "x.canvas", "cells": "not-json" }),
+                "execute_design_board_set_cells",
+                json!({ "path": "x.board", "cells": "not-json" }),
             )
             .await
             .unwrap_err();
@@ -2717,12 +2729,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn canvas_set_cells_rejects_non_array_non_string_cells() {
+    async fn design_board_set_cells_rejects_non_array_non_string_cells() {
         let (_tmp, ext) = test_extension();
         let err = ext
             .handle_rpc(
-                "execute_canvas_set_cells",
-                json!({ "path": "x.canvas", "cells": 42 }),
+                "execute_design_board_set_cells",
+                json!({ "path": "x.board", "cells": 42 }),
             )
             .await
             .unwrap_err();
@@ -2730,13 +2742,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn canvas_set_cells_lint_flags_missing_h_full() {
+    async fn design_board_set_cells_lint_flags_missing_h_full() {
         let (_tmp, ext) = test_extension();
         let out = ext
             .handle_rpc(
-                "execute_canvas_set_cells",
+                "execute_design_board_set_cells",
                 json!({
-                    "path": "x.canvas",
+                    "path": "x.board",
                     "cells": [{
                         "id": "needs-fill", "x": 0, "y": 0, "w": 4, "h": 3,
                         "html": "<div class=\"bg-card p-4\">stat</div>", "css": ""
@@ -2753,13 +2765,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn canvas_set_cells_lint_passes_h_full() {
+    async fn design_board_set_cells_lint_passes_h_full() {
         let (_tmp, ext) = test_extension();
         let out = ext
             .handle_rpc(
-                "execute_canvas_set_cells",
+                "execute_design_board_set_cells",
                 json!({
-                    "path": "x.canvas",
+                    "path": "x.board",
                     "cells": [{
                         "id": "fills", "x": 0, "y": 0, "w": 4, "h": 3,
                         "html": "<div class=\"h-full bg-card p-4\">stat</div>", "css": ""
@@ -2772,13 +2784,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn canvas_set_cells_lint_flags_arbitrary_tailwind() {
+    async fn design_board_set_cells_lint_flags_arbitrary_tailwind() {
         let (_tmp, ext) = test_extension();
         let out = ext
             .handle_rpc(
-                "execute_canvas_set_cells",
+                "execute_design_board_set_cells",
                 json!({
-                    "path": "x.canvas",
+                    "path": "x.board",
                     "cells": [{
                         "id": "hot-pink", "x": 0, "y": 0, "w": 4, "h": 3,
                         "html": "<div class=\"h-full bg-[#FF1493] p-4\">x</div>", "css": ""
@@ -2799,14 +2811,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn canvas_set_cells_lint_height_100_alternate_passes() {
+    async fn design_board_set_cells_lint_height_100_alternate_passes() {
         // Inline `style="height:100%"` should also satisfy the fill check.
         let (_tmp, ext) = test_extension();
         let out = ext
             .handle_rpc(
-                "execute_canvas_set_cells",
+                "execute_design_board_set_cells",
                 json!({
-                    "path": "x.canvas",
+                    "path": "x.board",
                     "cells": [{
                         "id": "inline", "x": 0, "y": 0, "w": 4, "h": 3,
                         "html": "<div style=\"height: 100%; background: var(--card)\">x</div>",
@@ -2820,14 +2832,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn canvas_set_cells_lint_empty_html_does_not_warn() {
+    async fn design_board_set_cells_lint_empty_html_does_not_warn() {
         // Bare or empty cells aren't flagged — there's nothing to fill.
         let (_tmp, ext) = test_extension();
         let out = ext
             .handle_rpc(
-                "execute_canvas_set_cells",
+                "execute_design_board_set_cells",
                 json!({
-                    "path": "x.canvas",
+                    "path": "x.board",
                     "cells": [{
                         "id": "blank", "x": 0, "y": 0, "w": 1, "h": 1,
                         "html": "", "css": ""
@@ -2840,10 +2852,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn canvas_set_cells_upserts_by_id() {
+    async fn design_board_set_cells_upserts_by_id() {
         let (tmp, ext) = test_extension();
-        let mut canvas = flynt_core::canvas::Canvas::default();
-        canvas.upsert_cell(flynt_core::canvas::Cell {
+        let mut design_board = flynt_core::design_board::DesignBoard::default();
+        design_board.upsert_cell(flynt_core::design_board::Cell {
             id: "a".into(),
             x: 0,
             y: 0,
@@ -2853,13 +2865,17 @@ mod tests {
             css: "".into(),
             js: None,
         });
-        write_canvas(&tmp, "x.canvas", &serde_json::to_string(&canvas).unwrap());
+        write_design_board(
+            &tmp,
+            "x.board",
+            &serde_json::to_string(&design_board).unwrap(),
+        );
 
         let out = ext
             .handle_rpc(
-                "execute_canvas_set_cells",
+                "execute_design_board_set_cells",
                 json!({
-                    "path": "x.canvas",
+                    "path": "x.board",
                     "cells": [{
                         "id": "a", "x": 0, "y": 0, "w": 1, "h": 1,
                         "html": "new", "css": ""
@@ -2873,11 +2889,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn canvas_set_cells_deletes_by_id() {
+    async fn design_board_set_cells_deletes_by_id() {
         let (tmp, ext) = test_extension();
-        let mut canvas = flynt_core::canvas::Canvas::default();
+        let mut design_board = flynt_core::design_board::DesignBoard::default();
         for id in ["a", "b", "c"] {
-            canvas.upsert_cell(flynt_core::canvas::Cell {
+            design_board.upsert_cell(flynt_core::design_board::Cell {
                 id: id.into(),
                 x: 0,
                 y: 0,
@@ -2888,12 +2904,16 @@ mod tests {
                 js: None,
             });
         }
-        write_canvas(&tmp, "x.canvas", &serde_json::to_string(&canvas).unwrap());
+        write_design_board(
+            &tmp,
+            "x.board",
+            &serde_json::to_string(&design_board).unwrap(),
+        );
 
         let out = ext
             .handle_rpc(
-                "execute_canvas_set_cells",
-                json!({"path": "x.canvas", "delete_ids": ["b", "missing"]}),
+                "execute_design_board_set_cells",
+                json!({"path": "x.board", "delete_ids": ["b", "missing"]}),
             )
             .await
             .unwrap();
@@ -2912,18 +2932,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn canvas_set_cells_updates_grid_and_theme() {
+    async fn design_board_set_cells_updates_grid_and_theme() {
         let (tmp, ext) = test_extension();
-        write_canvas(
+        write_design_board(
             &tmp,
-            "x.canvas",
-            &serde_json::to_string(&flynt_core::canvas::Canvas::default()).unwrap(),
+            "x.board",
+            &serde_json::to_string(&flynt_core::design_board::DesignBoard::default()).unwrap(),
         );
 
         ext.handle_rpc(
-            "execute_canvas_set_cells",
+            "execute_design_board_set_cells",
             json!({
-                "path": "x.canvas",
+                "path": "x.board",
                 "grid": {"cols": 6, "rows": 4, "gap": 16},
                 "theme": "ocean"
             }),
@@ -2932,7 +2952,7 @@ mod tests {
         .unwrap();
 
         let got = ext
-            .handle_rpc("execute_canvas_get", json!({"path": "x.canvas"}))
+            .handle_rpc("execute_design_board_get", json!({"path": "x.board"}))
             .await
             .unwrap();
         assert_eq!(got["grid"]["cols"], 6);
@@ -2941,18 +2961,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn canvas_apply_theme_returns_previous() {
+    async fn design_board_apply_theme_returns_previous() {
         let (tmp, ext) = test_extension();
-        write_canvas(
+        write_design_board(
             &tmp,
-            "x.canvas",
-            &serde_json::to_string(&flynt_core::canvas::Canvas::default()).unwrap(),
+            "x.board",
+            &serde_json::to_string(&flynt_core::design_board::DesignBoard::default()).unwrap(),
         );
 
         let out = ext
             .handle_rpc(
-                "execute_canvas_apply_theme",
-                json!({"path": "x.canvas", "theme": "amber"}),
+                "execute_design_board_apply_theme",
+                json!({"path": "x.board", "theme": "amber"}),
             )
             .await
             .unwrap();
@@ -2961,7 +2981,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn canvas_list_primitives_reads_project_assets() {
+    async fn design_board_list_primitives_reads_project_assets() {
         let (tmp, ext) = test_extension();
         let dir = tmp.path().join(".flynt-local/flynt/assets");
         std::fs::create_dir_all(&dir).unwrap();
@@ -2992,7 +3012,7 @@ mod tests {
         .unwrap();
 
         let out = ext
-            .handle_rpc("execute_canvas_list_primitives", json!({}))
+            .handle_rpc("execute_design_board_list_primitives", json!({}))
             .await
             .unwrap();
         assert_eq!(out["primitives"][0]["id"], "button");
@@ -3008,10 +3028,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn canvas_list_primitives_returns_empty_when_no_assets() {
+    async fn design_board_list_primitives_returns_empty_when_no_assets() {
         let (_tmp, ext) = test_extension();
         let out = ext
-            .handle_rpc("execute_canvas_list_primitives", json!({}))
+            .handle_rpc("execute_design_board_list_primitives", json!({}))
             .await
             .unwrap();
         // No bootstrap done — fallback shape, no error.
@@ -3019,50 +3039,50 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn canvas_active_returns_null_when_no_ui_state() {
+    async fn design_board_active_returns_null_when_no_ui_state() {
         let (_tmp, ext) = test_extension();
         let out = ext
-            .handle_rpc("execute_canvas_active", json!({}))
+            .handle_rpc("execute_design_board_active", json!({}))
             .await
             .unwrap();
         assert!(out.is_null());
     }
 
     #[tokio::test]
-    async fn canvas_active_returns_null_for_non_canvas_doc() {
+    async fn design_board_active_returns_null_for_non_design_board_doc() {
         let (tmp, ext) = test_extension();
         std::fs::create_dir_all(tmp.path().join("notes")).unwrap();
         std::fs::write(tmp.path().join("notes/plain.md"), "Just text.\n").unwrap();
         write_ui_state(&tmp, Some("notes/plain.md"));
 
         let out = ext
-            .handle_rpc("execute_canvas_active", json!({}))
+            .handle_rpc("execute_design_board_active", json!({}))
             .await
             .unwrap();
         assert!(out.is_null());
     }
 
     #[tokio::test]
-    async fn canvas_active_resolves_canvas_wrapper() {
+    async fn design_board_active_resolves_design_board_wrapper() {
         let (tmp, ext) = test_extension();
-        std::fs::create_dir_all(tmp.path().join("canvases")).unwrap();
+        std::fs::create_dir_all(tmp.path().join("boards")).unwrap();
         std::fs::write(
-            tmp.path().join("canvases/Hero.md"),
-            "+++\ntitle = \"Hero\"\ntags = [\"canvas\"]\n+++\n\n![[Hero.canvas]]\n",
+            tmp.path().join("boards/Hero.md"),
+            "+++\ntitle = \"Hero\"\ntags = [\"design_board\"]\n+++\n\n![[Hero.board]]\n",
         )
         .unwrap();
-        write_ui_state(&tmp, Some("canvases/Hero.md"));
+        write_ui_state(&tmp, Some("boards/Hero.md"));
 
         let out = ext
-            .handle_rpc("execute_canvas_active", json!({}))
+            .handle_rpc("execute_design_board_active", json!({}))
             .await
             .unwrap();
-        assert_eq!(out["wrapper_path"], "canvases/Hero.md");
-        assert_eq!(out["canvas_path"], "canvases/Hero.canvas");
+        assert_eq!(out["wrapper_path"], "boards/Hero.md");
+        assert_eq!(out["design_board_path"], "boards/Hero.board");
     }
 
     #[tokio::test]
-    async fn canvas_tools_appear_in_get_tools() {
+    async fn design_board_tools_appear_in_get_tools() {
         let (_tmp, ext) = test_extension();
         let tools = ext.handle_rpc("get_tools", json!({})).await.unwrap();
         let names: Vec<String> = tools
@@ -3072,69 +3092,72 @@ mod tests {
             .filter_map(|t| t["name"].as_str().map(str::to_string))
             .collect();
         for expected in [
-            "canvas_get",
-            "canvas_set_cells",
-            "canvas_apply_theme",
-            "canvas_list_primitives",
-            "canvas_active",
-            "canvas_create",
+            "design_board_get",
+            "design_board_set_cells",
+            "design_board_apply_theme",
+            "design_board_list_primitives",
+            "design_board_active",
+            "design_board_create",
         ] {
             assert!(names.contains(&expected.to_string()), "missing: {expected}");
         }
     }
 
     #[tokio::test]
-    async fn canvas_create_writes_pair_and_returns_paths() {
+    async fn design_board_create_writes_pair_and_returns_paths() {
         let (tmp, ext) = test_extension();
         let out = ext
-            .handle_rpc("execute_canvas_create", json!({"name": "Hero"}))
+            .handle_rpc("execute_design_board_create", json!({"name": "Hero"}))
             .await
             .unwrap();
 
-        assert_eq!(out["wrapper_path"], "canvases/Hero.md");
-        assert_eq!(out["canvas_path"], "canvases/Hero.canvas");
-        assert!(tmp.path().join("canvases/Hero.md").exists());
-        assert!(tmp.path().join("canvases/Hero.canvas").exists());
+        assert_eq!(out["wrapper_path"], "boards/Hero.md");
+        assert_eq!(out["design_board_path"], "boards/Hero.board");
+        assert!(tmp.path().join("boards/Hero.md").exists());
+        assert!(tmp.path().join("boards/Hero.board").exists());
     }
 
     #[tokio::test]
-    async fn canvas_create_refuses_path_separators() {
+    async fn design_board_create_refuses_path_separators() {
         let (_tmp, ext) = test_extension();
         let err = ext
-            .handle_rpc("execute_canvas_create", json!({"name": "../etc/passwd"}))
+            .handle_rpc(
+                "execute_design_board_create",
+                json!({"name": "../etc/passwd"}),
+            )
             .await
             .unwrap_err();
         assert!(err.to_string().contains("name"));
     }
 
     #[tokio::test]
-    async fn canvas_create_refuses_duplicate() {
+    async fn design_board_create_refuses_duplicate() {
         let (_tmp, ext) = test_extension();
-        ext.handle_rpc("execute_canvas_create", json!({"name": "Hero"}))
+        ext.handle_rpc("execute_design_board_create", json!({"name": "Hero"}))
             .await
             .unwrap();
         let err = ext
-            .handle_rpc("execute_canvas_create", json!({"name": "Hero"}))
+            .handle_rpc("execute_design_board_create", json!({"name": "Hero"}))
             .await
             .unwrap_err();
         assert!(err.to_string().contains("already exists"), "got: {err}");
     }
 
     #[tokio::test]
-    async fn canvas_create_then_set_cells_round_trip() {
-        // After creating a canvas, the agent should be able to immediately
-        // populate it via canvas_set_cells using the returned canvas_path.
+    async fn design_board_create_then_set_cells_round_trip() {
+        // After creating a design board, the agent should be able to immediately
+        // populate it via design board_set_cells using the returned design_board_path.
         let (_tmp, ext) = test_extension();
         let created = ext
-            .handle_rpc("execute_canvas_create", json!({"name": "Demo"}))
+            .handle_rpc("execute_design_board_create", json!({"name": "Demo"}))
             .await
             .unwrap();
-        let canvas_path = created["canvas_path"].as_str().unwrap();
+        let design_board_path = created["design_board_path"].as_str().unwrap();
 
         ext.handle_rpc(
-            "execute_canvas_set_cells",
+            "execute_design_board_set_cells",
             json!({
-                "path": canvas_path,
+                "path": design_board_path,
                 "cells": [{"id": "a", "x": 0, "y": 0, "w": 1, "h": 1, "html": "x", "css": ""}]
             }),
         )
@@ -3142,7 +3165,10 @@ mod tests {
         .unwrap();
 
         let got = ext
-            .handle_rpc("execute_canvas_get", json!({"path": canvas_path}))
+            .handle_rpc(
+                "execute_design_board_get",
+                json!({"path": design_board_path}),
+            )
             .await
             .unwrap();
         assert_eq!(got["cells"][0]["id"], "a");

@@ -40,7 +40,7 @@ impl ProjectWatcher {
                 if ext != "md"
                     && ext != "excalidraw"
                     && ext != "d2"
-                    && ext != "canvas"
+                    && ext != "design-board"
                     && ext != "flow"
                 {
                     continue;

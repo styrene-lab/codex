@@ -1,8 +1,8 @@
-pub mod canvas;
 pub mod conflict;
 pub mod daemon;
 pub mod daily;
 pub mod datum;
+pub mod design_board;
 pub mod drawing;
 pub mod external_ref;
 pub mod graph;

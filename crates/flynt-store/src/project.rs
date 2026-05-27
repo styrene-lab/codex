@@ -448,9 +448,9 @@ impl Project {
         }
 
         let raw = fs::read_to_string(&from_abs)?;
-        if contains_single_embed(&raw, ".excalidraw") || contains_single_embed(&raw, ".canvas") {
+        if contains_single_embed(&raw, ".excalidraw") || contains_single_embed(&raw, ".board") {
             anyhow::bail!(
-                "move_document_file only moves plain markdown notes; use drawing/canvas specific tools for wrapper documents"
+                "move_document_file only moves plain markdown notes; use drawing/design_board specific tools for wrapper documents"
             );
         }
 

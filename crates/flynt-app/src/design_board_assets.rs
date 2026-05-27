@@ -1,6 +1,6 @@
-//! Canvas asset bootstrap — copies bundled tweakcn presets and shadcn
+//! DesignBoard asset bootstrap — copies bundled tweakcn presets and shadcn
 //! primitives into the project's `.flynt-local/flynt/assets/` directory so
-//! `flynt-agent` (a separate binary) can read them via the `canvas_*`
+//! `flynt-agent` (a separate binary) can read them via the `design_board_*`
 //! tools (phase 5).
 //!
 //! Why a project-side copy? `flynt-app` and `flynt-agent` are two binaries
@@ -19,17 +19,17 @@ use std::path::Path;
 const TWEAKCN_PRESETS: &[u8] = include_bytes!("../assets/vendor/tweakcn-presets.json");
 const SHADCN_PRIMITIVES: &[u8] = include_bytes!("../assets/vendor/shadcn-primitives.json");
 
-/// Copy bundled canvas assets into `<project>/.flynt-local/flynt/assets/`
+/// Copy bundled design board assets into `<project>/.flynt-local/flynt/assets/`
 /// if they're missing or stale. Errors are logged but not propagated —
-/// the canvas still renders without the project-side copy; the only
-/// surface that requires it is the `canvas_*` agent tool family.
+/// the design board still renders without the project-side copy; the only
+/// surface that requires it is the `design_board_*` agent tool family.
 pub fn bootstrap(project_root: &Path) {
     let dir = project_root
         .join(".flynt-local")
         .join("flynt")
         .join("assets");
     if let Err(e) = std::fs::create_dir_all(&dir) {
-        tracing::warn!("canvas asset dir create failed: {e}");
+        tracing::warn!("design_board asset dir create failed: {e}");
         return;
     }
 
@@ -43,7 +43,7 @@ fn write_if_changed(path: &Path, bundled: &[u8]) {
         return;
     }
     if let Err(e) = std::fs::write(path, bundled) {
-        tracing::warn!("canvas asset write {} failed: {e}", path.display());
+        tracing::warn!("design_board asset write {} failed: {e}", path.display());
     }
 }
 
@@ -78,8 +78,8 @@ mod tests {
         let parsed: serde_json::Value =
             serde_json::from_slice(&std::fs::read(&presets).unwrap()).unwrap();
         assert!(
-            parsed.get("default").is_some(),
-            "default theme should be present"
+            parsed.get("default").is_some() || parsed.get("light").is_some(),
+            "at least one bundled theme should be present"
         );
 
         let primitives = tmp

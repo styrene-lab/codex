@@ -8,7 +8,10 @@ use crate::{
         Route, SettingsOpen, SettingsPage, SyncActivityState, SyncRunOutcome, SyncStatus, TabState,
         ThemeName,
     },
-    views::{GraphView, KanbanView, LensesView, NotesView, SearchView, SettingsView, TerminalLabView, WelcomeView},
+    views::{
+        GraphView, KanbanView, LensesView, NotesView, SearchView, SettingsView, TerminalLabView,
+        WelcomeView,
+    },
 };
 use dioxus::prelude::*;
 use flynt_core::store::ProjectStore;
@@ -217,15 +220,15 @@ pub fn App() -> Element {
         });
     }
 
-    // Bootstrap canvas assets (tweakcn presets, shadcn primitives) into the
+    // Bootstrap design board assets (tweakcn presets, shadcn primitives) into the
     // project's .flynt-local directory so flynt-agent can read them via the
-    // canvas_* tool family. Idempotent and content-aware; safe to re-run on
+    // design_board_* tool family. Idempotent and content-aware; safe to re-run on
     // every launch.
     {
         let assets_ctx = ctx.clone();
         use_effect(move || {
             let project = assets_ctx.project();
-            crate::canvas_assets::bootstrap(&project.root);
+            crate::design_board_assets::bootstrap(&project.root);
         });
     }
 
@@ -332,8 +335,10 @@ pub fn App() -> Element {
                 spawn(async move {
                     let project = c.project();
                     let ts_suffix = chrono::Local::now().format("%Y%m%d-%H%M%S%3f").to_string();
-                    let name = format!("Canvas {ts_suffix}");
-                    if let Ok(md_path) = crate::views::canvas::create_canvas(&project.root, &name) {
+                    let name = format!("DesignBoard {ts_suffix}");
+                    if let Ok(md_path) =
+                        crate::views::design_board::create_design_board(&project.root, &name)
+                    {
                         let _ = project.index_file(&project.root.join(&md_path));
                         let _ = c.project_events().send(
                             flynt_store::watcher::ProjectChangeEvent::FileCreated(
@@ -597,7 +602,7 @@ pub fn App() -> Element {
         document::Stylesheet { href: asset!("/assets/styles/lenses.css") }
         document::Stylesheet { href: asset!("/assets/styles/graph.css") }
         document::Stylesheet { href: asset!("/assets/styles/welcome.css") }
-        document::Stylesheet { href: asset!("/assets/styles/canvas.css") }
+        document::Stylesheet { href: asset!("/assets/styles/design_board.css") }
         document::Stylesheet { href: asset!("/assets/styles/terminal.css") }
         // Reveal body after stylesheets are loaded
         document::Script { "document.body.classList.add('ready');" }
