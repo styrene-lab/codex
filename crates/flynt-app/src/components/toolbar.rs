@@ -338,6 +338,9 @@ pub fn Toolbar(
     let grouped_results = group_results(&results.read());
     let flat_results = flatten_grouped_results(&grouped_results);
     let project_name = ctx.project().config.project_name.clone();
+    let app_version = env!("CARGO_PKG_VERSION");
+    let build_hash = env!("FLYNT_BUILD_HASH");
+    let build_label = format!("v{app_version} {build_hash}");
     let project_root = ctx.project_root();
     let omegon = ctx.omegon();
     let auto_status = ctx
@@ -349,10 +352,9 @@ pub fn Toolbar(
 
     rsx! {
         div { class: "toolbar",
-            span { class: "toolbar-project-name", "{project_name}" }
-            {
-                const BUILD: &str = env!("FLYNT_BUILD_HASH");
-                rsx! { span { class: "toolbar-build-hash", title: "Build {BUILD}", "{BUILD}" } }
+            div { class: "toolbar-left",
+                span { class: "toolbar-project-name", "{project_name}" }
+                span { class: "toolbar-build-hash", title: "Build {build_label}", "{build_label}" }
             }
 
             div { class: "toolbar-search-wrap",

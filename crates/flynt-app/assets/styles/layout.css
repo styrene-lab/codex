@@ -50,16 +50,24 @@
 
 /* ── Toolbar ──────────────────────────────────────────────────────────────── */
 .toolbar {
-  display:       flex;
+  display:       grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 800px) minmax(0, 1fr);
   align-items:   center;
   height:        var(--toolbar-height);
   padding:       0 var(--space-3);
   background:    var(--toolbar-bg);
   border-bottom: 1px solid var(--toolbar-border);
-  gap:           var(--space-2);
+  gap:           var(--space-4);
   flex-shrink:   0;
   /* Allow the toolbar to serve as the macOS window drag region */
   -webkit-app-region: drag;
+}
+
+.toolbar-left {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }
 
 .toolbar-spacer { flex: 1; }
@@ -77,15 +85,24 @@
   font-weight: var(--font-weight-semibold);
   color:       var(--foreground);
   white-space: nowrap;
-  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   -webkit-app-region: no-drag;
-  margin-right: var(--space-2);
+}
+
+.toolbar-build-hash {
+  font-size: var(--font-size-xs);
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  -webkit-app-region: no-drag;
 }
 
 .toolbar-search-wrap {
-  flex:      1;
-  max-width: 400px;
+  width:      100%;
+  max-width: 800px;
   position:  relative;
+  justify-self: center;
   -webkit-app-region: no-drag;
 }
 

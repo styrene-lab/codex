@@ -44,6 +44,7 @@ fn main() {
     dioxus::LaunchBuilder::desktop()
         .with_cfg(
             Config::default()
+                .with_icon(dioxus::desktop::icon_from_memory(include_bytes!("../assets/icon.png")).expect("valid Flynt window icon"))
                 .with_menu(flynt_app::menu::build_menu_bar())
                 .with_disable_context_menu(false)
                 .with_window(
