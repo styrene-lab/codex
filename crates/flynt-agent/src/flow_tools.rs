@@ -14,7 +14,7 @@
 //!   Skip complex transactions for v1: load → mutate → save.
 //!
 //! All paths are interpreted relative to the project root, matching
-//! `forge_tools` and `execute_canvas_create`. Path traversal is rejected
+//! the other Flynt artifact tools. Path traversal is rejected
 //! with `invalid_params`.
 //!
 //! ## Concurrency
@@ -50,7 +50,7 @@ pub fn tool_definitions() -> Vec<Value> {
         json!({
             "name": "flow_create",
             "label": "Create Flow",
-            "description": "Write a fresh .flow file. The .flow format is a node-flow graph (nodes + edges) — use it to sketch architectures, workflows, or any structured graph the operator should be able to drag around. Refuses to overwrite an existing file; call flow_patch to mutate.",
+            "description": "Write a fresh .flow file. The .flow format is a v1 node-flow graph (nodes + edges) — use it when the operator wants an editable graph they can drag around. Refuses to overwrite an existing file; call flow_patch to mutate. Prefer an existing/open flow unless the operator explicitly asked for a new graph.",
             "parameters": {
                 "type": "object",
                 "required": ["path"],

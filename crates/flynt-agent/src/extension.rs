@@ -537,13 +537,13 @@ impl Extension for FlyntExtension {
                 {
                     "name": "design_board_list_primitives",
                     "label": "Design Board: List Primitives",
-                    "description": "Return everything you need to design well on a design board: (1) `primitives` — shadcn-styled HTML snippets (Button, Card, Input, Badge, Alert, Avatar, Separator, etc.) each with a `usage_notes` field calling out CSS-discipline gotchas (especially: wrap cell-outermost elements in `h-full` so cell body bg doesn't show through), (2) `themes` — every available theme preset with its full CSS-variable map under `vars` (so you know what `bg-card`/`text-foreground`/etc. actually resolve to before designing), and (3) `cell_authoring_guidance` — a short array of rules to follow when composing cells (theme/visual-language matching, sizing discipline, the Tailwind subset's lack of arbitrary-value classes). Read all three before writing cell HTML. Use design_board_apply_theme to switch themes.",
+                    "description": "Return available primitives, theme metadata, and authoring guidance for the experimental Flynt design-board renderer. This helps an agent compose .board cells, but it is not a guarantee of a polished end-user design system. Read this before writing cells; use design_board_apply_theme to switch themes.",
                     "parameters": { "type": "object", "properties": {} }
                 },
                 {
                     "name": "design_board_create",
                     "label": "Design Board: Create",
-                    "description": "Create a new design board in the user's project. Writes a `.board` data file at `boards/<name>.board` plus a sibling `.md` wrapper that makes it indexable and openable as a tab. Returns { wrapper_path, design_board_path } you can pass to design_board_set_cells immediately. Refuses to overwrite an existing design board — pick a different name. Use this when the user asks to design something fresh; use design_board_set_cells on the existing design board when they want to edit what's already open (call design_board_active first to find out).",
+                    "description": "Create a new experimental Flynt design board artifact in the user's project. Writes a `.board` data file at `boards/<name>.board` plus a sibling `.md` wrapper that makes it indexable and openable as a tab. Returns { wrapper_path, design_board_path } you can pass to design_board_set_cells immediately. Use this only when the operator specifically wants a Flynt design board; otherwise use the active surface or ask. Refuses to overwrite an existing design board.",
                     "parameters": {
                         "type": "object",
                         "properties": { "name": { "type": "string" } },
@@ -1536,15 +1536,29 @@ impl Extension for FlyntExtension {
 fn flynt_surface_guide() -> Value {
     json!({
         "identity": "You are operating inside Flynt, a local-first project workspace. Use get_ui_state before assuming what the operator has open.",
+        "maturity_legend": {
+            "stable": "Product path is established and suitable as a default choice.",
+            "usable": "Works end-to-end, but prefer active-surface checks and operator confirmation before creating new artifacts.",
+            "experimental": "Agent/tool surface exists, but UX and schema may still change; avoid implying polish or broad feature completeness.",
+            "avoid_direct": "Do not manipulate directly unless a dedicated tool says to."
+        },
+        "global_rules": [
+            "Prefer the artifact surface the operator already has open; call get_ui_state or the relevant *_active tool before editing.",
+            "Do not create wrapper markdown manually for drawings or design boards; use the dedicated create tools.",
+            "Legacy canvas/.canvas/canvases terminology is not the app's current design-board surface. Use boards/*.board and design_board_* tools for Flynt design boards."
+        ],
         "surfaces": [
             {
                 "kind": "note",
+                "maturity": "stable",
                 "paths": ["*.md"],
-                "tools": ["get_document", "create_document"],
-                "use_for": "ordinary markdown notes, research, project docs"
+                "tools": ["get_document", "create_document", "move_document"],
+                "use_for": "ordinary markdown notes, research, project docs",
+                "rules": ["Do not use create_document for wrapper-backed drawing or design-board artifacts."]
             },
             {
                 "kind": "source_note",
+                "maturity": "stable",
                 "paths": ["sources/*.md", "*.md with kind=source"],
                 "tools": ["get_document", "create_document", "list_documents"],
                 "use_for": "research sources imported from Zotero/BibTeX/CSL or captured from the web",
@@ -1557,9 +1571,10 @@ fn flynt_surface_guide() -> Value {
             },
             {
                 "kind": "drawing",
+                "maturity": "usable",
                 "paths": ["drawings/<name>.md", "drawings/<name>.excalidraw"],
                 "tools": ["create_drawing", "drawing_active", "drawing_get", "drawing_set_scene", "drawing_create_spec", "drawing_get_spec", "drawing_render_spec", "drawing_patch_spec", "drawing_validate_spec"],
-                "use_for": "freeform Excalidraw sketches",
+                "use_for": "freeform Excalidraw sketches and agent-authored architecture drawings",
                 "rules": [
                     "Excalidraw drawings live under drawings/, not diagrams/.",
                     "The openable sidebar/tab entry is the drawings/<name>.md wrapper; Flynt renders the sibling .excalidraw file visually from that wrapper.",
@@ -1571,26 +1586,43 @@ fn flynt_surface_guide() -> Value {
             },
             {
                 "kind": "d2_diagram",
+                "maturity": "stable",
                 "paths": ["diagrams/<name>.d2"],
                 "tools": ["create_d2_diagram"],
-                "use_for": "text-authored D2 diagrams"
+                "use_for": "text-authored D2 diagrams when a deterministic source diagram is better than freeform drawing"
             },
             {
                 "kind": "design-board",
+                "maturity": "experimental",
                 "paths": ["boards/<name>.md", "boards/<name>.board"],
                 "tools": ["design_board_create", "design_board_active", "design_board_get", "design_board_set_cells", "design_board_apply_theme", "design_board_list_primitives"],
-                "use_for": "Flynt design_boards made of grid-positioned HTML/CSS cells",
+                "use_for": "Flynt design boards made of grid-positioned HTML/CSS/component cells; use only when the operator specifically wants this artifact type",
                 "rules": [
-                    "This is not Excalidraw.",
-                    "Read design_board_list_primitives before authoring polished cells.",
-                    "Use design_board_active before editing the design board the operator has open."
+                    "This is not Excalidraw and not a legacy .canvas surface.",
+                    "The GUI can create/open boards and the agent can patch cells, but the design-board UX is still experimental.",
+                    "Read design_board_list_primitives before authoring cells.",
+                    "Use design_board_active before editing the design board the operator has open.",
+                    "If no design board is active and the user did not explicitly ask for one, ask before creating a new board."
                 ]
             },
             {
                 "kind": "flow_graph",
+                "maturity": "usable",
                 "paths": ["*.flow"],
                 "tools": ["flow_create", "flow_get", "flow_patch"],
-                "use_for": "node-flow architecture or workflow graphs"
+                "use_for": "node-flow architecture or workflow graphs when the operator should be able to drag nodes around",
+                "rules": [
+                    "Schema is v1 and last-writer-wins; avoid concurrent agent/editor writes.",
+                    "Prefer get_ui_state or an existing .flow file before creating a new graph unless the user asked for one."
+                ]
+            },
+            {
+                "kind": "legacy_canvas",
+                "maturity": "avoid_direct",
+                "paths": ["canvases/<name>.canvas", "canvases/<name>.md"],
+                "tools": [],
+                "use_for": "legacy/older terminology only; do not choose this for new Flynt design work",
+                "rules": ["Use design-board / boards/*.board instead of canvas/.canvas unless a project-specific legacy artifact already exists and the operator asks to edit it."]
             }
         ]
     })
@@ -3667,4 +3699,55 @@ mod tests {
             .unwrap();
         assert!(after["design_node_id"].is_null());
     }
+    #[tokio::test]
+    async fn surface_guide_includes_maturity_and_legacy_canvas_caveat() {
+        let (_tmp, ext) = test_extension();
+        let guide = ext
+            .handle_rpc("execute_flynt_surface_guide", json!({}))
+            .await
+            .unwrap();
+        let body = guide.to_string();
+        assert!(body.contains("drawings/<name>.excalidraw"));
+        assert!(body.contains("diagrams/<name>.d2"));
+        assert!(body.contains("boards/<name>.board"));
+        assert!(body.contains("maturity_legend"));
+        assert!(body.contains("legacy_canvas"));
+
+        let surfaces = guide["surfaces"].as_array().unwrap();
+        let design_board = surfaces
+            .iter()
+            .find(|surface| surface["kind"] == "design-board")
+            .expect("design-board surface should be present");
+        assert_eq!(design_board["maturity"], "experimental");
+
+        let legacy_canvas = surfaces
+            .iter()
+            .find(|surface| surface["kind"] == "legacy_canvas")
+            .expect("legacy canvas caveat should be explicit");
+        assert_eq!(legacy_canvas["maturity"], "avoid_direct");
+        assert_eq!(legacy_canvas["tools"].as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn design_board_tool_descriptions_are_careful_about_maturity() {
+        let (_tmp, ext) = test_extension();
+        let tools = ext.handle_rpc("get_tools", json!({})).await.unwrap();
+        let tools = tools.as_array().unwrap();
+        let primitive_description = tools
+            .iter()
+            .find(|tool| tool["name"] == "design_board_list_primitives")
+            .and_then(|tool| tool["description"].as_str())
+            .unwrap();
+        assert!(primitive_description.contains("experimental"));
+        assert!(!primitive_description.contains("everything you need to design well"));
+
+        let create_description = tools
+            .iter()
+            .find(|tool| tool["name"] == "design_board_create")
+            .and_then(|tool| tool["description"].as_str())
+            .unwrap();
+        assert!(create_description.contains("operator specifically wants"));
+        assert!(!create_description.contains("when the user asks to design something fresh"));
+    }
+
 }
