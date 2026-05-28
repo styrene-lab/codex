@@ -66,7 +66,11 @@ pub fn Sidebar(mut active_route: Signal<Route>) -> Element {
             ProjectSelector {}
 
             if *active_route.read() == Route::Design {
-                crate::components::DesignPanel {}
+                crate::components::DesignPanel {
+                    docs: docs.read().clone().unwrap_or_default(),
+                    refresh,
+                    active_route,
+                }
             } else {
                 // ── File tree ─────────────────────────────────────
                 div { class: "file-tree",
