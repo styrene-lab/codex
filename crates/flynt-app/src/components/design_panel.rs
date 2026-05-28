@@ -93,7 +93,7 @@ pub fn DesignPanel(
                         div { class: "design-panel-subheading", "Surface kinds" }
                         div { class: "design-kind-list",
                             for profile in profiles.iter() {
-                                button { key: "{profile.kind.as_str()}", class: "design-kind-row",
+                                div { key: "{profile.kind.as_str()}", class: "design-kind-row",
                                     div { class: "design-kind-main",
                                         span { class: "design-kind-title", "{profile.label}" }
                                         span { class: "design-kind-description", "{profile.description}" }

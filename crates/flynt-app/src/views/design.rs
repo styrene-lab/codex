@@ -11,7 +11,7 @@ pub fn DesignView() -> Element {
                 div { class: "design-view-kicker", "Design mode" }
                 h1 { "Visual surfaces" }
                 p {
-                    "Choose Design in the left panel to inspect surface kinds, available components, and operator actions. The current slice is read-only: it exposes the grammar before artifact discovery and editing controls land."
+                    "Use the left Design panel to create and open design boards, drawings, and flows, inspect surface kinds, and browse available components."
                 }
                 div { class: "design-view-stats",
                     div { class: "design-view-stat",
@@ -23,8 +23,8 @@ pub fn DesignView() -> Element {
                         span { "components" }
                     }
                     div { class: "design-view-stat",
-                        strong { "board_json" }
-                        span { "canonical source" }
+                        strong { ".board" }
+                        span { "board backing file" }
                     }
                 }
             }
