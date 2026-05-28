@@ -11,6 +11,7 @@ open_questions:
   - "How much rich text is allowed in structured props before the system needs a portable rich-text AST?"
   - "What minimum template library proves generality across website, document, brochure, whiteboard, and diagram use cases?"
 related:
+  - design-board-focus-layer
   - design-board-component-registry
   - design-sidebar-organization
 ---

@@ -282,7 +282,7 @@ fn render_panel(props: &Value, variant: Option<&str>) -> anyhow::Result<Rendered
 
     Ok(RenderedCell {
         html: format!(
-            "<article class=\"h-full rounded-lg border {surface_classes} p-5 shadow-sm\"><div class=\"flex h-full flex-col gap-4\">{header}{body}{footer}</div></article>"
+            "<article data-flynt-focus-kind=\"component\" data-flynt-component=\"Panel\" data-flynt-component-part=\"root\" class=\"h-full rounded-lg border {surface_classes} p-5 shadow-sm\"><div class=\"flex h-full flex-col gap-4\">{header}{body}{footer}</div></article>"
         ),
         css: String::new(),
         js: None,
@@ -317,7 +317,7 @@ fn render_frame(props: &Value, variant: Option<&str>) -> anyhow::Result<Rendered
         "accent" => "rounded-lg border border-primary bg-card text-card-foreground",
         other => bail!("unknown Frame variant '{other}'"),
     };
-    Ok(RenderedCell{html:format!("<section class=\"h-full {classes} {pad}\"><div class=\"flex h-full flex-col justify-center gap-3\">{}{}{}</div></section>", opt_h("h2","text-2xl font-bold tracking-tight text-foreground",title), opt_p("text-sm text-muted-foreground",subtitle), opt_p("text-sm leading-6 text-muted-foreground",body)), css:String::new(), js:None})
+    Ok(RenderedCell{html:format!("<section data-flynt-focus-kind=\"component\" data-flynt-component=\"Frame\" data-flynt-component-part=\"root\" class=\"h-full {classes} {pad}\"><div class=\"flex h-full flex-col justify-center gap-3\">{}{}{}</div></section>", opt_h("h2","text-2xl font-bold tracking-tight text-foreground",title), opt_p("text-sm text-muted-foreground",subtitle), opt_p("text-sm leading-6 text-muted-foreground",body)), css:String::new(), js:None})
 }
 
 fn text_block_props_schema() -> Value {
@@ -366,7 +366,7 @@ fn render_text_block(props: &Value, variant: Option<&str>) -> anyhow::Result<Ren
         ),
         other => bail!("unknown TextBlock variant '{other}'"),
     };
-    Ok(RenderedCell{html:format!("<section class=\"h-full flex flex-col justify-center gap-3 {align_class}\">{}{}{}</section>", opt_p("text-xs font-semibold uppercase tracking-wide text-primary",eyebrow), opt_h("h2",hcls,heading), opt_p(bcls,body)), css:String::new(), js:None})
+    Ok(RenderedCell{html:format!("<section data-flynt-focus-kind=\"component\" data-flynt-component=\"TextBlock\" data-flynt-component-part=\"root\" class=\"h-full flex flex-col justify-center gap-3 {align_class}\">{}{}{}</section>", opt_p("text-xs font-semibold uppercase tracking-wide text-primary",eyebrow), opt_h("h2",hcls,heading), opt_p(bcls,body)), css:String::new(), js:None})
 }
 
 fn columns_props_schema() -> Value {
@@ -401,7 +401,7 @@ fn render_columns(props: &Value, variant: Option<&str>) -> anyhow::Result<Render
         out.push_str(&format!("<div class=\"rounded-lg border border-border bg-card p-4{span}\"><h3 class=\"text-sm font-semibold text-foreground\">{}</h3>{}</div>", escape_html(&title), body.map(|b|format!("<p class=\"mt-2 text-sm leading-6 text-muted-foreground\">{}</p>",escape_html(&b))).unwrap_or_default()));
     }
     Ok(RenderedCell {
-        html: format!("<div class=\"h-full grid {grid} gap-4\">{out}</div>"),
+        html: format!("<div data-flynt-focus-kind=\"component\" data-flynt-component=\"Columns\" data-flynt-component-part=\"root\" class=\"h-full grid {grid} gap-4\">{out}</div>"),
         css: String::new(),
         js: None,
     })
@@ -436,7 +436,7 @@ fn render_stack(props: &Value, variant: Option<&str>) -> anyhow::Result<Rendered
         };
         lis.push_str(&format!("<li class=\"flex gap-3 text-sm text-muted-foreground\"><span class=\"w-5 shrink-0 text-primary\">{}</span><span>{}</span></li>",marker,escape_html(text)));
     }
-    Ok(RenderedCell{html:format!("<section class=\"h-full rounded-lg border border-border bg-card p-5\">{}<ul class=\"flex h-full flex-col gap-3\">{lis}</ul></section>", opt_h("h3","mb-3 text-sm font-semibold text-foreground",title)), css:String::new(), js:None})
+    Ok(RenderedCell{html:format!("<section data-flynt-focus-kind=\"component\" data-flynt-component=\"Stack\" data-flynt-component-part=\"root\" class=\"h-full rounded-lg border border-border bg-card p-5\">{}<ul class=\"flex h-full flex-col gap-3\">{lis}</ul></section>", opt_h("h3","mb-3 text-sm font-semibold text-foreground",title)), css:String::new(), js:None})
 }
 
 fn button_row_props_schema() -> Value {
@@ -469,7 +469,7 @@ fn render_button_row(props: &Value, variant: Option<&str>) -> anyhow::Result<Ren
         buttons.push_str(&format!("<span class=\"inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-muted-foreground\">{}</span>",escape_html(&v)));
     }
     Ok(RenderedCell {
-        html: format!("<div class=\"h-full flex gap-3 {layout}\">{buttons}</div>"),
+        html: format!("<div data-flynt-focus-kind=\"component\" data-flynt-component=\"ButtonRow\" data-flynt-component-part=\"root\" class=\"h-full flex gap-3 {layout}\">{buttons}</div>"),
         css: String::new(),
         js: None,
     })
@@ -495,7 +495,7 @@ fn render_image_placeholder(props: &Value, variant: Option<&str>) -> anyhow::Res
         other => bail!("unknown aspect '{other}'"),
     };
     let chrome=match variant.unwrap_or("default"){"browser"=>"<div class=\"flex gap-1 border-b border-border p-2\"><span class=\"h-2 w-2 rounded-full bg-destructive\"></span><span class=\"h-2 w-2 rounded-full bg-yellow-500\"></span><span class=\"h-2 w-2 rounded-full bg-green-500\"></span></div>","default"|"device"|"plain"=>"",other=>bail!("unknown ImagePlaceholder variant '{other}'")};
-    Ok(RenderedCell{html:format!("<figure class=\"h-full rounded-lg border border-dashed border-border bg-muted/40 text-muted-foreground overflow-hidden\">{chrome}<div class=\"flex {aspect_cls} h-full flex-col items-center justify-center gap-2 p-4 text-center\"><div class=\"text-sm font-medium text-foreground\">{}</div>{}</div></figure>",escape_html(&label), caption.map(|c|format!("<figcaption class=\"text-xs\">{}</figcaption>",escape_html(&c))).unwrap_or_default()), css:String::new(), js:None})
+    Ok(RenderedCell{html:format!("<figure data-flynt-focus-kind=\"component\" data-flynt-component=\"ImagePlaceholder\" data-flynt-component-part=\"root\" class=\"h-full rounded-lg border border-dashed border-border bg-muted/40 text-muted-foreground overflow-hidden\">{chrome}<div class=\"flex {aspect_cls} h-full flex-col items-center justify-center gap-2 p-4 text-center\"><div class=\"text-sm font-medium text-foreground\">{}</div>{}</div></figure>",escape_html(&label), caption.map(|c|format!("<figcaption class=\"text-xs\">{}</figcaption>",escape_html(&c))).unwrap_or_default()), css:String::new(), js:None})
 }
 
 fn opt_h(tag: &str, class: &str, value: Option<String>) -> String {
@@ -600,6 +600,54 @@ mod tests {
         for (name, props, variant) in cases {
             let rendered = render_component(name, &props, variant).unwrap();
             assert!(rendered.html.contains("h-full"), "{name} did not fill cell");
+        }
+    }
+
+    #[test]
+    fn foundation_components_emit_focus_metadata() {
+        let cases = [
+            ("Panel", json!({"title":"Panel"}), Some("default")),
+            ("Frame", json!({"title":"Frame"}), Some("card")),
+            (
+                "TextBlock",
+                json!({"heading":"Heading","body":"Body"}),
+                Some("lead"),
+            ),
+            (
+                "Columns",
+                json!({"columns":[{"title":"A"},{"title":"B"}]}),
+                Some("two"),
+            ),
+            ("Stack", json!({"items":["One","Two"]}), Some("checklist")),
+            (
+                "ButtonRow",
+                json!({"primary":"Go","secondary":"Back"}),
+                Some("center"),
+            ),
+            (
+                "ImagePlaceholder",
+                json!({"label":"Shot","aspect":"16:9"}),
+                Some("browser"),
+            ),
+        ];
+        for (name, props, variant) in cases {
+            let rendered = render_component(name, &props, variant).unwrap();
+            assert!(
+                rendered
+                    .html
+                    .contains("data-flynt-focus-kind=\"component\""),
+                "{name} missing focus kind"
+            );
+            assert!(
+                rendered
+                    .html
+                    .contains(&format!("data-flynt-component=\"{name}\"")),
+                "{name} missing component metadata"
+            );
+            assert!(
+                rendered.html.contains("data-flynt-component-part=\"root\""),
+                "{name} missing component part"
+            );
         }
     }
 

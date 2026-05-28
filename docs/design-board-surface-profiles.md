@@ -8,7 +8,8 @@ open_questions:
   - "What exact page/export presets should ship in the first profile registry: `web`, `letter`, `a4`, `slide`, `social-square`, `brochure`?"
   - "Should profile metadata expose future components/templates that do not exist yet, or only currently implemented renderable components?"
 dependencies: []
-related: []
+related:
+  - design-board-focus-layer
 ---
 
 # Design Board surface profiles

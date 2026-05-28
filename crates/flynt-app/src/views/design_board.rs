@@ -336,9 +336,13 @@ const MEASUREMENT_HOOK: &str = r#"
 /// machine, or run offline.
 pub fn build_srcdoc(cell: &Cell, theme: &str, tailwind_css: &str) -> String {
     let theme = theme_vars(theme);
+    let focus_cell_id = escape_html(&cell.id);
     let (html, css, js) = match &cell.content {
         CellContent::Html { html, css, js } => {
-            (html.clone(), css.clone(), js.clone().unwrap_or_default())
+            let wrapped_html = format!(
+                "<div data-flynt-focus-kind=\"raw-cell\" data-flynt-cell-id=\"{focus_cell_id}\" data-flynt-component-part=\"root\" class=\"h-full\">{html}</div>"
+            );
+            (wrapped_html, css.clone(), js.clone().unwrap_or_default())
         }
         CellContent::Component {
             component,
@@ -346,7 +350,7 @@ pub fn build_srcdoc(cell: &Cell, theme: &str, tailwind_css: &str) -> String {
             variant,
         } => match design_components::render_component(component, props, variant.as_deref()) {
             Ok(rendered) => (
-                rendered.html,
+                add_component_cell_focus_metadata(&rendered.html, &focus_cell_id),
                 rendered.css,
                 rendered.js.unwrap_or_default(),
             ),
@@ -370,6 +374,18 @@ pub fn build_srcdoc(cell: &Cell, theme: &str, tailwind_css: &str) -> String {
 </head><body>{html}<script>{MEASUREMENT_HOOK}\n{js}</script></body></html>",
         MEASUREMENT_HOOK = MEASUREMENT_HOOK
     )
+}
+
+fn add_component_cell_focus_metadata(html: &str, escaped_cell_id: &str) -> String {
+    let Some(pos) = html.find("data-flynt-focus-kind=\"component\"") else {
+        return html.to_string();
+    };
+    let insert = format!("data-flynt-cell-id=\"{escaped_cell_id}\" ");
+    let mut out = String::with_capacity(html.len() + insert.len());
+    out.push_str(&html[..pos]);
+    out.push_str(&insert);
+    out.push_str(&html[pos..]);
+    out
 }
 
 /// Extension check for the raw design board data file.
@@ -705,9 +721,10 @@ mod tests {
             "cell css must be inlined"
         );
         assert!(
-            out.contains("<button class=\"btn\">Hi</button>"),
-            "cell html must be in body"
+            out.contains("data-flynt-focus-kind=\"raw-cell\""),
+            "raw cells must expose focus metadata"
         );
+        assert!(out.contains("data-flynt-cell-id=\"t\""));
     }
 
     #[test]
@@ -765,6 +782,9 @@ mod tests {
         assert!(out.contains("Hello"));
         assert!(out.contains("World"));
         assert!(out.contains("h-full"));
+        assert!(out.contains("data-flynt-focus-kind=\"component\""));
+        assert!(out.contains("data-flynt-cell-id=\"panel\""));
+        assert!(out.contains("data-flynt-component=\"Panel\""));
         assert!(!out.contains("Unsupported component"));
     }
 

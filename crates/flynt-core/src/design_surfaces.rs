@@ -54,6 +54,55 @@ impl DesignBoardKind {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DesignBoardInteraction {
+    AgentGenerated,
+    Interactive,
+    Template,
+    Reference,
+}
+
+impl DesignBoardInteraction {
+    pub const ALL: &'static [Self] = &[
+        Self::AgentGenerated,
+        Self::Interactive,
+        Self::Template,
+        Self::Reference,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::AgentGenerated => "agent_generated",
+            Self::Interactive => "interactive",
+            Self::Template => "template",
+            Self::Reference => "reference",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DesignBoardCreator {
+    Agent,
+    Operator,
+    TemplateSystem,
+    Importer,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DesignBoardInteractionProfile {
+    pub interaction: DesignBoardInteraction,
+    pub label: &'static str,
+    pub description: &'static str,
+    pub badge: &'static str,
+    pub primary_action: &'static str,
+    pub secondary_actions: &'static [&'static str],
+    pub visible_panels: &'static [&'static str],
+    pub hidden_panels: &'static [&'static str],
+    pub supports_focus_layer: bool,
+    pub focus_actions: &'static [&'static str],
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DesignBoardSurfaceProfile {
     pub kind: DesignBoardKind,
@@ -69,6 +118,44 @@ pub struct DesignBoardSurfaceProfile {
     pub export_targets: &'static [&'static str],
     pub validation_profiles: &'static [&'static str],
     pub primary_actions: &'static [&'static str],
+}
+
+pub fn parse_design_board_interaction(value: &str) -> DesignBoardInteraction {
+    match normalize_kind(value).as_str() {
+        "agent_generated" | "agent" | "generated" | "agent_output" | "agent-output" => {
+            DesignBoardInteraction::AgentGenerated
+        }
+        "interactive" | "user" | "editable" | "manual" | "operator" => {
+            DesignBoardInteraction::Interactive
+        }
+        "template" | "starter" | "preset" => DesignBoardInteraction::Template,
+        "reference" | "readonly" | "read_only" | "derived" | "source_backed" | "source-backed" => {
+            DesignBoardInteraction::Reference
+        }
+        _ => DesignBoardInteraction::Reference,
+    }
+}
+
+pub fn default_interaction_for_creator(creator: DesignBoardCreator) -> DesignBoardInteraction {
+    match creator {
+        DesignBoardCreator::Agent => DesignBoardInteraction::AgentGenerated,
+        DesignBoardCreator::Operator => DesignBoardInteraction::Interactive,
+        DesignBoardCreator::TemplateSystem => DesignBoardInteraction::Template,
+        DesignBoardCreator::Importer => DesignBoardInteraction::Reference,
+    }
+}
+
+pub fn interaction_profile(
+    interaction: DesignBoardInteraction,
+) -> &'static DesignBoardInteractionProfile {
+    list_interaction_profiles()
+        .iter()
+        .find(|profile| profile.interaction == interaction)
+        .unwrap_or(&INTERACTIVE_INTERACTION_PROFILE)
+}
+
+pub fn list_interaction_profiles() -> &'static [DesignBoardInteractionProfile] {
+    &INTERACTION_PROFILES
 }
 
 pub fn parse_design_board_kind(value: &str) -> DesignBoardKind {
@@ -100,11 +187,74 @@ pub fn list_surface_profiles() -> &'static [DesignBoardSurfaceProfile] {
 }
 
 fn normalize_kind(value: &str) -> String {
-    value
-        .trim()
-        .to_ascii_lowercase()
-        .replace([' ', '-'], "_")
+    value.trim().to_ascii_lowercase().replace([' ', '-'], "_")
 }
+
+const INTERACTION_PROFILES: [DesignBoardInteractionProfile; 4] = [
+    AGENT_GENERATED_INTERACTION_PROFILE,
+    INTERACTIVE_INTERACTION_PROFILE,
+    TEMPLATE_INTERACTION_PROFILE,
+    REFERENCE_INTERACTION_PROFILE,
+];
+
+const AGENT_GENERATED_INTERACTION_PROFILE: DesignBoardInteractionProfile =
+    DesignBoardInteractionProfile {
+        interaction: DesignBoardInteraction::AgentGenerated,
+        label: "Agent output",
+        description:
+            "Agent-authored visual output intended for review, export, and agent-directed revision.",
+        badge: "Agent output",
+        primary_action: "ask_agent_to_revise",
+        secondary_actions: &["export", "duplicate_as_interactive", "view_source"],
+        visible_panels: &["focus_summary", "revision_prompt", "exports", "source"],
+        hidden_panels: &["drag_handles", "resize_handles", "property_inspector"],
+        supports_focus_layer: true,
+        focus_actions: &[
+            "ask_agent_to_revise",
+            "explain_selection",
+            "duplicate_as_interactive",
+        ],
+    };
+
+const INTERACTIVE_INTERACTION_PROFILE: DesignBoardInteractionProfile =
+    DesignBoardInteractionProfile {
+        interaction: DesignBoardInteraction::Interactive,
+        label: "Interactive",
+        description: "Operator-maintained board that can expose editing controls, component palette, and inspectors.",
+        badge: "Interactive",
+        primary_action: "open_editor",
+        secondary_actions: &["add_component", "change_theme", "export", "ask_agent_to_assist"],
+        visible_panels: &["component_palette", "focus_summary", "property_inspector", "exports"],
+        hidden_panels: &[],
+        supports_focus_layer: true,
+        focus_actions: &["edit_props", "ask_agent_to_assist", "delete_selected"],
+    };
+
+const TEMPLATE_INTERACTION_PROFILE: DesignBoardInteractionProfile = DesignBoardInteractionProfile {
+    interaction: DesignBoardInteraction::Template,
+    label: "Template",
+    description: "Reusable starting point that should be previewed or cloned before becoming a working board.",
+    badge: "Template",
+    primary_action: "use_template",
+    secondary_actions: &["preview", "duplicate", "edit_template"],
+    visible_panels: &["focus_summary", "template_sections", "preview"],
+    hidden_panels: &["delete_selected", "direct_mutation"],
+    supports_focus_layer: true,
+    focus_actions: &["use_section", "create_from_template"],
+};
+
+const REFERENCE_INTERACTION_PROFILE: DesignBoardInteractionProfile = DesignBoardInteractionProfile {
+    interaction: DesignBoardInteraction::Reference,
+    label: "Reference",
+    description: "Read-only or source-backed projection intended for inspection, refresh, export, or duplication.",
+    badge: "Reference",
+    primary_action: "inspect_reference",
+    secondary_actions: &["refresh", "export", "duplicate_as_interactive"],
+    visible_panels: &["focus_summary", "provenance", "exports"],
+    hidden_panels: &["drag_handles", "resize_handles", "property_inspector", "direct_mutation"],
+    supports_focus_layer: true,
+    focus_actions: &["inspect_source", "ask_agent_about_selection", "duplicate_as_interactive"],
+};
 
 const PROFILES: [DesignBoardSurfaceProfile; 9] = [
     WEBSITE_PROFILE,
@@ -138,11 +288,26 @@ const WEBSITE_PROFILE: DesignBoardSurfaceProfile = DesignBoardSurfaceProfile {
         "DeviceMockup",
         "FormMock",
     ],
-    templates: &["landing-page", "saas-one-pager", "product-page", "app-mockup"],
+    templates: &[
+        "landing-page",
+        "saas-one-pager",
+        "product-page",
+        "app-mockup",
+    ],
     page_presets: &["web-desktop", "web-tablet", "web-mobile"],
     export_targets: &["png", "html"],
-    validation_profiles: &["responsive_bounds", "cta_hierarchy", "contrast", "missing_media"],
-    primary_actions: &["change_theme", "preview_mobile", "export_png", "ask_agent_revision"],
+    validation_profiles: &[
+        "responsive_bounds",
+        "cta_hierarchy",
+        "contrast",
+        "missing_media",
+    ],
+    primary_actions: &[
+        "change_theme",
+        "preview_mobile",
+        "export_png",
+        "ask_agent_revision",
+    ],
 };
 
 const DOCUMENT_PROFILE: DesignBoardSurfaceProfile = DesignBoardSurfaceProfile {
@@ -164,8 +329,18 @@ const DOCUMENT_PROFILE: DesignBoardSurfaceProfile = DesignBoardSurfaceProfile {
     templates: &["one-page-report", "a4-handout", "letter-handout"],
     page_presets: &["letter", "a4", "legal"],
     export_targets: &["pdf", "png"],
-    validation_profiles: &["print_bounds", "font_size", "page_title", "print_safe_colors"],
-    primary_actions: &["change_theme", "render_pdf", "export_png", "ask_agent_revision"],
+    validation_profiles: &[
+        "print_bounds",
+        "font_size",
+        "page_title",
+        "print_safe_colors",
+    ],
+    primary_actions: &[
+        "change_theme",
+        "render_pdf",
+        "export_png",
+        "ask_agent_revision",
+    ],
 };
 
 const RESUME_PROFILE: DesignBoardSurfaceProfile = DesignBoardSurfaceProfile {
@@ -188,8 +363,18 @@ const RESUME_PROFILE: DesignBoardSurfaceProfile = DesignBoardSurfaceProfile {
     templates: &["resume-one-page", "resume-technical", "resume-compact"],
     page_presets: &["letter", "a4"],
     export_targets: &["pdf", "png"],
-    validation_profiles: &["print_bounds", "font_size", "contact_info", "date_consistency"],
-    primary_actions: &["change_theme", "render_pdf", "export_png", "ask_agent_revision"],
+    validation_profiles: &[
+        "print_bounds",
+        "font_size",
+        "contact_info",
+        "date_consistency",
+    ],
+    primary_actions: &[
+        "change_theme",
+        "render_pdf",
+        "export_png",
+        "ask_agent_revision",
+    ],
 };
 
 const BROCHURE_PROFILE: DesignBoardSurfaceProfile = DesignBoardSurfaceProfile {
@@ -213,8 +398,18 @@ const BROCHURE_PROFILE: DesignBoardSurfaceProfile = DesignBoardSurfaceProfile {
     templates: &["product-flyer", "brochure-trifold", "marketing-one-pager"],
     page_presets: &["letter", "a4", "brochure-trifold"],
     export_targets: &["pdf", "png"],
-    validation_profiles: &["print_bounds", "fold_guides", "missing_media", "contact_info"],
-    primary_actions: &["change_theme", "render_pdf", "export_png", "ask_agent_revision"],
+    validation_profiles: &[
+        "print_bounds",
+        "fold_guides",
+        "missing_media",
+        "contact_info",
+    ],
+    primary_actions: &[
+        "change_theme",
+        "render_pdf",
+        "export_png",
+        "ask_agent_revision",
+    ],
 };
 
 const WHITEBOARD_PROFILE: DesignBoardSurfaceProfile = DesignBoardSurfaceProfile {
@@ -237,13 +432,19 @@ const WHITEBOARD_PROFILE: DesignBoardSurfaceProfile = DesignBoardSurfaceProfile 
     page_presets: &["freeform", "slide", "wide"],
     export_targets: &["png", "markdown"],
     validation_profiles: &["readability", "empty_notes"],
-    primary_actions: &["change_theme", "export_png", "summarize_markdown", "ask_agent_revision"],
+    primary_actions: &[
+        "change_theme",
+        "export_png",
+        "summarize_markdown",
+        "ask_agent_revision",
+    ],
 };
 
 const DIAGRAM_PROFILE: DesignBoardSurfaceProfile = DesignBoardSurfaceProfile {
     kind: DesignBoardKind::Diagram,
     label: "Diagram",
-    description: "Architecture maps, process diagrams, system flows, and text-authored diagram panels.",
+    description:
+        "Architecture maps, process diagrams, system flows, and text-authored diagram panels.",
     source_format: DESIGN_BOARD_SOURCE_FORMAT,
     component_categories: &["layout", "typography", "diagram"],
     recommended_components: &[
@@ -258,7 +459,12 @@ const DIAGRAM_PROFILE: DesignBoardSurfaceProfile = DesignBoardSurfaceProfile {
     page_presets: &["slide", "wide", "a4"],
     export_targets: &["svg", "png", "pdf"],
     validation_profiles: &["diagram_connectivity", "diagram_bounds", "svg_sanitization"],
-    primary_actions: &["change_theme", "export_svg", "export_png", "ask_agent_revision"],
+    primary_actions: &[
+        "change_theme",
+        "export_svg",
+        "export_png",
+        "ask_agent_revision",
+    ],
 };
 
 const DASHBOARD_PROFILE: DesignBoardSurfaceProfile = DesignBoardSurfaceProfile {
@@ -282,13 +488,19 @@ const DASHBOARD_PROFILE: DesignBoardSurfaceProfile = DesignBoardSurfaceProfile {
     page_presets: &["web-desktop", "slide", "wide"],
     export_targets: &["png", "pdf"],
     validation_profiles: &["metric_labels", "tone_consistency", "stale_data"],
-    primary_actions: &["change_theme", "export_png", "render_pdf", "ask_agent_revision"],
+    primary_actions: &[
+        "change_theme",
+        "export_png",
+        "render_pdf",
+        "ask_agent_revision",
+    ],
 };
 
 const RESEARCH_PROFILE: DesignBoardSurfaceProfile = DesignBoardSurfaceProfile {
     kind: DesignBoardKind::Research,
     label: "Research board",
-    description: "Source-backed research synthesis boards with claims, evidence, tasks, and citations.",
+    description:
+        "Source-backed research synthesis boards with claims, evidence, tasks, and citations.",
     source_format: DESIGN_BOARD_SOURCE_FORMAT,
     component_categories: &["layout", "typography", "research", "data", "whiteboard"],
     recommended_components: &[
@@ -306,8 +518,18 @@ const RESEARCH_PROFILE: DesignBoardSurfaceProfile = DesignBoardSurfaceProfile {
     templates: &["source-review", "evidence-map", "research-dashboard"],
     page_presets: &["web-desktop", "wide", "a4"],
     export_targets: &["png", "pdf", "markdown"],
-    validation_profiles: &["source_refs", "stale_projection", "claim_evidence", "citation_keys"],
-    primary_actions: &["refresh_sources", "export_png", "summarize_markdown", "ask_agent_revision"],
+    validation_profiles: &[
+        "source_refs",
+        "stale_projection",
+        "claim_evidence",
+        "citation_keys",
+    ],
+    primary_actions: &[
+        "refresh_sources",
+        "export_png",
+        "summarize_markdown",
+        "ask_agent_revision",
+    ],
 };
 
 const OTHER_PROFILE: DesignBoardSurfaceProfile = DesignBoardSurfaceProfile {
@@ -337,7 +559,8 @@ mod tests {
     use super::*;
     use std::collections::HashSet;
 
-    const BINARY_DESIGN_SOURCE_FORMATS: &[&str] = &["pdf", "png", "jpg", "jpeg", "webp", "fig", "psd", "sketch"];
+    const BINARY_DESIGN_SOURCE_FORMATS: &[&str] =
+        &["pdf", "png", "jpg", "jpeg", "webp", "fig", "psd", "sketch"];
 
     #[test]
     fn parses_all_canonical_kind_strings() {
@@ -392,7 +615,11 @@ mod tests {
     #[test]
     fn every_profile_uses_plain_text_board_json_source() {
         for profile in list_surface_profiles() {
-            assert_eq!(profile.source_format, DESIGN_BOARD_SOURCE_FORMAT, "{}", profile.label);
+            assert_eq!(
+                profile.source_format, DESIGN_BOARD_SOURCE_FORMAT,
+                "{}",
+                profile.label
+            );
             assert!(!BINARY_DESIGN_SOURCE_FORMATS.contains(&profile.source_format));
         }
     }
@@ -400,9 +627,17 @@ mod tests {
     #[test]
     fn export_targets_do_not_claim_to_be_source_formats() {
         for profile in list_surface_profiles() {
-            assert!(!profile.export_targets.is_empty(), "{} missing exports", profile.label);
+            assert!(
+                !profile.export_targets.is_empty(),
+                "{} missing exports",
+                profile.label
+            );
             for target in profile.export_targets {
-                assert_ne!(*target, profile.source_format, "{} exports source format", profile.label);
+                assert_ne!(
+                    *target, profile.source_format,
+                    "{} exports source format",
+                    profile.label
+                );
             }
         }
     }
@@ -412,12 +647,36 @@ mod tests {
         for profile in list_surface_profiles() {
             assert!(!profile.label.trim().is_empty());
             assert!(!profile.description.trim().is_empty());
-            assert!(!profile.component_categories.is_empty(), "{} missing categories", profile.label);
-            assert!(!profile.recommended_components.is_empty(), "{} missing components", profile.label);
-            assert!(!profile.templates.is_empty(), "{} missing templates", profile.label);
-            assert!(!profile.page_presets.is_empty(), "{} missing page presets", profile.label);
-            assert!(!profile.validation_profiles.is_empty(), "{} missing validations", profile.label);
-            assert!(!profile.primary_actions.is_empty(), "{} missing actions", profile.label);
+            assert!(
+                !profile.component_categories.is_empty(),
+                "{} missing categories",
+                profile.label
+            );
+            assert!(
+                !profile.recommended_components.is_empty(),
+                "{} missing components",
+                profile.label
+            );
+            assert!(
+                !profile.templates.is_empty(),
+                "{} missing templates",
+                profile.label
+            );
+            assert!(
+                !profile.page_presets.is_empty(),
+                "{} missing page presets",
+                profile.label
+            );
+            assert!(
+                !profile.validation_profiles.is_empty(),
+                "{} missing validations",
+                profile.label
+            );
+            assert!(
+                !profile.primary_actions.is_empty(),
+                "{} missing actions",
+                profile.label
+            );
         }
     }
 
@@ -427,14 +686,33 @@ mod tests {
             .iter()
             .flat_map(|profile| profile.recommended_components.iter().copied())
             .collect();
-        for component in ["Frame", "TextBlock", "Columns", "Stack", "ButtonRow", "ImagePlaceholder", "Panel"] {
-            assert!(all_recommended.contains(component), "{component} is not recommended by any profile");
+        for component in [
+            "Frame",
+            "TextBlock",
+            "Columns",
+            "Stack",
+            "ButtonRow",
+            "ImagePlaceholder",
+            "Panel",
+        ] {
+            assert!(
+                all_recommended.contains(component),
+                "{component} is not recommended by any profile"
+            );
         }
     }
 
     #[test]
     fn each_profile_includes_at_least_one_foundation_component() {
-        let foundation = ["Frame", "TextBlock", "Columns", "Stack", "ButtonRow", "ImagePlaceholder", "Panel"];
+        let foundation = [
+            "Frame",
+            "TextBlock",
+            "Columns",
+            "Stack",
+            "ButtonRow",
+            "ImagePlaceholder",
+            "Panel",
+        ];
         for profile in list_surface_profiles() {
             assert!(
                 profile
@@ -449,7 +727,11 @@ mod tests {
 
     #[test]
     fn print_or_document_profiles_can_render_pdf_but_still_use_board_json() {
-        for kind in [DesignBoardKind::Document, DesignBoardKind::Resume, DesignBoardKind::Brochure] {
+        for kind in [
+            DesignBoardKind::Document,
+            DesignBoardKind::Resume,
+            DesignBoardKind::Brochure,
+        ] {
             let profile = surface_profile(kind);
             assert!(profile.export_targets.contains(&"pdf"));
             assert_eq!(profile.source_format, "board_json");
@@ -467,7 +749,11 @@ mod tests {
     fn profile_kind_strings_are_unique() {
         let mut seen = HashSet::new();
         for kind in DesignBoardKind::ALL {
-            assert!(seen.insert(kind.as_str()), "duplicate kind string: {}", kind.as_str());
+            assert!(
+                seen.insert(kind.as_str()),
+                "duplicate kind string: {}",
+                kind.as_str()
+            );
         }
     }
 
@@ -475,7 +761,145 @@ mod tests {
     fn profile_array_has_no_duplicate_kinds() {
         let mut seen = HashSet::new();
         for profile in list_surface_profiles() {
-            assert!(seen.insert(profile.kind), "duplicate profile kind: {:?}", profile.kind);
+            assert!(
+                seen.insert(profile.kind),
+                "duplicate profile kind: {:?}",
+                profile.kind
+            );
         }
+    }
+
+    #[test]
+    fn parses_all_canonical_interaction_strings() {
+        for interaction in DesignBoardInteraction::ALL {
+            assert_eq!(
+                parse_design_board_interaction(interaction.as_str()),
+                *interaction
+            );
+        }
+    }
+
+    #[test]
+    fn parses_interaction_aliases() {
+        let cases = [
+            ("agent", DesignBoardInteraction::AgentGenerated),
+            ("agent-output", DesignBoardInteraction::AgentGenerated),
+            ("user", DesignBoardInteraction::Interactive),
+            ("editable", DesignBoardInteraction::Interactive),
+            ("starter", DesignBoardInteraction::Template),
+            ("preset", DesignBoardInteraction::Template),
+            ("readonly", DesignBoardInteraction::Reference),
+            ("source-backed", DesignBoardInteraction::Reference),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(
+                parse_design_board_interaction(input),
+                expected,
+                "input={input}"
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_explicit_interaction_falls_back_to_reference() {
+        assert_eq!(
+            parse_design_board_interaction("banana"),
+            DesignBoardInteraction::Reference
+        );
+        assert_eq!(
+            parse_design_board_interaction(""),
+            DesignBoardInteraction::Reference
+        );
+    }
+
+    #[test]
+    fn interaction_profile_exists_for_every_interaction() {
+        let profile_interactions: HashSet<_> = list_interaction_profiles()
+            .iter()
+            .map(|profile| profile.interaction)
+            .collect();
+        for interaction in DesignBoardInteraction::ALL {
+            assert!(
+                profile_interactions.contains(interaction),
+                "missing profile for {interaction:?}"
+            );
+        }
+        assert_eq!(
+            profile_interactions.len(),
+            DesignBoardInteraction::ALL.len()
+        );
+    }
+
+    #[test]
+    fn creator_defaults_match_mutation_ownership() {
+        assert_eq!(
+            default_interaction_for_creator(DesignBoardCreator::Agent),
+            DesignBoardInteraction::AgentGenerated
+        );
+        assert_eq!(
+            default_interaction_for_creator(DesignBoardCreator::Operator),
+            DesignBoardInteraction::Interactive
+        );
+        assert_eq!(
+            default_interaction_for_creator(DesignBoardCreator::TemplateSystem),
+            DesignBoardInteraction::Template
+        );
+        assert_eq!(
+            default_interaction_for_creator(DesignBoardCreator::Importer),
+            DesignBoardInteraction::Reference
+        );
+    }
+
+    #[test]
+    fn every_interaction_profile_supports_focus_layer() {
+        for profile in list_interaction_profiles() {
+            assert!(
+                profile.supports_focus_layer,
+                "{} should support focus",
+                profile.label
+            );
+            assert!(
+                !profile.focus_actions.is_empty(),
+                "{} missing focus actions",
+                profile.label
+            );
+        }
+    }
+
+    #[test]
+    fn focus_actions_differ_by_interaction_mode() {
+        assert!(interaction_profile(DesignBoardInteraction::AgentGenerated)
+            .focus_actions
+            .contains(&"ask_agent_to_revise"));
+        assert!(interaction_profile(DesignBoardInteraction::Interactive)
+            .focus_actions
+            .contains(&"edit_props"));
+        assert!(interaction_profile(DesignBoardInteraction::Template)
+            .focus_actions
+            .contains(&"use_section"));
+        assert!(interaction_profile(DesignBoardInteraction::Reference)
+            .focus_actions
+            .contains(&"inspect_source"));
+    }
+
+    #[test]
+    fn non_interactive_profiles_hide_direct_manipulation() {
+        for interaction in [
+            DesignBoardInteraction::AgentGenerated,
+            DesignBoardInteraction::Reference,
+        ] {
+            let profile = interaction_profile(interaction);
+            assert!(profile.hidden_panels.contains(&"drag_handles"));
+            assert!(profile.hidden_panels.contains(&"resize_handles"));
+            assert!(profile.hidden_panels.contains(&"property_inspector"));
+        }
+    }
+
+    #[test]
+    fn interactive_profile_shows_editing_panels() {
+        let profile = interaction_profile(DesignBoardInteraction::Interactive);
+        assert!(profile.visible_panels.contains(&"component_palette"));
+        assert!(profile.visible_panels.contains(&"property_inspector"));
+        assert!(profile.focus_actions.contains(&"edit_props"));
     }
 }
