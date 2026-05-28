@@ -185,7 +185,7 @@ struct DesignArtifact {
     kind: DesignArtifactKind,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum DesignArtifactKind {
     Board,
     Drawing,
@@ -216,7 +216,7 @@ fn design_artifacts(docs: &[DocumentMeta]) -> Vec<DesignArtifact> {
 
 fn design_artifact_kind(path: &Path) -> Option<DesignArtifactKind> {
     let path_text = path.to_string_lossy();
-    if path_text.starts_with("canvases/") && path.extension().is_some_and(|ext| ext == "md") {
+    if path_text.starts_with("boards/") && path.extension().is_some_and(|ext| ext == "md") {
         Some(DesignArtifactKind::Board)
     } else if path_text.starts_with("drawings/") && path.extension().is_some_and(|ext| ext == "md") {
         Some(DesignArtifactKind::Drawing)
@@ -355,5 +355,96 @@ mod tests {
         ] {
             assert!(all.iter().any(|name| name == expected), "missing {expected}");
         }
+    }
+
+    fn doc(path: &str, title: &str) -> DocumentMeta {
+        DocumentMeta {
+            id: flynt_core::models::DocumentId::new(),
+            path: path.into(),
+            title: title.to_string(),
+            tags: Vec::new(),
+            metadata: Default::default(),
+            entity_kind: None,
+            updated_at: chrono::Utc::now(),
+        }
+    }
+
+    #[test]
+    fn detects_design_board_wrappers_in_boards_directory() {
+        assert_eq!(
+            design_artifact_kind(Path::new("boards/Hero.md")),
+            Some(DesignArtifactKind::Board)
+        );
+    }
+
+    #[test]
+    fn does_not_treat_canvas_wrappers_as_design_boards() {
+        assert_eq!(design_artifact_kind(Path::new("canvases/Hero.md")), None);
+    }
+
+    #[test]
+    fn detects_excalidraw_drawing_wrappers() {
+        assert_eq!(
+            design_artifact_kind(Path::new("drawings/System Map.md")),
+            Some(DesignArtifactKind::Drawing)
+        );
+    }
+
+    #[test]
+    fn rejects_non_markdown_files_in_drawing_directory() {
+        assert_eq!(design_artifact_kind(Path::new("drawings/System Map.excalidraw")), None);
+        assert_eq!(design_artifact_kind(Path::new("drawings/System Map.svg")), None);
+    }
+
+    #[test]
+    fn detects_flow_files_anywhere() {
+        assert_eq!(
+            design_artifact_kind(Path::new("flows/Auth.flow")),
+            Some(DesignArtifactKind::Flow)
+        );
+        assert_eq!(
+            design_artifact_kind(Path::new("docs/Auth.flow")),
+            Some(DesignArtifactKind::Flow)
+        );
+    }
+
+    #[test]
+    fn rejects_regular_markdown_notes() {
+        assert_eq!(design_artifact_kind(Path::new("docs/Architecture.md")), None);
+        assert_eq!(design_artifact_kind(Path::new("boards/Architecture.txt")), None);
+    }
+
+    #[test]
+    fn lists_only_design_artifacts_and_sorts_by_path() {
+        let docs = vec![
+            doc("docs/Architecture.md", "Architecture"),
+            doc("drawings/System.md", "System"),
+            doc("boards/Hero.md", "Hero"),
+            doc("flows/Auth.flow", "Auth"),
+            doc("drawings/System.excalidraw", "System backing"),
+        ];
+
+        let artifacts = design_artifacts(&docs);
+        let paths: Vec<_> = artifacts
+            .iter()
+            .map(|artifact| artifact.doc.path.to_string_lossy().to_string())
+            .collect();
+        let kinds: Vec<_> = artifacts.iter().map(|artifact| artifact.kind).collect();
+
+        assert_eq!(paths, vec!["boards/Hero.md", "drawings/System.md", "flows/Auth.flow"]);
+        assert_eq!(
+            kinds,
+            vec![
+                DesignArtifactKind::Board,
+                DesignArtifactKind::Drawing,
+                DesignArtifactKind::Flow,
+            ]
+        );
+    }
+
+    #[test]
+    fn artifact_title_prefers_file_stem_over_frontmatter_title() {
+        let meta = doc("boards/Hero Board.md", "Frontmatter Title");
+        assert_eq!(artifact_title(&meta), "Hero Board");
     }
 }
