@@ -596,7 +596,9 @@ pub fn DesignBoardView(path: PathBuf) -> Element {
                     let Ok(value) = eval.recv::<String>().await else {
                         break;
                     };
-                    let Ok(event) = serde_json::from_str::<crate::design_focus::DesignFocusEvent>(&value) else {
+                    let Ok(event) =
+                        serde_json::from_str::<crate::design_focus::DesignFocusEvent>(&value)
+                    else {
                         continue;
                     };
                     let state = event.to_state(&board_path);
