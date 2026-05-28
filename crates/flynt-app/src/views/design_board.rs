@@ -322,7 +322,33 @@ const MEASUREMENT_HOOK: &str = r#"
       };
       try { e.source.postMessage(resp, '*'); }
       catch (err) { try { parent.postMessage(resp, '*'); } catch (e2) {} }
+      return;
     }
+  });
+  function focusPayload(node, eventType) {
+    if (!node) return null;
+    return {
+      flyntDesignFocus: true,
+      event_type: eventType,
+      focus_kind: node.getAttribute('data-flynt-focus-kind') || '',
+      cell_id: node.getAttribute('data-flynt-cell-id') || '',
+      component: node.getAttribute('data-flynt-component') || '',
+      component_part: node.getAttribute('data-flynt-component-part') || '',
+      text: (node.innerText || '').trim().slice(0, 240)
+    };
+  }
+  function postFocus(node, eventType) {
+    var payload = focusPayload(node, eventType);
+    if (!payload) return;
+    try { parent.postMessage(payload, '*'); } catch (err) {}
+  }
+  document.addEventListener('mouseover', function(e) {
+    var node = e.target && e.target.closest && e.target.closest('[data-flynt-focus-kind]');
+    postFocus(node, 'hover');
+  });
+  document.addEventListener('click', function(e) {
+    var node = e.target && e.target.closest && e.target.closest('[data-flynt-focus-kind]');
+    postFocus(node, 'select');
   });
 })();
 "#;
@@ -556,6 +582,30 @@ pub fn DesignBoardView(path: PathBuf) -> Element {
     });
 
     tracing::info!("DesignBoardView render: path={}", path.display());
+    let active_focus = use_signal(|| Option::<crate::design_focus::DesignFocusEvent>::None);
+    {
+        let mut active_focus = active_focus;
+        let focus_ctx = ctx.clone();
+        let focus_path = path.clone();
+        use_effect(move || {
+            let mut eval = document::eval(crate::design_focus::DESIGN_FOCUS_BRIDGE_JS);
+            let project_root = focus_ctx.project().root.clone();
+            let board_path = focus_path.clone();
+            spawn(async move {
+                loop {
+                    let Ok(value) = eval.recv::<String>().await else {
+                        break;
+                    };
+                    let Ok(event) = serde_json::from_str::<crate::design_focus::DesignFocusEvent>(&value) else {
+                        continue;
+                    };
+                    let state = event.to_state(&board_path);
+                    let _ = crate::design_focus::write_active_focus(&project_root, &state);
+                    active_focus.set(Some(event));
+                }
+            });
+        });
+    }
     let parsed_ref = parsed.read();
     let design_board = match &*parsed_ref {
         Ok(c) => {
@@ -591,6 +641,11 @@ pub fn DesignBoardView(path: PathBuf) -> Element {
                 span { class: "design-board-meta", "Design Board: {path.display()}" }
                 span { class: "design-board-meta",
                     "v{design_board.version} · theme={design_board.theme} · {design_board.grid.cols}×{design_board.grid.rows} · {design_board.cells.len()} cell(s)"
+                }
+                if let Some(focus) = active_focus.read().as_ref() {
+                    span { class: "design-board-focus-pill",
+                        "{focus.event_type}: {focus.label()}"
+                    }
                 }
             }
             if design_board.cells.is_empty() {

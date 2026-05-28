@@ -5,6 +5,7 @@ pub mod components;
 pub mod daemon_manager;
 pub mod design_board_assets;
 pub mod design_board_capture;
+pub mod design_focus;
 pub mod host_actions;
 pub mod icons;
 pub mod menu;
