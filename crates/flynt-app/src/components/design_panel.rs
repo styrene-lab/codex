@@ -3,7 +3,7 @@ use crate::{
     state::{Route, TabState},
 };
 use dioxus::prelude::*;
-use flynt_core::models::DocumentMeta;
+use flynt_core::{models::DocumentMeta, store::ProjectStore};
 use std::{collections::BTreeMap, path::Path};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -135,14 +135,28 @@ fn DesignFilesTab(
     mut active_route: Signal<Route>,
 ) -> Element {
     let artifacts = design_artifacts(&docs);
+    let ctx = use_context::<AppContext>();
+    let tab_state = use_context::<Signal<TabState>>();
 
     rsx! {
         section { class: "design-panel-section",
             div { class: "design-panel-subheading", "Files" }
             div { class: "design-file-actions",
-                button { class: "design-action-button primary", "New Design Board" }
-                button { class: "design-action-button", "New Drawing" }
-                button { class: "design-action-button", "New Flow" }
+                button {
+                    class: "design-action-button primary",
+                    onclick: move |_| create_design_board(ctx.clone(), tab_state, active_route, refresh),
+                    "New Design Board"
+                }
+                button {
+                    class: "design-action-button",
+                    onclick: move |_| create_drawing(ctx.clone(), tab_state, active_route, refresh),
+                    "New Drawing"
+                }
+                button {
+                    class: "design-action-button",
+                    onclick: move |_| create_flow(ctx.clone(), tab_state, active_route, refresh),
+                    "New Flow"
+                }
             }
             if artifacts.is_empty() {
                 div { class: "design-empty-state",
@@ -200,6 +214,85 @@ impl DesignArtifactKind {
             Self::Flow => "Flow",
         }
     }
+}
+
+fn create_design_board(
+    ctx: AppContext,
+    mut tab_state: Signal<TabState>,
+    mut active_route: Signal<Route>,
+    mut refresh: Signal<u64>,
+) {
+    spawn(async move {
+        let project = ctx.project();
+        let ts_suffix = chrono::Local::now().format("%Y%m%d-%H%M%S%3f").to_string();
+        let name = format!("DesignBoard {ts_suffix}");
+        if let Ok(md_path) = crate::views::design_board::create_design_board(&project.root, &name) {
+            let _ = project.index_file(&project.root.join(&md_path));
+            let _ = ctx.project_events().send(flynt_store::watcher::ProjectChangeEvent::FileCreated(
+                project.root.join(&md_path),
+            ));
+            let slug = name.to_lowercase();
+            if let Ok(Some(doc)) = project.store.find_document_by_slug(&slug) {
+                tab_state.write().open(doc.id, name);
+            }
+            *active_route.write() = Route::Notes;
+            refresh += 1;
+        }
+    });
+}
+
+fn create_drawing(
+    ctx: AppContext,
+    mut tab_state: Signal<TabState>,
+    mut active_route: Signal<Route>,
+    mut refresh: Signal<u64>,
+) {
+    spawn(async move {
+        let project = ctx.project();
+        let ts_suffix = chrono::Local::now().format("%Y%m%d-%H%M%S%3f").to_string();
+        let name = format!("Drawing {ts_suffix}");
+        if crate::views::excalidraw::create_drawing(&project.root, &name).is_ok() {
+            let _ = project.reindex();
+            let slug = name.to_lowercase();
+            if let Ok(Some(doc)) = project.store.find_document_by_slug(&slug) {
+                tab_state.write().open(doc.id, name);
+            }
+            *active_route.write() = Route::Notes;
+            refresh += 1;
+        }
+    });
+}
+
+fn create_flow(
+    ctx: AppContext,
+    mut tab_state: Signal<TabState>,
+    mut active_route: Signal<Route>,
+    mut refresh: Signal<u64>,
+) {
+    spawn(async move {
+        let project = ctx.project();
+        let ts_suffix = chrono::Local::now().format("%Y%m%d-%H%M%S%3f").to_string();
+        let name = format!("Flow {ts_suffix}");
+        let rel = std::path::PathBuf::from("flows").join(format!("{name}.flow"));
+        let abs = project.root.join(&rel);
+        let flow = flynt_flow::Flow {
+            meta: flynt_flow::FlowMeta {
+                title: Some(name.clone()),
+                description: None,
+            },
+            ..Default::default()
+        };
+        if flynt_flow::save_flow(&abs, &flow, None).is_ok() {
+            let _ = project.index_file(&abs);
+            let _ = ctx.project_events().send(flynt_store::watcher::ProjectChangeEvent::FileCreated(abs));
+            let slug = name.to_lowercase();
+            if let Ok(Some(doc)) = project.store.find_document_by_slug(&slug) {
+                tab_state.write().open(doc.id, name);
+            }
+            *active_route.write() = Route::Notes;
+            refresh += 1;
+        }
+    });
 }
 
 fn design_artifacts(docs: &[DocumentMeta]) -> Vec<DesignArtifact> {
