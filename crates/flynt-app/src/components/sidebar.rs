@@ -393,7 +393,6 @@ impl TreeNode {
 /// Build a fully nested tree from flat document list using all path components.
 fn build_tree(docs: &[DocumentMeta]) -> Element {
     let mut root: BTreeMap<String, TreeNode> = BTreeMap::new();
-    add_virtual_diagram_directories(docs, &mut root);
 
     for doc in docs {
         let components: Vec<_> = doc
@@ -436,6 +435,7 @@ fn build_tree(docs: &[DocumentMeta]) -> Element {
                 .or_insert(TreeNode::File(doc.clone()));
         }
     }
+    add_virtual_diagram_directories(docs, &mut root);
 
     rsx! { { render_tree_level(&root, 0, "") } }
 }
@@ -463,6 +463,9 @@ fn add_virtual_diagram_directories(docs: &[DocumentMeta], root: &mut BTreeMap<St
             name: "diagrams".into(),
             children: BTreeMap::new(),
         }) {
+            if children.contains_key(name) || children.contains_key(&format!("~{name}")) {
+                continue;
+            }
             children.entry(name.to_string()).or_insert_with(|| TreeNode::VirtualFolder {
                 name: name.to_string(),
                 path: parent.to_path_buf(),
