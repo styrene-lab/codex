@@ -1,5 +1,6 @@
 pub mod conflict;
 pub mod daemon;
+pub mod d2_contract;
 pub mod daily;
 pub mod datum;
 pub mod design_board;

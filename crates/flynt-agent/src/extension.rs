@@ -396,7 +396,7 @@ impl Extension for FlyntExtension {
                 {
                     "name": "create_d2_diagram",
                     "label": "Create D2 Diagram",
-                    "description": "Create a D2 diagram source file. This is for text-authored D2 diagrams and defaults to `diagrams/`; it is not Excalidraw. Use create_drawing for freeform Excalidraw sketches, design_board_create/design_board_set_cells for Flynt design_boards, and flow_create/flow_patch for node-flow diagrams.",
+                    "description": "Create a D2 diagram source file. This is for text-authored D2 diagrams and defaults to `diagrams/`; it is not Excalidraw. Author D2 using Flynt's D2 contract: avoid multiline `|md` bodies inside ordinary nodes, represent details as child nodes, keep edge labels short, minimize cross-container edges, and split panoramic diagrams by question. Use create_drawing for freeform Excalidraw sketches, design_board_create/design_board_set_cells for Flynt design_boards, and flow_create/flow_patch for node-flow diagrams.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -1201,6 +1201,11 @@ impl Extension for FlyntExtension {
                     .ok_or_else(|| omegon_extension::Error::invalid_params("missing 'source'"))?;
                 let directory = params["directory"].as_str().unwrap_or("diagrams");
 
+                let lint_warnings: Vec<String> = flynt_core::d2_contract::lint_d2_source(source)
+                    .into_iter()
+                    .map(|diagnostic| diagnostic.message)
+                    .collect();
+
                 // Create directory and write .d2 file
                 let dir = self.project.root.join(directory);
                 std::fs::create_dir_all(&dir)
@@ -1230,6 +1235,7 @@ impl Extension for FlyntExtension {
                 Ok(json!({
                     "created": md_rel,
                     "d2_file": format!("{directory}/{d2_file}"),
+                    "lint_warnings": lint_warnings,
                 }))
             }
 
@@ -1633,7 +1639,14 @@ fn flynt_surface_guide() -> Value {
                 "maturity": "stable",
                 "paths": ["diagrams/<name>.d2"],
                 "tools": ["create_d2_diagram"],
-                "use_for": "text-authored D2 diagrams when a deterministic source diagram is better than freeform drawing"
+                "use_for": "text-authored D2 diagrams when a deterministic source diagram is better than freeform drawing",
+                "rules": [
+                    "Use D2 for compact source-controlled structural diagrams, not all-in-one architecture posters.",
+                    "Do not use multiline |md bodies inside ordinary graph nodes; use child nodes for detail lines.",
+                    "Keep edge labels short; move explanations into note/callout nodes if needed.",
+                    "Minimize cross-container edges and split diagrams when topology, state authority, command flow, and migration delta are all present.",
+                    "Rendered SVGs wider than roughly 3:1 aspect ratio should usually be split into focused diagrams."
+                ]
             },
             {
                 "kind": "design-board",
