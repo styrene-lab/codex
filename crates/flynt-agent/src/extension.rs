@@ -12,6 +12,12 @@ use std::sync::Arc;
 use crate::forge_tools::{self, SecretBag};
 use crate::{drawing_tools, flow_tools};
 
+const EXTENSION_SDK_VERSION: &str = "0.16.0";
+const RUNTIME_MIN_VERSION: &str = "0.16.0";
+const REQUIRED_PROFILE: &str = "flynt-agent";
+const SURFACE_GUIDE_VERSION: u32 = 1;
+const CAPABILITY_CONTRACT_VERSION: u32 = 1;
+
 pub struct FlyntExtension {
     project: Arc<Project>,
     /// In-process secret bag — populated by `bootstrap_secrets` (omegon
@@ -49,12 +55,26 @@ impl Extension for FlyntExtension {
                     "extension_info": {
                         "name": self.name(),
                         "version": self.version(),
-                        "sdk_version": "0.16.0"
+                        "sdk_version": EXTENSION_SDK_VERSION,
+                        "sdk_repo": "omegon-extension-sdk",
+                        "runtime_min_version": RUNTIME_MIN_VERSION,
+                        "scope": "project",
+                        "project_root": self.project.root.to_string_lossy(),
+                        "recommended_profile": REQUIRED_PROFILE,
+                        "required_profile": REQUIRED_PROFILE,
+                        "surface_guide_version": SURFACE_GUIDE_VERSION,
+                        "capability_contract_version": CAPABILITY_CONTRACT_VERSION
                     },
                     "capabilities": {
                         "tools": true, "widgets": false, "mind": true,
                         "vox": false, "resources": false, "prompts": false,
                         "sampling": false, "elicitation": false, "streaming": false
+                    },
+                    "policy": {
+                        "memory_scope": "project",
+                        "cross_pollination": "forbidden",
+                        "requires_ui_state_for_open_surface_claims": true,
+                        "requires_surface_guide_for_artifact_selection": true
                     },
                     "tools": tools
                 }))
@@ -1536,6 +1556,7 @@ impl Extension for FlyntExtension {
 fn flynt_surface_guide() -> Value {
     json!({
         "identity": "You are operating inside Flynt, a local-first project workspace. Use get_ui_state before assuming what the operator has open.",
+        "version": SURFACE_GUIDE_VERSION,
         "maturity_legend": {
             "stable": "Product path is established and suitable as a default choice.",
             "usable": "Works end-to-end, but prefer active-surface checks and operator confirmation before creating new artifacts.",
@@ -2270,7 +2291,10 @@ fn design_board_embed_path(content: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::FlyntExtension;
+    use super::{
+        CAPABILITY_CONTRACT_VERSION, EXTENSION_SDK_VERSION, FlyntExtension, REQUIRED_PROFILE,
+        RUNTIME_MIN_VERSION, SURFACE_GUIDE_VERSION,
+    };
     use flynt_store::project::Project;
     use omegon_extension::Extension;
     use serde_json::json;
@@ -2281,6 +2305,32 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let project = Arc::new(Project::open(tmp.path()).unwrap());
         (tmp, FlyntExtension::new(project))
+    }
+
+    #[tokio::test]
+    async fn initialize_reports_deployment_contract_metadata() {
+        let (tmp, ext) = test_extension();
+        let init = ext.handle_rpc("initialize", json!({})).await.unwrap();
+        assert_eq!(init["protocol_version"], 2);
+        assert_eq!(init["extension_info"]["name"], "flynt");
+        assert_eq!(init["extension_info"]["version"], env!("CARGO_PKG_VERSION"));
+        assert_eq!(init["extension_info"]["sdk_version"], EXTENSION_SDK_VERSION);
+        assert_eq!(init["extension_info"]["sdk_repo"], "omegon-extension-sdk");
+        assert_eq!(init["extension_info"]["runtime_min_version"], RUNTIME_MIN_VERSION);
+        assert_eq!(init["extension_info"]["scope"], "project");
+        assert_eq!(
+            init["extension_info"]["project_root"].as_str().unwrap(),
+            tmp.path().to_string_lossy()
+        );
+        assert_eq!(init["extension_info"]["recommended_profile"], REQUIRED_PROFILE);
+        assert_eq!(init["extension_info"]["required_profile"], REQUIRED_PROFILE);
+        assert_eq!(init["extension_info"]["surface_guide_version"], SURFACE_GUIDE_VERSION);
+        assert_eq!(init["extension_info"]["capability_contract_version"], CAPABILITY_CONTRACT_VERSION);
+        assert_eq!(init["policy"]["memory_scope"], "project");
+        assert_eq!(init["policy"]["cross_pollination"], "forbidden");
+        assert_eq!(init["policy"]["requires_ui_state_for_open_surface_claims"], true);
+        assert_eq!(init["policy"]["requires_surface_guide_for_artifact_selection"], true);
+        assert!(init["tools"].as_array().is_some_and(|tools| !tools.is_empty()));
     }
 
     #[tokio::test]
@@ -3711,6 +3761,7 @@ mod tests {
         assert!(body.contains("diagrams/<name>.d2"));
         assert!(body.contains("boards/<name>.board"));
         assert!(body.contains("maturity_legend"));
+        assert_eq!(guide["version"], SURFACE_GUIDE_VERSION);
         assert!(body.contains("legacy_canvas"));
 
         let surfaces = guide["surfaces"].as_array().unwrap();
