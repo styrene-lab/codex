@@ -2363,6 +2363,7 @@ pub fn NotesView() -> Element {
     let ctx_save2 = ctx.clone();
 
     let mut mode = use_signal(|| EditMode::Live);
+    let mut diagram_zoom = use_signal(|| 1.0_f32);
     let mut edit_body = use_signal(String::new);
     let mut save_err = use_signal(|| Option::<String>::None);
     let mut save_state = use_signal(|| SaveState::Clean);
@@ -3352,6 +3353,10 @@ pub fn NotesView() -> Element {
                             },
                             EditMode::Diagram => rsx! {
                                 span { class: "mode-hint", "D2 preview" }
+                                button { class: "btn btn-ghost", onclick: move |_| { let next = { *diagram_zoom.read() / 1.25 }; diagram_zoom.set(next.max(0.25)); }, "−" }
+                                span { class: "mode-hint", "{((*diagram_zoom.read() * 100.0).round() as i32)}%" }
+                                button { class: "btn btn-ghost", onclick: move |_| { let next = { *diagram_zoom.read() * 1.25 }; diagram_zoom.set(next.min(8.0)); }, "+" }
+                                button { class: "btn btn-ghost", onclick: move |_| diagram_zoom.set(1.0), "Reset" }
                                 button { class: "btn btn-ghost", onclick: move |_| *mode.write() = EditMode::Source, "Source" }
                             },
                         }
@@ -3394,10 +3399,12 @@ pub fn NotesView() -> Element {
                         let d2_path = resolve_d2_path(&ctx.project_root(), &check_path, &edit_body.read());
                         let abs = d2_path.with_extension("svg");
                         let svg = std::fs::read_to_string(&abs).ok();
+                        let zoom = *diagram_zoom.read();
+                        let zoom_style = format!("width: {}%;", zoom * 100.0);
                         rsx! {
                             div { class: "diagram-preview-pane",
                                 if let Some(svg) = svg {
-                                    div { class: "d2-embed", dangerous_inner_html: "{svg}" }
+                                    div { class: "d2-embed", style: "{zoom_style}", dangerous_inner_html: "{svg}" }
                                 } else {
                                     div { class: "d2-embed-placeholder", "D2 render pending or unavailable for {d2_path.display()}" }
                                 }

@@ -1560,14 +1560,15 @@
 
 .d2-embed {
   min-height: 100%;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
+  display: block;
+  transform-origin: top left;
 }
 
 .d2-embed svg {
-  max-width: 100%;
+  width: 100%;
+  max-width: none;
   height: auto;
+  display: block;
 }
 
 .d2-embed-placeholder {
