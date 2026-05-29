@@ -157,7 +157,7 @@ fn load_acp_overrides(
 }
 
 
-fn resolve_acp_agent_id(
+pub fn resolve_acp_agent_id(
     omegon: &crate::bootstrap::OmegonRuntimeContext,
     settings: &flynt_core::models::FlyntOperatorSettings,
 ) -> Option<String> {
@@ -166,6 +166,11 @@ fn resolve_acp_agent_id(
         .clone()
         .filter(|id| !id.trim().is_empty())
         .or_else(|| Some(omegon.load_deployment_manifest().deployment.profile))
+}
+
+pub fn deployment_agent_id(ctx: &AppContext) -> Option<String> {
+    let settings = ctx.omegon().load_operator_settings();
+    resolve_acp_agent_id(&ctx.omegon(), &settings)
 }
 
 fn is_transport_disconnect(msg: &str) -> bool {
@@ -261,6 +266,46 @@ fn reconnect_acp_session(
                 });
                 *agent_status.write() = AgentStatus::Idle;
             }
+        }
+    });
+}
+
+/// Start the event polling loop for an ACP session.
+pub fn start_setup_event_loop(
+    rx: std::sync::mpsc::Receiver<AcpEvent>,
+    ctx: AppContext,
+    session: Rc<AcpSession>,
+    mut shared_session: Signal<Option<Rc<AcpSession>>>,
+    terminal_manager: TerminalManager,
+) {
+    spawn(async move {
+        loop {
+            match rx.try_recv() {
+                Ok(AcpEvent::DeploymentMetadata(meta)) => ctx.set_deployment_metadata(meta),
+                Ok(AcpEvent::CommandsAvailable(commands)) => {
+                    tracing::info!(count = commands.len(), "ACP setup session commands available");
+                }
+                Ok(AcpEvent::ConfigChanged(config)) => {
+                    tracing::info!(count = config.len(), "ACP setup session config available");
+                }
+                Ok(AcpEvent::Error(err)) if is_transport_disconnect(&err) => {
+                    tracing::warn!("ACP setup session disconnected: {err}");
+                    shared_session.set(None);
+                    return;
+                }
+                Ok(_) => {}
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => {
+                    tracing::warn!("ACP setup event channel disconnected");
+                    shared_session.set(None);
+                    return;
+                }
+            }
+            if shared_session.read().is_none() {
+                shared_session.set(Some(session.clone()));
+            }
+            let _ = terminal_manager.list();
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
     });
 }

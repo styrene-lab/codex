@@ -230,7 +230,7 @@ pub fn OmegonSetupPanel() -> Element {
     let mut refresh = use_context::<OmegonSetupRefresh>();
     let mut settings_page = use_context::<Signal<SettingsPage>>();
     let mut settings_open = use_context::<Signal<SettingsOpen>>();
-    let shared_session = use_context::<Signal<Option<Rc<AcpSession>>>>();
+    let mut shared_session = use_context::<Signal<Option<Rc<AcpSession>>>>();
     let mut action = use_signal(|| None::<SetupAction>);
 
     let _ = refresh.0.read();
@@ -406,7 +406,31 @@ pub fn OmegonSetupPanel() -> Element {
                         onclick: move |_| {
                             *action.write() = Some(SetupAction::Running("Starting Omegon session...".into()));
                             refresh.bump();
-                            *action.write() = Some(SetupAction::Ok("Session start requested. Rechecking...".into()));
+                            let ctx_start = ctx.clone();
+                            let terminal_manager_start = use_context::<crate::terminal::manager::TerminalManager>();
+                            spawn(async move {
+                                let binary = ctx_start.omegon().resolve_binary();
+                                let project = ctx_start.project_root();
+                                let agent_id = crate::components::agent_rail::deployment_agent_id(&ctx_start);
+                                match crate::acp::AcpSession::connect(binary, project, agent_id).await {
+                                    Ok((session, rx)) => {
+                                        let sess = std::rc::Rc::new(session);
+                                        shared_session.set(Some(sess.clone()));
+                                        crate::components::agent_rail::start_setup_event_loop(
+                                            rx,
+                                            ctx_start,
+                                            sess,
+                                            shared_session,
+                                            terminal_manager_start,
+                                        );
+                                        action.set(Some(SetupAction::Ok("Omegon session connected.".into())));
+                                    }
+                                    Err(err) => {
+                                        action.set(Some(SetupAction::Err(format!("Could not start Omegon session: {err}"))));
+                                    }
+                                }
+                                refresh.bump();
+                            });
                         },
                         "Start Session"
                     }
