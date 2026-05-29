@@ -156,6 +156,18 @@ fn load_acp_overrides(
     omegon.load_operator_settings()
 }
 
+
+fn resolve_acp_agent_id(
+    omegon: &crate::bootstrap::OmegonRuntimeContext,
+    settings: &flynt_core::models::FlyntOperatorSettings,
+) -> Option<String> {
+    settings
+        .agent_id
+        .clone()
+        .filter(|id| !id.trim().is_empty())
+        .or_else(|| Some(omegon.load_deployment_manifest().deployment.profile))
+}
+
 fn is_transport_disconnect(msg: &str) -> bool {
     let lower = msg.to_lowercase();
     lower.contains("broken pipe")
@@ -210,7 +222,7 @@ fn reconnect_acp_session(
         let project = ctx.project_root();
         let operator_settings = load_acp_overrides(&ctx.omegon());
         let saved_config = operator_settings.acp_config.clone();
-        let agent_id = operator_settings.agent_id.clone();
+        let agent_id = resolve_acp_agent_id(&ctx.omegon(), &operator_settings);
 
         match AcpSession::connect(binary, project, agent_id).await {
             Ok((s, rx)) => {
@@ -546,7 +558,7 @@ pub fn AgentRail() -> Element {
         );
         let operator_settings = load_acp_overrides(&ctx.omegon());
         let saved_config = operator_settings.acp_config.clone();
-        let agent_id = operator_settings.agent_id.clone();
+        let agent_id = resolve_acp_agent_id(&ctx.omegon(), &operator_settings);
 
         let terminal_manager_for_loop = terminal_manager_for_connect.clone();
         spawn(async move {
@@ -1106,7 +1118,7 @@ pub fn AgentRail() -> Element {
                                     *session.write() = None;
                                     let reconnect_settings = load_acp_overrides(&use_context::<AppContext>().omegon());
                                     let saved_config = reconnect_settings.acp_config.clone();
-                                    let agent_id = reconnect_settings.agent_id.clone();
+                                    let agent_id = resolve_acp_agent_id(&use_context::<AppContext>().omegon(), &reconnect_settings);
                                     match AcpSession::connect(binary.clone(), project, agent_id).await {
                                         Ok((s, rx)) => {
                                             let new_sess = Rc::new(s);
