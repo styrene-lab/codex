@@ -1558,6 +1558,19 @@
   background: var(--background);
 }
 
+.diagram-preview-pane.pan-enabled {
+  cursor: grab;
+  user-select: none;
+}
+
+.diagram-preview-pane.pan-enabled.panning {
+  cursor: grabbing;
+}
+
+.diagram-preview-pane.pan-enabled .d2-embed {
+  pointer-events: none;
+}
+
 .d2-embed {
   min-height: 100%;
   display: block;
