@@ -48,6 +48,7 @@ impl Default for RenderCell {
 pub fn TerminalSnapshotView(props: TerminalSnapshotViewProps) -> Element {
     let font_family = "JetBrainsMono Nerd Font, JetBrains Mono, FiraCode Nerd Font, Fira Code, MesloLGS NF, Symbols Nerd Font Mono, Symbols Nerd Font, SF Mono, Menlo, Monaco, Cascadia Code, Consolas, ui-monospace, monospace";
     let on_key = props.on_key.clone();
+    let on_paste = props.on_paste.clone();
     let on_size = props.on_size.clone();
 
     rsx! {
@@ -61,6 +62,17 @@ pub fn TerminalSnapshotView(props: TerminalSnapshotViewProps) -> Element {
                         let cols = (rect.size.width / (props.font_size as f64 * 0.60)).floor().max(20.0) as usize;
                         let rows = (rect.size.height / (props.font_size as f64 * 1.20)).floor().max(5.0) as usize;
                         on_size.call((rows, cols));
+                        let _ = evt.set_focus(true).await;
+                    }
+                });
+            },
+            onpaste: move |_| {
+                let on_paste = on_paste.clone();
+                spawn(async move {
+                    if let Ok(text) = document::eval("navigator.clipboard.readText()").recv::<String>().await {
+                        if !text.is_empty() {
+                            on_paste.call(text);
+                        }
                     }
                 });
             },
@@ -110,6 +122,7 @@ pub struct TerminalSnapshotViewProps {
     #[props(default)]
     pub class: String,
     pub on_key: EventHandler<String>,
+    pub on_paste: EventHandler<String>,
     pub on_size: EventHandler<(usize, usize)>,
 }
 
