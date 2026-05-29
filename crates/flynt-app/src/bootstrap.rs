@@ -15,7 +15,11 @@ use serde::{Deserialize, Serialize};
 use std::{
     path::{Path, PathBuf},
     process::Stdio,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
 };
 use tokio::{process::Command, sync::broadcast};
 use tracing::{info, warn};
@@ -886,6 +890,107 @@ mod tests {
     }
 }
 
+/// Stops the project file watcher when runtime state is replaced or dropped.
+///
+/// The underlying notify watcher exposes a std::sync::mpsc receiver. Running
+/// receiver.recv() inside a Tokio task blocks runtime shutdown and can leave the
+/// macOS app process alive with no window. Keep it on an OS thread and stop it
+/// explicitly instead.
+#[derive(Debug)]
+pub struct ProjectWatcherHandle {
+    stop: Arc<AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl ProjectWatcherHandle {
+    fn spawn(
+        project_root: PathBuf,
+        project: Arc<Project>,
+        tx: broadcast::Sender<ProjectChangeEvent>,
+    ) -> Self {
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_thread = Arc::clone(&stop);
+        let thread = std::thread::Builder::new()
+            .name("flynt-project-watcher".into())
+            .spawn(move || run_project_watcher(project_root, project, tx, stop_thread))
+            .ok();
+        Self { stop, thread }
+    }
+}
+
+impl Drop for ProjectWatcherHandle {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+fn run_project_watcher(
+    project_root: PathBuf,
+    project: Arc<Project>,
+    tx: broadcast::Sender<ProjectChangeEvent>,
+    stop: Arc<AtomicBool>,
+) {
+    let watcher = match ProjectWatcher::new(&project_root) {
+        Ok(w) => w,
+        Err(e) => {
+            warn!("ProjectWatcher failed to start: {e}");
+            return;
+        }
+    };
+    while !stop.load(Ordering::Relaxed) {
+        match watcher.rx.recv_timeout(Duration::from_millis(250)) {
+            Ok(evt) => {
+                let path = match &evt {
+                    ProjectChangeEvent::FileModified(p) | ProjectChangeEvent::FileCreated(p) => {
+                        Some(p.clone())
+                    }
+                    ProjectChangeEvent::FileDeleted(p) => {
+                        let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
+                        if ext == "md" {
+                            match p.strip_prefix(&project.root) {
+                                Ok(rel) => match project.store.get_document_by_path(rel) {
+                                    Ok(Some(doc)) => {
+                                        if let Err(e) = project.store.delete_document(&doc.id) {
+                                            warn!(
+                                                "Remove deleted document from index failed for {}: {e}",
+                                                rel.display()
+                                            );
+                                        }
+                                    }
+                                    Ok(None) => {}
+                                    Err(e) => warn!(
+                                        "Lookup deleted document failed for {}: {e}",
+                                        rel.display()
+                                    ),
+                                },
+                                Err(e) => warn!(
+                                    "Deleted path outside project root {}: {e}",
+                                    p.display()
+                                ),
+                            }
+                        }
+                        None
+                    }
+                };
+                if let Some(ref p) = path {
+                    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
+                    if ext == "md" {
+                        if let Err(e) = project.index_file(p) {
+                            warn!("Re-index failed for {}: {e}", p.display());
+                        }
+                    }
+                }
+                let _ = tx.send(evt);
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+}
+
 /// Top-level runtime context injected into the Dioxus app.
 #[derive(Clone)]
 pub struct RuntimeState {
@@ -893,6 +998,9 @@ pub struct RuntimeState {
     pub project: Arc<Project>,
     pub project_events: broadcast::Sender<ProjectChangeEvent>,
     pub omegon: OmegonRuntimeContext,
+    /// Project file watcher, backed by a plain OS thread so Tokio shutdown
+    /// cannot hang on a blocking std::sync::mpsc receiver.
+    pub _watcher_handle: Arc<ProjectWatcherHandle>,
     /// Background git sync handle — kept alive as long as RuntimeState exists.
     pub _sync_handle: Option<Arc<flynt_store::sync::AutoSyncHandle>>,
     /// Sync status receiver — toolbar polls this for live sync state.
@@ -1041,72 +1149,11 @@ pub(crate) fn runtime_state_for_project_root(project_root: PathBuf) -> RuntimeSt
     }
 
     let (tx, _rx) = broadcast::channel::<ProjectChangeEvent>(256);
-    let tx_clone = tx.clone();
-    let project_root_clone = project_root.clone();
-    let project_clone = Arc::clone(&project);
-
-    tokio::spawn(async move {
-        let watcher = match ProjectWatcher::new(&project_root_clone) {
-            Ok(w) => w,
-            Err(e) => {
-                warn!("ProjectWatcher failed to start: {e}");
-                return;
-            }
-        };
-        loop {
-            match watcher.rx.recv() {
-                Ok(evt) => {
-                    let path = match &evt {
-                        ProjectChangeEvent::FileModified(p)
-                        | ProjectChangeEvent::FileCreated(p) => Some(p.clone()),
-                        ProjectChangeEvent::FileDeleted(p) => {
-                            let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
-                            if ext == "md" {
-                                match p.strip_prefix(&project_clone.root) {
-                                    Ok(rel) => {
-                                        match project_clone.store.get_document_by_path(rel) {
-                                            Ok(Some(doc)) => {
-                                                if let Err(e) =
-                                                    project_clone.store.delete_document(&doc.id)
-                                                {
-                                                    warn!(
-                                                        "Remove deleted document from index failed for {}: {e}",
-                                                        rel.display()
-                                                    );
-                                                }
-                                            }
-                                            Ok(None) => {}
-                                            Err(e) => warn!(
-                                                "Lookup deleted document failed for {}: {e}",
-                                                rel.display()
-                                            ),
-                                        }
-                                    }
-                                    Err(e) => warn!(
-                                        "Deleted path outside project root {}: {e}",
-                                        p.display()
-                                    ),
-                                }
-                            }
-                            None
-                        }
-                    };
-                    if let Some(ref p) = path {
-                        let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
-                        if ext == "md" {
-                            if let Err(e) = project_clone.index_file(p) {
-                                warn!("Re-index failed for {}: {e}", p.display());
-                            }
-                        }
-                        // .excalidraw files: schedule SVG export via webview
-                        // (handled by the UI layer listening on project_events)
-                    }
-                    let _ = tx_clone.send(evt);
-                }
-                Err(_) => break,
-            }
-        }
-    });
+    let watcher_handle = Arc::new(ProjectWatcherHandle::spawn(
+        project_root.clone(),
+        Arc::clone(&project),
+        tx.clone(),
+    ));
 
     // Ensure default templates exist
     let _ = flynt_core::templates::ensure_default_templates(&project_root);
@@ -1220,6 +1267,7 @@ pub(crate) fn runtime_state_for_project_root(project_root: PathBuf) -> RuntimeSt
         project,
         project_events: tx,
         omegon,
+        _watcher_handle: watcher_handle,
         _sync_handle: sync_handle,
         sync_status_rx,
         daemon,
