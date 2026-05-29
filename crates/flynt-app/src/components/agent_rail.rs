@@ -1,7 +1,11 @@
 use crate::acp::{AcpEvent, AcpSession, ConfigOption, PermissionDecision, PendingPermissionRequest, SlashCommand};
+use crate::bootstrap::AppContext;
 use crate::host_actions::metadata::{extract_host_action_outcomes, extract_host_actions};
 use crate::host_actions::terminal::extract_terminal_create;
-use crate::bootstrap::AppContext;
+use crate::omegon_deployment_diagnostics::{
+    classify_loaded_deployment, DeploymentDiagnostic, DeploymentManifestSource,
+    LoadedDeploymentManifest,
+};
 use crate::state::{Route, SettingsPage, TerminalOpenCommand};
 use comrak::{Options, markdown_to_html};
 use dioxus::prelude::*;
@@ -500,6 +504,14 @@ pub fn AgentRail() -> Element {
 
     let omegon_binary = find_omegon_binary_from_ctx(&ctx);
     let binary_found = omegon_binary.is_some();
+    let loaded_deployment = load_deployment_for_agent_rail(&ctx.omegon());
+    let deployment_diagnostic = classify_loaded_deployment(
+        &loaded_deployment,
+        ctx.deployment_metadata().as_ref(),
+        &ctx.project_root(),
+    );
+    let cli_probe = ctx.omegon_cli_probe();
+    let preflight_blocked = preflight_is_blocked(&deployment_diagnostic, cli_probe.as_ref());
 
     // ── Eager connect on mount + apply saved config ─────────
     use_effect(move || {
@@ -705,6 +717,16 @@ pub fn AgentRail() -> Element {
                 // Hidden when None so we don't carve out empty space pre-prompt.
                 if let Some(title) = session_title.read().clone() {
                     div { class: "agent-session-title", title: "{title}", "{title}" }
+                }
+            }
+
+            // ── Agent preflight ──────────────────────────────────
+            AgentPreflightCard {
+                deployment: deployment_diagnostic.clone(),
+                cli_probe: cli_probe.clone(),
+                on_settings: move |_| {
+                    *settings_page.write() = SettingsPage::OmegonRuntime;
+                    *settings_open.write() = crate::state::SettingsOpen(true);
                 }
             }
 
@@ -979,7 +1001,7 @@ pub fn AgentRail() -> Element {
                     class: "agent-textarea",
                     placeholder: if binary_found { "Ask Omegon… (type / for commands)" } else { "Omegon binary not found" },
                     value: "{input}",
-                    disabled: !binary_found,
+                    disabled: !binary_found || preflight_blocked,
                     oninput: move |e| {
                         *input.write() = e.value();
                         *history_idx.write() = None;
@@ -1030,6 +1052,10 @@ pub fn AgentRail() -> Element {
                             let prompt = input.read().trim().to_string();
                             if prompt.is_empty() {
                                 tracing::debug!("Empty prompt, ignoring");
+                                return;
+                            }
+                            if preflight_blocked {
+                                tracing::warn!("Prompt submitted while ACP preflight is blocked");
                                 return;
                             }
                             if session.read().is_none() {
@@ -1202,6 +1228,85 @@ fn update_permission_review_status(
             if review.request.request_id == request_id {
                 review.status = status;
                 break;
+            }
+        }
+    }
+}
+
+fn preflight_is_blocked(
+    deployment: &DeploymentDiagnostic,
+    cli_probe: Option<&crate::omegon_cli_probe::OmegonCliProbeResult>,
+) -> bool {
+    deployment.status == crate::omegon_deployment_diagnostics::DeploymentStatus::Blocked
+        || cli_probe.is_some_and(|probe| {
+            probe.status == crate::omegon_cli_probe::OmegonCliProbeStatus::Incompatible
+        })
+}
+
+fn load_deployment_for_agent_rail(omegon: &crate::bootstrap::OmegonRuntimeContext) -> LoadedDeploymentManifest {
+    match std::fs::read_to_string(&omegon.deployment_path) {
+        Ok(content) => match flynt_core::omegon_deployment::OmegonDeploymentManifest::from_toml(&content) {
+            Ok(manifest) => LoadedDeploymentManifest::loaded(manifest),
+            Err(error) => LoadedDeploymentManifest {
+                manifest: flynt_core::omegon_deployment::OmegonDeploymentManifest::default(),
+                source: DeploymentManifestSource::Invalid { error: error.to_string() },
+            },
+        },
+        Err(_) => LoadedDeploymentManifest {
+            manifest: flynt_core::omegon_deployment::OmegonDeploymentManifest::default(),
+            source: DeploymentManifestSource::MissingDefault,
+        },
+    }
+}
+
+#[component]
+fn AgentPreflightCard(
+    deployment: DeploymentDiagnostic,
+    cli_probe: Option<crate::omegon_cli_probe::OmegonCliProbeResult>,
+    on_settings: EventHandler<()>,
+) -> Element {
+    let cli_status = cli_probe
+        .as_ref()
+        .map(|probe| match probe.status {
+            crate::omegon_cli_probe::OmegonCliProbeStatus::Compatible => "Ready",
+            crate::omegon_cli_probe::OmegonCliProbeStatus::Unknown => "Unknown",
+            crate::omegon_cli_probe::OmegonCliProbeStatus::Incompatible => "Blocked",
+        })
+        .unwrap_or("Unknown");
+    let blocked = preflight_is_blocked(&deployment, cli_probe.as_ref());
+    let class = if blocked {
+        "agent-preflight blocked"
+    } else if deployment.status == crate::omegon_deployment_diagnostics::DeploymentStatus::Ok
+        && matches!(cli_probe.as_ref().map(|probe| &probe.status), Some(crate::omegon_cli_probe::OmegonCliProbeStatus::Compatible))
+    {
+        "agent-preflight ok"
+    } else {
+        "agent-preflight warning"
+    };
+
+    rsx! {
+        div { class: "{class}",
+            div { class: "agent-preflight-head",
+                span { class: "agent-preflight-title", "Preflight" }
+                span { class: "agent-preflight-pill", if blocked { "Blocked" } else { "Checked" } }
+            }
+            div { class: "agent-preflight-row",
+                span { "Deployment" }
+                strong { "{deployment.status.label()}" }
+            }
+            div { class: "agent-preflight-row",
+                span { "CLI" }
+                strong { "{cli_status}" }
+            }
+            if blocked {
+                div { class: "agent-preflight-summary", "Prompting is disabled until blocked runtime diagnostics are resolved." }
+            } else if deployment.status != crate::omegon_deployment_diagnostics::DeploymentStatus::Ok || cli_status != "Ready" {
+                div { class: "agent-preflight-summary", "Some runtime checks are unknown; prompting remains enabled." }
+            }
+            button {
+                class: "btn btn-ghost btn-xs agent-preflight-settings",
+                onclick: move |_| on_settings.call(()),
+                "Open runtime settings"
             }
         }
     }
