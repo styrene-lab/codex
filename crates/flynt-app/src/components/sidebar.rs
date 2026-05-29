@@ -363,6 +363,10 @@ enum TreeNode {
         name: String,
         children: BTreeMap<String, TreeNode>,
     },
+    VirtualFolder {
+        name: String,
+        path: std::path::PathBuf,
+    },
     File(DocumentMeta),
 }
 
@@ -370,6 +374,7 @@ impl TreeNode {
     fn file_count(&self) -> usize {
         match self {
             Self::File(_) => 1,
+            Self::VirtualFolder { path, .. } => count_source_files(path),
             Self::Folder { children, .. } => children.values().map(|c| c.file_count()).sum(),
         }
     }
@@ -377,6 +382,7 @@ impl TreeNode {
     fn contains_document_id(&self, id: &str) -> bool {
         match self {
             Self::File(meta) => meta.id.0.to_string() == id,
+            Self::VirtualFolder { .. } => false,
             Self::Folder { children, .. } => children
                 .values()
                 .any(|child| child.contains_document_id(id)),
@@ -387,6 +393,7 @@ impl TreeNode {
 /// Build a fully nested tree from flat document list using all path components.
 fn build_tree(docs: &[DocumentMeta]) -> Element {
     let mut root: BTreeMap<String, TreeNode> = BTreeMap::new();
+    add_virtual_diagram_directories(docs, &mut root);
 
     for doc in docs {
         let components: Vec<_> = doc
@@ -433,6 +440,37 @@ fn build_tree(docs: &[DocumentMeta]) -> Element {
     rsx! { { render_tree_level(&root, 0, "") } }
 }
 
+fn add_virtual_diagram_directories(docs: &[DocumentMeta], root: &mut BTreeMap<String, TreeNode>) {
+    let existing_dirs: std::collections::HashSet<std::path::PathBuf> = docs
+        .iter()
+        .filter_map(|doc| doc.path.parent().map(|parent| parent.to_path_buf()))
+        .collect();
+    for doc in docs.iter().filter(|doc| doc.path.starts_with("diagrams/")) {
+        let Some(parent) = doc.path.parent() else { continue; };
+        let root_dir = parent.components().next().map(|c| c.as_os_str().to_string_lossy().to_string());
+        if root_dir.as_deref() != Some("diagrams") || parent.components().count() != 2 {
+            continue;
+        }
+        let Some(name) = parent.file_name().and_then(|name| name.to_str()) else { continue; };
+        if existing_dirs.contains(parent) {
+            root.entry("diagrams".into()).or_insert_with(|| TreeNode::Folder {
+                name: "diagrams".into(),
+                children: BTreeMap::new(),
+            });
+            continue;
+        }
+        if let TreeNode::Folder { children, .. } = root.entry("diagrams".into()).or_insert_with(|| TreeNode::Folder {
+            name: "diagrams".into(),
+            children: BTreeMap::new(),
+        }) {
+            children.entry(name.to_string()).or_insert_with(|| TreeNode::VirtualFolder {
+                name: name.to_string(),
+                path: parent.to_path_buf(),
+            });
+        }
+    }
+}
+
 /// Recursively render a tree level using keyed components for stable hook identity.
 fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix: &str) -> Element {
     let entries: Vec<_> = nodes.iter().collect();
@@ -452,6 +490,18 @@ fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix
                         }
                     }
                 },
+                TreeNode::VirtualFolder { name, path } => {
+                    let full_path = if path_prefix.is_empty() {
+                        name.clone()
+                    } else {
+                        format!("{path_prefix}/{name}")
+                    };
+                    rsx! {
+                        div { key: "{full_path}",
+                            { render_virtual_folder_keyed(name, path, depth) }
+                        }
+                    }
+                },
                 TreeNode::File(doc) => {
                     let doc_key = doc.id.0.to_string();
                     rsx! {
@@ -459,6 +509,39 @@ fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix
                     }
                 },
             }
+        }
+    }
+}
+
+fn count_source_files(path: &std::path::Path) -> usize {
+    std::fs::read_dir(path)
+        .ok()
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "d2"))
+        .count()
+}
+
+fn render_virtual_folder_keyed(name: &str, path: &std::path::Path, depth: u32) -> Element {
+    let name = name.to_string();
+    let path = path.to_path_buf();
+    let count = count_source_files(&path);
+    let mut open = use_signal(|| false);
+    let indent = depth as f32 * 12.0;
+
+    rsx! {
+        button {
+            class: "tree-item tree-folder",
+            style: "padding-left: {indent + 8.0}px;",
+            onclick: move |_| { let v = *open.read(); *open.write() = !v; },
+            span { class: "tree-chevron", if *open.read() { "\u{25BE}" } else { "\u{25B8}" } }
+            span { class: "tree-folder-icon", "\u{25C7}" }
+            span { class: "tree-name", "{name}" }
+            span { class: "tree-count", "{count}" }
+        }
+        if *open.read() {
+            div { class: "tree-empty", style: "padding-left: {indent + 28.0}px;", "D2 source files are not indexed as notes yet." }
         }
     }
 }
