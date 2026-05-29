@@ -50,7 +50,7 @@ Later candidate:
 
 ### Flynt profile
 
-`flynt-agent` is a profile/composition. It is not a skill and not a required identity.
+`flynt-agent` is a profile/composition. It is not a skill, not a required identity, and not a closed bundle. It is the starting harness Flynt selects for embedded ACP sessions so a fresh project has sane defaults. The Flynt operator must still be able to install, update, replace, and overlay newer Armory packages, extensions, skills, prompts, and profiles without waiting for a Flynt app release.
 
 The profile activates or recommends:
 
@@ -130,6 +130,29 @@ omegon-armory/catalog/styrene.flynt-agent/
 ```
 
 Do not duplicate the D2/Excalidraw skill content inside the profile. Reference skill IDs instead.
+
+## Operator package evolution
+
+Flynt's bundled/default profile is only a bootstrap. Runtime package resolution must allow the operator to move faster than the Flynt app bundle.
+
+Resolution order for skills, profiles, prompts, and extensions:
+
+1. Project-local overrides: `<project>/.flynt/omegon/...`
+2. Operator-installed Armory artifacts: `~/.omegon/armory/...` or the active Omegon artifact cache
+3. Flynt app bundled pinned fallbacks
+4. Remote Armory catalog as an install/update candidate, never silently active
+
+Rules:
+
+- Flynt may seed `flynt-agent` and recommended skills, but must not freeze them.
+- The operator can install newer `d2-authoring`, `excalidraw-authoring`, `flynt-design`, or `flynt-agent` packages from Armory.
+- Flynt should show artifact provenance and version drift: project override, user Armory, bundled fallback, or remote candidate.
+- Flynt should warn on incompatible contracts, not on mere version differences.
+- A newer compatible Armory package should win over an older bundled fallback.
+- A project-local pin should win over user/global Armory packages.
+- Remote packages require explicit operator install/update; Flynt must not auto-upgrade profile behavior silently.
+
+This preserves offline correctness via bundled fallbacks while allowing the operator to evolve the agent harness and skills independently.
 
 ## Non-locking deployment contract
 
@@ -263,6 +286,8 @@ Must include:
 
 - Generic Omegon users can install `d2-authoring` and `excalidraw-authoring` without installing Flynt.
 - Flynt's default ACP profile composes these skills, but custom profiles can substitute equivalent capability bundles.
+- The Flynt app uses bundled profile/skill fallbacks only as a starting point; operator-installed compatible Armory artifacts can supersede them.
+- Flynt shows artifact provenance and warns when bundled, project, and user-installed versions differ.
 - No Flynt code blocks solely because the profile name is not `flynt-agent`.
 - D2 and Excalidraw skills cross-reference each other for porting workflows.
 - Flynt docs and tool descriptions no longer imply Excalidraw and D2 are isolated worlds.
