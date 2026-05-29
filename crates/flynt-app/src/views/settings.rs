@@ -35,6 +35,7 @@ pub fn SettingsView() -> Element {
         &ctx.omegon().home_dir,
         None,
     );
+    let custom_skill_id = use_signal(String::new);
     let mut armory_install_msg = use_signal(|| Option::<String>::None);
     let mut armory_install_refresh = use_signal(|| 0u64);
     let _ = armory_install_refresh.read();
@@ -934,6 +935,33 @@ pub fn SettingsView() -> Element {
                         ArmorySkillsDiagnosticCard {
                             report: armory_report.clone(),
                             message: armory_install_msg.read().clone(),
+                            custom_skill_id,
+                            on_activate: move |skill_id: String| {
+                                let mut manifest = load_deployment_for_settings(&ctx.omegon()).manifest;
+                                if crate::omegon_activation::activate_skill(&mut manifest, &skill_id) {
+                                    match crate::omegon_activation::save_manifest(&ctx.omegon(), &manifest) {
+                                        Ok(()) => {
+                                            armory_install_msg.set(Some(format!("Activated {skill_id} for this project")));
+                                            armory_install_refresh += 1;
+                                        }
+                                        Err(error) => armory_install_msg.set(Some(format!("Activation failed: {error}"))),
+                                    }
+                                }
+                            },
+                            on_deactivate: move |skill_id: String| {
+                                let mut manifest = load_deployment_for_settings(&ctx.omegon()).manifest;
+                                if crate::omegon_activation::deactivate_skill(&mut manifest, &skill_id) {
+                                    match crate::omegon_activation::save_manifest(&ctx.omegon(), &manifest) {
+                                        Ok(()) => {
+                                            armory_install_msg.set(Some(format!("Deactivated {skill_id} for this project")));
+                                            armory_install_refresh += 1;
+                                        }
+                                        Err(error) => armory_install_msg.set(Some(format!("Deactivation failed: {error}"))),
+                                    }
+                                } else {
+                                    armory_install_msg.set(Some(format!("{skill_id} is required by Flynt and cannot be deactivated here")));
+                                }
+                            },
                             on_install: move |_| {
                                 let Some(src) = rfd::FileDialog::new()
                                     .set_title("Select Armory skill package")
@@ -1321,6 +1349,9 @@ fn DeploymentDiagnosticCard(diagnostic: DeploymentDiagnostic) -> Element {
 fn ArmorySkillsDiagnosticCard(
     report: crate::armory_resolution::ArmoryResolutionReport,
     message: Option<String>,
+    custom_skill_id: Signal<String>,
+    on_activate: EventHandler<String>,
+    on_deactivate: EventHandler<String>,
     on_install: EventHandler<()>,
 ) -> Element {
     let missing = report.missing_required_skills();
@@ -1349,6 +1380,20 @@ fn ArmorySkillsDiagnosticCard(
                                 if let Some(path) = skill.path.as_ref() {
                                     " ({path.display()})"
                                 }
+                                if !flynt_core::omegon_deployment::OmegonDeploymentManifest::default()
+                                    .activation
+                                    .skills
+                                    .contains(&skill.name)
+                                {
+                                    button {
+                                        class: "btn btn-ghost btn-xs inline-skill-action",
+                                        onclick: {
+                                            let skill_id = skill.name.clone();
+                                            move |_| on_deactivate.call(skill_id.clone())
+                                        },
+                                        "Deactivate"
+                                    }
+                                }
                             }
                         }
                     }
@@ -1356,6 +1401,22 @@ fn ArmorySkillsDiagnosticCard(
                         div { class: "deployment-diagnostic-summary", "{message}" }
                     }
                     div { class: "deployment-diagnostic-actions",
+                        input {
+                            class: "settings-input skill-activation-input",
+                            placeholder: "skill-id to activate",
+                            value: "{custom_skill_id.read()}",
+                            oninput: move |event| custom_skill_id.set(event.value()),
+                        }
+                        button {
+                            class: "btn btn-ghost btn-xs",
+                            onclick: move |_| {
+                                let skill_id = custom_skill_id.read().trim().to_string();
+                                if !skill_id.is_empty() {
+                                    on_activate.call(skill_id);
+                                }
+                            },
+                            "Activate skill"
+                        }
                         button {
                             class: "btn btn-ghost btn-xs",
                             onclick: move |_| on_install.call(()),

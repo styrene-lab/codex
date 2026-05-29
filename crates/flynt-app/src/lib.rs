@@ -11,6 +11,7 @@ pub mod design_focus;
 pub mod host_actions;
 pub mod icons;
 pub mod menu;
+pub mod omegon_activation;
 pub mod omegon_cli_contract;
 pub mod omegon_cli_probe;
 pub mod omegon_deployment_diagnostics;
