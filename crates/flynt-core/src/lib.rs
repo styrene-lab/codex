@@ -12,6 +12,7 @@ pub mod html_to_md;
 pub mod identity;
 pub mod manifest;
 pub mod models;
+pub mod omegon_deployment;
 pub mod parser;
 pub mod providers;
 pub mod query;

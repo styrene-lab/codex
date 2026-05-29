@@ -96,6 +96,9 @@ pub struct OmegonRuntimeContext {
     pub home_dir: PathBuf,
     pub project_profile_path: PathBuf,
     pub global_profile_path: PathBuf,
+    /// Deployment manifest that pins Flynt-specific Omegon activation
+    /// separately from the operator's global ~/.omegon profile.
+    pub deployment_path: PathBuf,
     pub operator_settings_path: PathBuf,
     pub extensions_dir: PathBuf,
     pub vox_manifest_path: PathBuf,
@@ -543,6 +546,7 @@ impl OmegonRuntimeContext {
             omegon_mind_db_path,
             project_profile_path: project_root.join(".omegon/profile.json"),
             global_profile_path: home_dir.join("profile.json"),
+            deployment_path: project_root.join(".flynt/omegon.toml"),
             operator_settings_path: project_root.join(".flynt/operator-settings.json"),
             extensions_dir: home_dir.join("extensions"),
             vox_manifest_path: home_dir.join("extensions/vox/manifest.toml"),
@@ -573,6 +577,25 @@ impl OmegonRuntimeContext {
             serde_json::to_string_pretty(profile)?,
         )?;
         Ok(())
+    }
+
+    pub fn load_deployment_manifest(&self) -> flynt_core::omegon_deployment::OmegonDeploymentManifest {
+        std::fs::read_to_string(&self.deployment_path)
+            .ok()
+            .and_then(|content| flynt_core::omegon_deployment::OmegonDeploymentManifest::from_toml(&content).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn ensure_deployment_manifest(&self) -> anyhow::Result<flynt_core::omegon_deployment::OmegonDeploymentManifest> {
+        if self.deployment_path.exists() {
+            return Ok(self.load_deployment_manifest());
+        }
+        let manifest = flynt_core::omegon_deployment::OmegonDeploymentManifest::default();
+        if let Some(parent) = self.deployment_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&self.deployment_path, manifest.to_toml_pretty()?)?;
+        Ok(manifest)
     }
 
     pub fn load_operator_settings(&self) -> FlyntOperatorSettings {
@@ -778,6 +801,7 @@ mod tests {
             home_dir: tmp.path().join("home"),
             project_profile_path: tmp.path().join("project/.omegon/profile.json"),
             global_profile_path: tmp.path().join("home/profile.json"),
+            deployment_path: tmp.path().join("project/.flynt/omegon.toml"),
             operator_settings_path: tmp.path().join("project/.flynt/operator-settings.json"),
             extensions_dir: tmp.path().join("home/extensions"),
             vox_manifest_path: tmp.path().join("home/extensions/vox/manifest.toml"),
@@ -803,6 +827,34 @@ mod tests {
     }
 
     #[test]
+    fn ensures_flynt_scoped_deployment_manifest() {
+        let tmp = TempDir::new().unwrap();
+        let runtime = OmegonRuntimeContext {
+            local_state_root: tmp.path().join("local"),
+            flynt_index_db_path: tmp.path().join("local/flynt-index.db"),
+            omegon_runtime_root: tmp.path().join("local/omegon"),
+            omegon_mind_db_path: tmp.path().join("local/omegon/minds/flynt.db"),
+            home_dir: tmp.path().join("home"),
+            project_profile_path: tmp.path().join("project/.omegon/profile.json"),
+            global_profile_path: tmp.path().join("home/profile.json"),
+            deployment_path: tmp.path().join("project/.flynt/omegon.toml"),
+            operator_settings_path: tmp.path().join("project/.flynt/operator-settings.json"),
+            extensions_dir: tmp.path().join("home/extensions"),
+            vox_manifest_path: tmp.path().join("home/extensions/vox/manifest.toml"),
+            omegon_channel: Default::default(),
+            omegon_bin_override: None,
+        };
+
+        let manifest = runtime.ensure_deployment_manifest().unwrap();
+        assert_eq!(manifest.deployment.profile, "flynt-agent");
+        assert_eq!(manifest.deployment.memory_scope, "project");
+        assert!(runtime.deployment_path.exists());
+
+        let loaded = runtime.load_deployment_manifest();
+        assert_eq!(loaded, manifest);
+    }
+
+    #[test]
     fn round_trips_operator_settings() {
         let tmp = TempDir::new().unwrap();
         let runtime = OmegonRuntimeContext {
@@ -813,6 +865,7 @@ mod tests {
             home_dir: tmp.path().join("home"),
             project_profile_path: tmp.path().join("project/.omegon/profile.json"),
             global_profile_path: tmp.path().join("home/profile.json"),
+            deployment_path: tmp.path().join("project/.flynt/omegon.toml"),
             operator_settings_path: tmp.path().join("project/.flynt/operator-settings.json"),
             extensions_dir: tmp.path().join("home/extensions"),
             vox_manifest_path: tmp.path().join("home/extensions/vox/manifest.toml"),
@@ -1085,6 +1138,18 @@ pub(crate) fn runtime_state_for_project_root(project_root: PathBuf) -> RuntimeSt
         }
         _ => (None, None),
     };
+    // Ensure the Flynt-scoped Omegon deployment manifest exists before
+    // starting ACP/daemon surfaces. This keeps Flynt activation separate
+    // from the operator's global ~/.omegon profile while still allowing
+    // shared installed artifacts to be referenced by scope.
+    let _deployment_manifest = match omegon.ensure_deployment_manifest() {
+        Ok(manifest) => manifest,
+        Err(e) => {
+            warn!("Failed to ensure Flynt Omegon deployment manifest: {e}");
+            flynt_core::omegon_deployment::OmegonDeploymentManifest::default()
+        }
+    };
+
     // Initialize daemon manager from operator settings
     let operator_settings = omegon.load_operator_settings();
     let daemon = Arc::new(crate::daemon_manager::DaemonManager::new(
