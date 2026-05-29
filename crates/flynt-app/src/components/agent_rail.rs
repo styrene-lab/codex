@@ -161,11 +161,17 @@ pub fn resolve_acp_agent_id(
     omegon: &crate::bootstrap::OmegonRuntimeContext,
     settings: &flynt_core::models::FlyntOperatorSettings,
 ) -> Option<String> {
-    settings
+    if let Some(agent_id) = settings
         .agent_id
         .clone()
         .filter(|id| !id.trim().is_empty())
-        .or_else(|| Some(omegon.load_deployment_manifest().deployment.profile))
+    {
+        return Some(agent_id);
+    }
+
+    let profile = omegon.load_deployment_manifest().deployment.profile;
+    let catalog_path = omegon.home_dir.join("catalog").join(format!("{profile}.toml"));
+    catalog_path.exists().then_some(profile)
 }
 
 pub fn deployment_agent_id(ctx: &AppContext) -> Option<String> {
