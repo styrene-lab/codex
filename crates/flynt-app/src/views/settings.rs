@@ -1,8 +1,8 @@
-use crate::self_update::UpdateChannel;
 use crate::omegon_deployment_diagnostics::{
     classify_loaded_deployment, DeploymentDiagnostic, DeploymentManifestSource,
     LoadedDeploymentManifest,
 };
+use crate::self_update::UpdateChannel;
 use crate::{
     bootstrap::{AppContext, OmegonRuntimeContext, PendingProjectSetup},
     components::daemon_settings::DaemonSettingsSection,
@@ -29,6 +29,18 @@ pub fn SettingsView() -> Element {
         ctx.deployment_metadata().as_ref(),
         &ctx.project_root(),
     );
+    let cli_probe = ctx.omegon_cli_probe();
+    let probe_ctx = ctx.clone();
+    use_effect(move || {
+        if probe_ctx.omegon_cli_probe().is_none() {
+            let probe_ctx = probe_ctx.clone();
+            spawn(async move {
+                let binary = probe_ctx.omegon().resolve_binary();
+                let result = crate::omegon_cli_probe::probe_omegon_cli(binary).await;
+                probe_ctx.set_omegon_cli_probe(result);
+            });
+        }
+    });
 
     // Appearance — reactive, applied immediately via context signals.
     let mut theme = use_context::<Signal<ThemeName>>();
@@ -910,6 +922,7 @@ pub fn SettingsView() -> Element {
                 if *active_page.read() == SettingsPage::OmegonRuntime {
                     SettingsSection { heading: "Runtime",
                         DeploymentDiagnosticCard { diagnostic: deployment_diagnostic.clone() }
+                        CliProbeDiagnosticCard { probe: cli_probe.clone() }
                         SettingsRow {
                             label: "Channel",
                             hint: "Which release stream flynt resolves to when no binary override is set. Stable = production builds. RC = release candidates, near-stable. Nightly = latest unreleased work, may break.",
@@ -1263,6 +1276,62 @@ fn DeploymentDiagnosticCard(diagnostic: DeploymentDiagnostic) -> Element {
                     if !diagnostic.details.is_empty() {
                         ul { class: "deployment-diagnostic-details",
                             for detail in diagnostic.details.iter() {
+                                li { "{detail}" }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn CliProbeDiagnosticCard(probe: Option<crate::omegon_cli_probe::OmegonCliProbeResult>) -> Element {
+    let (status, summary, details) = match probe {
+        Some(probe) => {
+            let status = match probe.status {
+                crate::omegon_cli_probe::OmegonCliProbeStatus::Compatible => "Ready",
+                crate::omegon_cli_probe::OmegonCliProbeStatus::Unknown => "Unknown",
+                crate::omegon_cli_probe::OmegonCliProbeStatus::Incompatible => "Blocked",
+            };
+            let summary = match probe.status {
+                crate::omegon_cli_probe::OmegonCliProbeStatus::Compatible => {
+                    format!("Omegon CLI contract v{} is compatible.", probe.expected_contract_version)
+                }
+                crate::omegon_cli_probe::OmegonCliProbeStatus::Unknown => {
+                    format!("Omegon CLI contract v{} could not be fully verified.", probe.expected_contract_version)
+                }
+                crate::omegon_cli_probe::OmegonCliProbeStatus::Incompatible => {
+                    format!("Omegon CLI contract v{} is incompatible.", probe.expected_contract_version)
+                }
+            };
+            let mut details = vec![format!("Binary: {}", probe.binary.display())];
+            if let Some(version) = probe.version {
+                details.push(format!("Version: {version}"));
+            }
+            details.extend(probe.details);
+            (status.to_string(), summary, details)
+        }
+        None => (
+            "Unknown".into(),
+            "Omegon CLI compatibility probe has not completed yet.".into(),
+            Vec::new(),
+        ),
+    };
+    let class = format!("deployment-diagnostic {}", status.to_lowercase());
+    rsx! {
+        div { class: "settings-row",
+            span { class: "settings-label", "Omegon CLI contract" }
+            div { class: "settings-control",
+                div { class: "{class}",
+                    div { class: "deployment-diagnostic-head",
+                        span { class: "deployment-diagnostic-status", "{status}" }
+                        span { class: "deployment-diagnostic-summary", "{summary}" }
+                    }
+                    if !details.is_empty() {
+                        ul { class: "deployment-diagnostic-details",
+                            for detail in details.iter() {
                                 li { "{detail}" }
                             }
                         }

@@ -899,6 +899,8 @@ pub struct RuntimeState {
     pub daemon: Arc<crate::daemon_manager::DaemonManager>,
     /// Last Flynt deployment metadata observed from the ACP handshake/session.
     pub deployment_metadata: Option<serde_json::Value>,
+    /// Last compatibility probe for the Omegon CLI used by ACP.
+    pub omegon_cli_probe: Option<crate::omegon_cli_probe::OmegonCliProbeResult>,
     /// Push pipeline — drives auto-push for tasks linked to forge issues.
     /// Held as `Option` so a fallback project (no `.flynt` writable, etc.)
     /// can still produce a RuntimeState; the pill in the UI degrades to
@@ -940,6 +942,17 @@ impl AppContext {
         let mut runtime = self.runtime;
         if let Ok(mut runtime) = runtime.try_write() {
             runtime.deployment_metadata = Some(metadata);
+        }
+    }
+
+    pub fn omegon_cli_probe(&self) -> Option<crate::omegon_cli_probe::OmegonCliProbeResult> {
+        self.runtime.read().omegon_cli_probe.clone()
+    }
+
+    pub fn set_omegon_cli_probe(&self, result: crate::omegon_cli_probe::OmegonCliProbeResult) {
+        let mut runtime = self.runtime;
+        if let Ok(mut runtime) = runtime.try_write() {
+            runtime.omegon_cli_probe = Some(result);
         }
     }
 
@@ -1209,6 +1222,7 @@ pub(crate) fn runtime_state_for_project_root(project_root: PathBuf) -> RuntimeSt
         sync_status_rx,
         daemon,
         deployment_metadata: None,
+        omegon_cli_probe: None,
         push_pipeline,
     }
 }
