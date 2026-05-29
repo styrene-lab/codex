@@ -3397,7 +3397,22 @@ pub fn NotesView() -> Element {
                 match *mode.read() {
                     EditMode::Diagram if is_d2_path(&check_path) || d2_embed_path(&edit_body.read()).is_some() => {
                         let d2_path = resolve_d2_path(&ctx.project_root(), &check_path, &edit_body.read());
-                        let abs = d2_path.with_extension("svg");
+                        let svg_candidates = [
+                            d2_path.with_extension("svg"),
+                            ctx.project_root()
+                                .join("diagrams/rendered")
+                                .join(d2_path.file_name().unwrap_or_default())
+                                .with_extension("svg"),
+                            ctx.project_root()
+                                .join("diagrams/svg")
+                                .join(d2_path.file_name().unwrap_or_default())
+                                .with_extension("svg"),
+                        ];
+                        let abs = svg_candidates
+                            .iter()
+                            .find(|path| path.exists())
+                            .cloned()
+                            .unwrap_or_else(|| d2_path.with_extension("svg"));
                         let svg = std::fs::read_to_string(&abs).ok();
                         let zoom = *diagram_zoom.read();
                         let zoom_style = format!("width: {}%;", zoom * 100.0);

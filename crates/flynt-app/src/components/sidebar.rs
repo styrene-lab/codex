@@ -319,13 +319,17 @@ enum TreeNode {
     VirtualFolder {
         name: String,
     },
+    VirtualFile {
+        title: String,
+        path: std::path::PathBuf,
+    },
     File(DocumentMeta),
 }
 
 impl TreeNode {
     fn file_count(&self) -> usize {
         match self {
-            Self::File(_) => 1,
+            Self::File(_) | Self::VirtualFile { .. } => 1,
             Self::VirtualFolder { .. } => 0,
             Self::Folder { children, .. } => children.values().map(|c| c.file_count()).sum(),
         }
@@ -334,7 +338,7 @@ impl TreeNode {
     fn contains_document_id(&self, id: &str) -> bool {
         match self {
             Self::File(meta) => meta.id.0.to_string() == id,
-            Self::VirtualFolder { .. } => false,
+            Self::VirtualFile { .. } | Self::VirtualFolder { .. } => false,
             Self::Folder { children, .. } => children
                 .values()
                 .any(|child| child.contains_document_id(id)),
@@ -345,6 +349,7 @@ impl TreeNode {
 /// Build a fully nested tree from flat document list using all path components.
 fn build_tree(docs: &[DocumentMeta]) -> Element {
     let mut root: BTreeMap<String, TreeNode> = BTreeMap::new();
+    add_filesystem_diagram_files(docs, &mut root);
 
     for doc in docs {
         let components: Vec<_> = doc
@@ -392,6 +397,84 @@ fn build_tree(docs: &[DocumentMeta]) -> Element {
     rsx! { { render_tree_level(&root, 0, "") } }
 }
 
+fn add_filesystem_diagram_files(docs: &[DocumentMeta], root: &mut BTreeMap<String, TreeNode>) {
+    let Some(project_root) = infer_project_root(docs) else {
+        return;
+    };
+    let diagrams_root = project_root.join("diagrams");
+    let Ok(entries) = std::fs::read_dir(&diagrams_root) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            add_diagram_dir_files(&diagrams_root, &path, root);
+        } else if is_diagram_file(&path) {
+            add_diagram_file(&diagrams_root, &path, root);
+        }
+    }
+}
+
+fn infer_project_root(docs: &[DocumentMeta]) -> Option<std::path::PathBuf> {
+    // DocumentMeta paths are project-relative, so use the current Flynt project
+    // from the process environment when available. The sidebar only needs this
+    // for non-indexed diagram assets (.d2/.svg/.png), not normal notes.
+    std::env::var("FLYNT_PROJECT").ok().map(std::path::PathBuf::from)
+        .or_else(|| std::env::current_dir().ok())
+        .filter(|root| docs.iter().any(|doc| root.join(&doc.path).exists()))
+}
+
+fn add_diagram_dir_files(diagrams_root: &std::path::Path, dir: &std::path::Path, root: &mut BTreeMap<String, TreeNode>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            add_diagram_dir_files(diagrams_root, &path, root);
+        } else if is_diagram_file(&path) {
+            add_diagram_file(diagrams_root, &path, root);
+        }
+    }
+}
+
+fn is_diagram_file(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| matches!(ext, "d2" | "svg" | "png"))
+}
+
+fn add_diagram_file(diagrams_root: &std::path::Path, path: &std::path::Path, root: &mut BTreeMap<String, TreeNode>) {
+    let Ok(rel) = path.strip_prefix(diagrams_root) else {
+        return;
+    };
+    let mut current = root
+        .entry("diagrams".into())
+        .or_insert_with(|| TreeNode::Folder { name: "diagrams".into(), children: BTreeMap::new() });
+
+    let parts: Vec<_> = rel.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect();
+    if parts.is_empty() {
+        return;
+    }
+    for part in &parts[..parts.len() - 1] {
+        current = match current {
+            TreeNode::Folder { children, .. } => children
+                .entry(part.clone())
+                .or_insert_with(|| TreeNode::Folder { name: part.clone(), children: BTreeMap::new() }),
+            _ => return,
+        };
+    }
+    if let TreeNode::Folder { children, .. } = current {
+        let file = parts.last().cloned().unwrap_or_default();
+        let rel_path = std::path::PathBuf::from("diagrams").join(rel);
+        children.entry(format!("~{file}")).or_insert_with(|| TreeNode::VirtualFile {
+            title: file,
+            path: rel_path,
+        });
+    }
+}
+
 fn add_virtual_diagram_directories(root: &mut BTreeMap<String, TreeNode>) {
     let Some(TreeNode::Folder { children, .. }) = root.get_mut("diagrams") else {
         return;
@@ -404,17 +487,8 @@ fn add_virtual_diagram_directories(root: &mut BTreeMap<String, TreeNode>) {
     }
 }
 
-fn find_diagram_source_directories(children: &BTreeMap<String, TreeNode>) -> Vec<String> {
-    let mut names: Vec<_> = children
-        .keys()
-        .filter_map(|key| key.strip_prefix('~'))
-        .filter_map(|filename| filename.strip_suffix(".d2"))
-        .filter_map(|stem| stem.split('/').next().filter(|part| !part.is_empty()))
-        .map(ToString::to_string)
-        .collect();
-    names.sort();
-    names.dedup();
-    names
+fn find_diagram_source_directories(_children: &BTreeMap<String, TreeNode>) -> Vec<String> {
+    Vec::new()
 }
 
 /// Recursively render a tree level using keyed components for stable hook identity.
@@ -448,6 +522,11 @@ fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix
                         }
                     }
                 },
+                TreeNode::VirtualFile { title, path } => {
+                    rsx! {
+                        { render_virtual_diagram_file(title, path, depth) }
+                    }
+                },
                 TreeNode::File(doc) => {
                     let doc_key = doc.id.0.to_string();
                     rsx! {
@@ -455,6 +534,35 @@ fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix
                     }
                 },
             }
+        }
+    }
+}
+
+fn render_virtual_diagram_file(title: &str, path: &std::path::Path, depth: u32) -> Element {
+    let ctx = use_context::<AppContext>();
+    let mut tab_state = use_context::<Signal<TabState>>();
+    let mut active_route = use_context::<Signal<Route>>();
+    let title = title.to_string();
+    let path = path.to_path_buf();
+    let indent = depth as f32 * 12.0;
+    rsx! {
+        button {
+            class: "tree-item tree-file",
+            style: "padding-left: {indent + 24.0}px;",
+            title: "{path.display()}",
+            onclick: move |_| {
+                let project = ctx.project();
+                let abs = project.root.join(&path);
+                if let Ok(()) = project.index_file(&abs) {
+                    let _ = project.reindex();
+                }
+                if let Ok(Some(doc)) = project.store.get_document_by_path(&path) {
+                    tab_state.write().open(doc.id.clone(), doc.title.clone());
+                    *active_route.write() = Route::Notes;
+                }
+            },
+            span { class: "tree-file-icon", "\u{25C7}" }
+            span { class: "tree-name", "{title}" }
         }
     }
 }
