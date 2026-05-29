@@ -1,4 +1,5 @@
 use crate::self_update::UpdateChannel;
+use crate::omegon_deployment_diagnostics::{classify_deployment, DeploymentDiagnostic};
 use crate::{
     bootstrap::{AppContext, OmegonRuntimeContext, PendingProjectSetup},
     components::daemon_settings::DaemonSettingsSection,
@@ -19,6 +20,13 @@ use flynt_core::models::{
 #[component]
 pub fn SettingsView() -> Element {
     let ctx = use_context::<AppContext>();
+    let deployment_manifest = ctx.omegon().load_deployment_manifest();
+    let deployment_diagnostic = classify_deployment(
+        &deployment_manifest,
+        None,
+        &ctx.project_root(),
+        false,
+    );
 
     // Appearance — reactive, applied immediately via context signals.
     let mut theme = use_context::<Signal<ThemeName>>();
@@ -899,6 +907,7 @@ pub fn SettingsView() -> Element {
                 // ════════════════════════════════════════════════════════════
                 if *active_page.read() == SettingsPage::OmegonRuntime {
                     SettingsSection { heading: "Runtime",
+                        DeploymentDiagnosticCard { diagnostic: deployment_diagnostic.clone() }
                         SettingsRow {
                             label: "Channel",
                             hint: "Which release stream flynt resolves to when no binary override is set. Stable = production builds. RC = release candidates, near-stable. Nightly = latest unreleased work, may break.",
@@ -1215,6 +1224,32 @@ fn ThemeCard(entry: UiTheme, active: bool, on_select: EventHandler<String>) -> E
             span { class: "theme-kind", "{badge}" }
             if active {
                 span { class: "theme-active-badge", "✓" }
+            }
+        }
+    }
+}
+
+#[component]
+fn DeploymentDiagnosticCard(diagnostic: DeploymentDiagnostic) -> Element {
+    let status = diagnostic.status;
+    let class = format!("deployment-diagnostic {}", status.class());
+    rsx! {
+        div { class: "settings-row",
+            span { class: "settings-label", "Flynt ACP deployment" }
+            div { class: "settings-control",
+                div { class: "{class}",
+                    div { class: "deployment-diagnostic-head",
+                        span { class: "deployment-diagnostic-status", "{status.label()}" }
+                        span { class: "deployment-diagnostic-summary", "{diagnostic.summary}" }
+                    }
+                    if !diagnostic.details.is_empty() {
+                        ul { class: "deployment-diagnostic-details",
+                            for detail in diagnostic.details.iter() {
+                                li { "{detail}" }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
