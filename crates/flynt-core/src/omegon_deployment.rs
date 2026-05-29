@@ -43,8 +43,13 @@ impl Default for OmegonDeploymentManifest {
             },
             activation: ActivationSection {
                 extensions: vec![FLYNT_DEPLOYMENT_EXTENSION.into()],
-                skills: vec!["vault".into(), "flynt-design".into()],
-                optional_skills: vec!["git".into(), "openspec".into()],
+                skills: vec![
+                    "vault".into(),
+                    "d2-authoring".into(),
+                    "excalidraw-authoring".into(),
+                    "flynt-design".into(),
+                ],
+                optional_skills: vec!["git".into(), "openspec".into(), "security".into()],
             },
         }
     }
@@ -71,6 +76,8 @@ mod tests {
         assert_eq!(manifest.deployment.memory_scope, FLYNT_DEPLOYMENT_MEMORY_SCOPE);
         assert_eq!(manifest.deployment.host, "flynt-app");
         assert_eq!(manifest.activation.extensions, vec![FLYNT_DEPLOYMENT_EXTENSION]);
+        assert!(manifest.activation.skills.contains(&"d2-authoring".to_string()));
+        assert!(manifest.activation.skills.contains(&"excalidraw-authoring".to_string()));
     }
 
     #[test]

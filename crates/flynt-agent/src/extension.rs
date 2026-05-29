@@ -1624,6 +1624,8 @@ fn flynt_surface_guide() -> Value {
                 "maturity": "usable",
                 "paths": ["drawings/<name>.md", "drawings/<name>.excalidraw"],
                 "tools": ["create_drawing", "drawing_active", "drawing_get", "drawing_set_scene", "drawing_create_spec", "drawing_get_spec", "drawing_render_spec", "drawing_patch_spec", "drawing_validate_spec"],
+                "skills": ["excalidraw-authoring"],
+                "port_modes": ["svg_import", "semantic_translation"],
                 "use_for": "freeform Excalidraw sketches and agent-authored architecture drawings",
                 "rules": [
                     "Excalidraw drawings live under drawings/, not diagrams/.",
@@ -1631,7 +1633,8 @@ fn flynt_surface_guide() -> Value {
                     "Prefer drawing_create_spec / drawing_patch_spec for agent-authored architecture diagrams instead of generating raw Excalidraw JSON.",
                     "Do not create Excalidraw wrapper markdown with create_document.",
                     "Do not tell the operator to switch to a separate drawing view; have them open/select the wrapper entry.",
-                    "Use drawing_active before editing the drawing the operator has open."
+                    "Use drawing_active before editing the drawing the operator has open.",
+                    "When porting D2 into drawings, choose explicitly between exact SVG import and editable semantic translation."
                 ]
             },
             {
@@ -1639,13 +1642,15 @@ fn flynt_surface_guide() -> Value {
                 "maturity": "stable",
                 "paths": ["diagrams/<name>.d2"],
                 "tools": ["create_d2_diagram"],
+                "skills": ["d2-authoring"],
                 "use_for": "text-authored D2 diagrams when a deterministic source diagram is better than freeform drawing",
                 "rules": [
                     "Use D2 for compact source-controlled structural diagrams, not all-in-one architecture posters.",
                     "Do not use multiline |md bodies inside ordinary graph nodes; use child nodes for detail lines.",
                     "Keep edge labels short; move explanations into note/callout nodes if needed.",
                     "Minimize cross-container edges and split diagrams when topology, state authority, command flow, and migration delta are all present.",
-                    "Rendered SVGs wider than roughly 3:1 aspect ratio should usually be split into focused diagrams."
+                    "Rendered SVGs wider than roughly 3:1 aspect ratio should usually be split into focused diagrams.",
+                    "If a D2 diagram needs precise whitespace lanes, manual connector routing, or editable visual layout, port it to Excalidraw using svg_import or semantic_translation."
                 ]
             },
             {
