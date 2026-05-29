@@ -1254,7 +1254,7 @@ fn ThemeCard(entry: UiTheme, active: bool, on_select: EventHandler<String>) -> E
 fn load_deployment_for_settings(omegon: &OmegonRuntimeContext) -> LoadedDeploymentManifest {
     match std::fs::read_to_string(&omegon.deployment_path) {
         Ok(content) => match flynt_core::omegon_deployment::OmegonDeploymentManifest::from_toml(&content) {
-            Ok(manifest) => LoadedDeploymentManifest::loaded(manifest),
+            Ok(manifest) => LoadedDeploymentManifest::loaded(flynt_core::omegon_deployment::merge_with_default_required_activation(manifest)),
             Err(error) => LoadedDeploymentManifest {
                 manifest: flynt_core::omegon_deployment::OmegonDeploymentManifest::default(),
                 source: DeploymentManifestSource::Invalid { error: error.to_string() },

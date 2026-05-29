@@ -583,14 +583,16 @@ impl OmegonRuntimeContext {
         std::fs::read_to_string(&self.deployment_path)
             .ok()
             .and_then(|content| flynt_core::omegon_deployment::OmegonDeploymentManifest::from_toml(&content).ok())
+            .map(flynt_core::omegon_deployment::merge_with_default_required_activation)
             .unwrap_or_default()
     }
 
     pub fn ensure_deployment_manifest(&self) -> anyhow::Result<flynt_core::omegon_deployment::OmegonDeploymentManifest> {
-        if self.deployment_path.exists() {
-            return Ok(self.load_deployment_manifest());
-        }
-        let manifest = flynt_core::omegon_deployment::OmegonDeploymentManifest::default();
+        let manifest = if self.deployment_path.exists() {
+            self.load_deployment_manifest()
+        } else {
+            flynt_core::omegon_deployment::OmegonDeploymentManifest::default()
+        };
         if let Some(parent) = self.deployment_path.parent() {
             std::fs::create_dir_all(parent)?;
         }

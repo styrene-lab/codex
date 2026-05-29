@@ -65,6 +65,28 @@ impl OmegonDeploymentManifest {
     }
 }
 
+pub fn merge_with_default_required_activation(
+    mut manifest: OmegonDeploymentManifest,
+) -> OmegonDeploymentManifest {
+    let default = OmegonDeploymentManifest::default();
+    for skill in default.activation.skills {
+        if !manifest.activation.skills.iter().any(|existing| existing == &skill) {
+            manifest.activation.skills.push(skill);
+        }
+    }
+    for extension in default.activation.extensions {
+        if !manifest.activation.extensions.iter().any(|existing| existing == &extension) {
+            manifest.activation.extensions.push(extension);
+        }
+    }
+    for skill in default.activation.optional_skills {
+        if !manifest.activation.optional_skills.iter().any(|existing| existing == &skill) {
+            manifest.activation.optional_skills.push(skill);
+        }
+    }
+    manifest
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -90,4 +112,19 @@ mod tests {
         let parsed = OmegonDeploymentManifest::from_toml(&toml).unwrap();
         assert_eq!(parsed, manifest);
     }
+
+    #[test]
+    fn merge_adds_new_required_skills_to_existing_manifest() {
+        let mut manifest = OmegonDeploymentManifest::default();
+        manifest.activation.skills = vec!["vault".into(), "flynt-design".into()];
+        manifest.activation.optional_skills = vec!["git".into()];
+
+        let merged = merge_with_default_required_activation(manifest);
+        assert!(merged.activation.skills.contains(&"vault".to_string()));
+        assert!(merged.activation.skills.contains(&"flynt-design".to_string()));
+        assert!(merged.activation.skills.contains(&"d2-authoring".to_string()));
+        assert!(merged.activation.skills.contains(&"excalidraw-authoring".to_string()));
+        assert!(merged.activation.optional_skills.contains(&"security".to_string()));
+    }
+
 }
