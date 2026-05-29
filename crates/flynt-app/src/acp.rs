@@ -8,6 +8,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use crate::omegon_cli_contract::OmegonCliContract;
 use agent_client_protocol::{
     Agent, Client, ClientSideConnection, ContentBlock, ExtRequest, InitializeRequest,
     NewSessionRequest, PermissionOption, PermissionOptionId, PermissionOptionKind, PromptRequest,
@@ -436,18 +437,13 @@ impl AcpSession {
         let (tx, rx) = std::sync::mpsc::channel();
         let done_tx = tx.clone();
 
+        let contract = OmegonCliContract::current();
         let mut cmd = Command::new(&omegon_binary);
-        cmd.arg("acp")
-            .arg("--cwd")
-            .arg(&cwd)
-            .arg("-y")
+        cmd.args(contract.acp_args(&cwd, agent_id.as_deref()))
             .env("FLYNT_PROJECT", &cwd)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::inherit());
-        if let Some(ref id) = agent_id {
-            cmd.arg("--agent").arg(id);
-        }
         cmd.kill_on_drop(true);
         let mut child = cmd.spawn()?;
 
@@ -546,10 +542,9 @@ impl AcpSession {
             .tx
             .send(AcpEvent::TextDelta(format!("Opening {provider} login…\n")));
 
+        let contract = OmegonCliContract::current();
         let result = tokio::process::Command::new(omegon_binary)
-            .arg("auth")
-            .arg("login")
-            .arg(provider)
+            .args(contract.auth_login_args(provider))
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .output()
