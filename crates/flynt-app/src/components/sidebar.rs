@@ -316,9 +316,6 @@ enum TreeNode {
         name: String,
         children: BTreeMap<String, TreeNode>,
     },
-    VirtualFolder {
-        name: String,
-    },
     VirtualFile {
         title: String,
         path: std::path::PathBuf,
@@ -330,7 +327,6 @@ impl TreeNode {
     fn file_count(&self) -> usize {
         match self {
             Self::File(_) | Self::VirtualFile { .. } => 1,
-            Self::VirtualFolder { .. } => 0,
             Self::Folder { children, .. } => children.values().map(|c| c.file_count()).sum(),
         }
     }
@@ -338,7 +334,7 @@ impl TreeNode {
     fn contains_document_id(&self, id: &str) -> bool {
         match self {
             Self::File(meta) => meta.id.0.to_string() == id,
-            Self::VirtualFile { .. } | Self::VirtualFolder { .. } => false,
+            Self::VirtualFile { .. } => false,
             Self::Folder { children, .. } => children
                 .values()
                 .any(|child| child.contains_document_id(id)),
@@ -349,8 +345,6 @@ impl TreeNode {
 /// Build a fully nested tree from flat document list using all path components.
 fn build_tree(docs: &[DocumentMeta]) -> Element {
     let mut root: BTreeMap<String, TreeNode> = BTreeMap::new();
-    add_filesystem_diagram_files(docs, &mut root);
-
     for doc in docs {
         let components: Vec<_> = doc
             .path
@@ -392,37 +386,21 @@ fn build_tree(docs: &[DocumentMeta]) -> Element {
                 .or_insert(TreeNode::File(doc.clone()));
         }
     }
-    add_virtual_diagram_directories(&mut root);
+    add_diagram_files_from_filesystem(&mut root);
 
     rsx! { { render_tree_level(&root, 0, "") } }
 }
 
-fn add_filesystem_diagram_files(docs: &[DocumentMeta], root: &mut BTreeMap<String, TreeNode>) {
-    let Some(project_root) = infer_project_root(docs) else {
-        return;
-    };
-    let diagrams_root = project_root.join("diagrams");
-    let Ok(entries) = std::fs::read_dir(&diagrams_root) else {
-        return;
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            add_diagram_dir_files(&diagrams_root, &path, root);
-        } else if is_diagram_file(&path) {
-            add_diagram_file(&diagrams_root, &path, root);
-        }
-    }
+fn add_diagram_files_from_filesystem(root: &mut BTreeMap<String, TreeNode>) {
+    let ctx = use_context::<AppContext>();
+    let diagrams_root = ctx.project_root().join("diagrams");
+    add_diagram_dir_files(&diagrams_root, &diagrams_root, root);
 }
 
-fn infer_project_root(docs: &[DocumentMeta]) -> Option<std::path::PathBuf> {
-    // DocumentMeta paths are project-relative, so use the current Flynt project
-    // from the process environment when available. The sidebar only needs this
-    // for non-indexed diagram assets (.d2/.svg/.png), not normal notes.
-    std::env::var("FLYNT_PROJECT").ok().map(std::path::PathBuf::from)
-        .or_else(|| std::env::current_dir().ok())
-        .filter(|root| docs.iter().any(|doc| root.join(&doc.path).exists()))
+fn is_diagram_file(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| matches!(ext, "d2" | "svg" | "png"))
 }
 
 fn add_diagram_dir_files(diagrams_root: &std::path::Path, dir: &std::path::Path, root: &mut BTreeMap<String, TreeNode>) {
@@ -437,12 +415,6 @@ fn add_diagram_dir_files(diagrams_root: &std::path::Path, dir: &std::path::Path,
             add_diagram_file(diagrams_root, &path, root);
         }
     }
-}
-
-fn is_diagram_file(path: &std::path::Path) -> bool {
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| matches!(ext, "d2" | "svg" | "png"))
 }
 
 fn add_diagram_file(diagrams_root: &std::path::Path, path: &std::path::Path, root: &mut BTreeMap<String, TreeNode>) {
@@ -475,21 +447,7 @@ fn add_diagram_file(diagrams_root: &std::path::Path, path: &std::path::Path, roo
     }
 }
 
-fn add_virtual_diagram_directories(root: &mut BTreeMap<String, TreeNode>) {
-    let Some(TreeNode::Folder { children, .. }) = root.get_mut("diagrams") else {
-        return;
-    };
-    for name in find_diagram_source_directories(children) {
-        children.remove(&format!("~{name}"));
-        children.entry(name.clone()).or_insert_with(|| TreeNode::VirtualFolder {
-            name: name.clone(),
-        });
-    }
-}
 
-fn find_diagram_source_directories(_children: &BTreeMap<String, TreeNode>) -> Vec<String> {
-    Vec::new()
-}
 
 /// Recursively render a tree level using keyed components for stable hook identity.
 fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix: &str) -> Element {
@@ -510,21 +468,12 @@ fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix
                         }
                     }
                 },
-                TreeNode::VirtualFolder { name } => {
-                    let full_path = if path_prefix.is_empty() {
-                        name.clone()
-                    } else {
-                        format!("{path_prefix}/{name}")
-                    };
-                    rsx! {
-                        div { key: "{full_path}",
-                            { render_folder_keyed(name, &full_path, &BTreeMap::new(), depth) }
-                        }
-                    }
-                },
                 TreeNode::VirtualFile { title, path } => {
+                    let key = path.display().to_string();
                     rsx! {
-                        { render_virtual_diagram_file(title, path, depth) }
+                        div { key: "{key}",
+                            { render_virtual_diagram_file(title, path, depth) }
+                        }
                     }
                 },
                 TreeNode::File(doc) => {
