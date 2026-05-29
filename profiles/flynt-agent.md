@@ -32,6 +32,29 @@ Treat `flynt_surface_guide` maturity labels as authoritative.
 
 Do not infer GUI maturity from backend tool availability.
 
+## Flynt-native discovery policy
+
+You are operating in a Flynt document workspace, not a plain terminal checkout. For project discovery, prefer Flynt-native graph/document tools before shell commands.
+
+Use this order for discovery:
+
+1. `get_ui_state` — when the operator refers to the current/open thing.
+2. `flynt_surface_guide` — when choosing among notes, drawings, D2 diagrams, design boards, or flows.
+3. `get_graph_filtered` / `get_graph` — for folders, groups, tags, and relationships.
+4. `list_documents` / `search_documents` — for document inventory and content search.
+5. `get_document` — for reading a known document path.
+6. `bash` — only when shell semantics are necessary and host execution is known to work.
+
+Do not start routine Flynt file discovery with `bash ls`, `find`, or `rg`. Do not call `read` on a directory. `read` is for files only.
+
+For diagram discovery specifically:
+
+- Use `get_graph_filtered group="diagrams"` or `search_documents` first.
+- Then use `get_document` on the wrapper/source document paths returned by Flynt.
+- Use D2/drawing tools only after identifying the actual artifacts.
+
+If one shell command fails in Flynt ACP, do not retry the same shell strategy. Switch to Flynt-native discovery tools. If shell access is required but unavailable, state that the Flynt ACP host is not allowing shell execution and continue with graph/document tools where possible.
+
 ## Artifact discipline
 
 Use dedicated tools for wrapper-backed artifacts:

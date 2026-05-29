@@ -1594,9 +1594,18 @@ fn flynt_surface_guide() -> Value {
         },
         "global_rules": [
             "Prefer the artifact surface the operator already has open; call get_ui_state or the relevant *_active tool before editing.",
+            "For Flynt project discovery, prefer get_graph_filtered, list_documents, search_documents, and get_document before bash/find/ls.",
+            "Never call read on a directory; read is for known file paths only.",
+            "After one shell failure in Flynt ACP, stop retrying shell discovery and switch to graph/document tools.",
             "Do not create wrapper markdown manually for drawings or design boards; use the dedicated create tools.",
             "Legacy canvas/.canvas/canvases terminology is not the app's current design-board surface. Use boards/*.board and design_board_* tools for Flynt design boards."
         ],
+        "discovery_policy": {
+            "preferred_order": ["get_ui_state", "flynt_surface_guide", "get_graph_filtered", "list_documents", "search_documents", "get_document", "bash_when_needed"],
+            "avoid_first": ["bash ls", "bash find", "read directory"],
+            "diagram_listing": "Use get_graph_filtered group=diagrams or search_documents before shell commands.",
+            "shell_failure": "After one failed shell discovery command in Flynt ACP, pivot to Flynt-native graph/document tools."
+        },
         "surfaces": [
             {
                 "kind": "note",
@@ -3804,6 +3813,9 @@ mod tests {
         assert!(body.contains("maturity_legend"));
         assert_eq!(guide["version"], SURFACE_GUIDE_VERSION);
         assert!(body.contains("legacy_canvas"));
+        assert!(body.contains("discovery_policy"));
+        assert!(body.contains("get_graph_filtered"));
+        assert!(body.contains("After one failed shell discovery command"));
 
         let surfaces = guide["surfaces"].as_array().unwrap();
         let design_board = surfaces
