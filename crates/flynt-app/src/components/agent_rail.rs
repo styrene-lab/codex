@@ -1220,6 +1220,26 @@ fn handle_acp_event(
     _terminal_manager: TerminalManager,
 ) {
     match event {
+        AcpEvent::DeploymentMetadata(ref meta) => {
+            let manifest = ctx.omegon().load_deployment_manifest();
+            let diagnostic = crate::omegon_deployment_diagnostics::classify_deployment(
+                &manifest,
+                Some(meta),
+                &ctx.project_root(),
+                false,
+            );
+            tracing::info!(status = diagnostic.status.label(), "ACP deployment metadata received");
+            if diagnostic.status != crate::omegon_deployment_diagnostics::DeploymentStatus::Ok {
+                items.write().push(ChatItem::Message {
+                    role: ChatRole::Assistant,
+                    content: format!(
+                        "{}\n{}",
+                        diagnostic.summary,
+                        diagnostic.details.join("\n")
+                    ),
+                });
+            }
+        }
         AcpEvent::TextDelta(ref text) => {
             tracing::info!("ACP TextDelta: {} bytes", text.len());
             let mut list = items.write();

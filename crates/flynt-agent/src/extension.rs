@@ -76,6 +76,29 @@ impl Extension for FlyntExtension {
                         "requires_ui_state_for_open_surface_claims": true,
                         "requires_surface_guide_for_artifact_selection": true
                     },
+                    "_meta": {
+                        "flynt": {
+                            "extension_info": {
+                                "name": self.name(),
+                                "version": self.version(),
+                                "sdk_version": EXTENSION_SDK_VERSION,
+                                "sdk_repo": "omegon-extension-sdk",
+                                "runtime_min_version": RUNTIME_MIN_VERSION,
+                                "scope": "project",
+                                "project_root": self.project.root.to_string_lossy(),
+                                "recommended_profile": REQUIRED_PROFILE,
+                                "required_profile": REQUIRED_PROFILE,
+                                "surface_guide_version": SURFACE_GUIDE_VERSION,
+                                "capability_contract_version": CAPABILITY_CONTRACT_VERSION
+                            },
+                            "policy": {
+                                "memory_scope": "project",
+                                "cross_pollination": "forbidden",
+                                "requires_ui_state_for_open_surface_claims": true,
+                                "requires_surface_guide_for_artifact_selection": true
+                            }
+                        }
+                    },
                     "tools": tools
                 }))
             }

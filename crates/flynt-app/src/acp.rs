@@ -50,6 +50,8 @@ pub enum AcpEvent {
         terminal_ids: Vec<String>,
     },
     PermissionRequested(PendingPermissionRequest),
+    /// ACP initialize metadata observed from the agent process.
+    DeploymentMetadata(serde_json::Value),
     /// Available slash commands changed.
     CommandsAvailable(Vec<SlashCommand>),
     /// Config options changed (model, thinking, posture, etc).
@@ -382,6 +384,9 @@ impl Client for FlyntAcpClient {
                 if let Some(t) = title {
                     let _ = tx.send(AcpEvent::SessionTitleChanged(t));
                 }
+                if let Some(meta) = info.meta.as_ref().and_then(|meta| meta.get("flynt")) {
+                    let _ = tx.send(AcpEvent::DeploymentMetadata(meta.clone()));
+                }
             }
             SessionUpdate::AvailableCommandsUpdate(cmds) => {
                 let commands: Vec<SlashCommand> = cmds
@@ -494,6 +499,12 @@ impl AcpSession {
             )
             .await
             .map_err(|e| anyhow::anyhow!("ACP init failed: {e}"))?;
+
+        if let Some(meta) = init_resp.meta.clone() {
+            if let Some(flynt) = meta.get("flynt") {
+                let _ = done_tx.send(AcpEvent::DeploymentMetadata(flynt.clone()));
+            }
+        }
 
         let auth_method_id = init_resp.auth_methods.first().map(|m| m.id().to_string());
 
