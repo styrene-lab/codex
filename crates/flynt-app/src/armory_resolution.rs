@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 pub enum ArmoryArtifactSource {
     ProjectOverride,
     UserArmory,
+    DevCheckout,
     BundledFallback,
     Missing,
 }
@@ -15,6 +16,7 @@ impl ArmoryArtifactSource {
         match self {
             Self::ProjectOverride => "project",
             Self::UserArmory => "user-armory",
+            Self::DevCheckout => "dev-checkout",
             Self::BundledFallback => "bundled",
             Self::Missing => "missing",
         }
@@ -49,13 +51,41 @@ pub fn resolve_deployment_skills(
     omegon_home: &Path,
     bundled_root: Option<&Path>,
 ) -> ArmoryResolutionReport {
+    resolve_deployment_skills_with_dev_root(
+        manifest,
+        project_root,
+        omegon_home,
+        bundled_root,
+        default_dev_armory_root().as_deref(),
+    )
+}
+
+pub fn resolve_deployment_skills_with_dev_root(
+    manifest: &OmegonDeploymentManifest,
+    project_root: &Path,
+    omegon_home: &Path,
+    bundled_root: Option<&Path>,
+    dev_armory_root: Option<&Path>,
+) -> ArmoryResolutionReport {
     let skills = manifest
         .activation
         .skills
         .iter()
-        .map(|skill| resolve_skill(skill, project_root, omegon_home, bundled_root))
+        .map(|skill| resolve_skill(skill, project_root, omegon_home, bundled_root, dev_armory_root))
         .collect();
     ArmoryResolutionReport { skills }
+}
+
+fn default_dev_armory_root() -> Option<PathBuf> {
+    std::env::var("FLYNT_ARMORY_DEV_ROOT")
+        .ok()
+        .map(PathBuf::from)
+        .filter(|path| path.is_dir())
+        .or_else(|| {
+            dirs::home_dir()
+                .map(|home| home.join("workspace/styrene-labs/omegon-armory"))
+                .filter(|path| path.is_dir())
+        })
 }
 
 fn resolve_skill(
@@ -63,6 +93,7 @@ fn resolve_skill(
     project_root: &Path,
     omegon_home: &Path,
     bundled_root: Option<&Path>,
+    dev_armory_root: Option<&Path>,
 ) -> ArmorySkillResolution {
     let candidates = [
         (ArmoryArtifactSource::ProjectOverride, project_root.join(".flynt/omegon/skills").join(name)),
@@ -72,6 +103,17 @@ fn resolve_skill(
     for (source, path) in candidates {
         if is_skill_package(&path) {
             return ArmorySkillResolution { name: name.into(), source, path: Some(path) };
+        }
+    }
+
+    if let Some(root) = dev_armory_root {
+        let path = root.join("skills").join(name);
+        if is_skill_package(&path) {
+            return ArmorySkillResolution {
+                name: name.into(),
+                source: ArmoryArtifactSource::DevCheckout,
+                path: Some(path),
+            };
         }
     }
 
@@ -113,7 +155,7 @@ mod tests {
         create_skill(&project.join(".flynt/omegon/skills"), "d2-authoring");
         create_skill(&home.join("armory/skills"), "d2-authoring");
 
-        let got = resolve_skill("d2-authoring", &project, &home, None);
+        let got = resolve_skill("d2-authoring", &project, &home, None, None);
         assert_eq!(got.source, ArmoryArtifactSource::ProjectOverride);
     }
 
@@ -126,8 +168,22 @@ mod tests {
         create_skill(&home.join("armory/skills"), "d2-authoring");
         create_skill(&bundled.join("skills"), "d2-authoring");
 
-        let got = resolve_skill("d2-authoring", &project, &home, Some(&bundled));
+        let got = resolve_skill("d2-authoring", &project, &home, Some(&bundled), None);
         assert_eq!(got.source, ArmoryArtifactSource::UserArmory);
+    }
+
+    #[test]
+    fn dev_checkout_wins_over_bundled_fallback() {
+        let tmp = TempDir::new().unwrap();
+        let project = tmp.path().join("project");
+        let home = tmp.path().join("home");
+        let dev = tmp.path().join("omegon-armory");
+        let bundled = tmp.path().join("bundled");
+        create_skill(&dev.join("skills"), "d2-authoring");
+        create_skill(&bundled.join("skills"), "d2-authoring");
+
+        let got = resolve_skill("d2-authoring", &project, &home, Some(&bundled), Some(&dev));
+        assert_eq!(got.source, ArmoryArtifactSource::DevCheckout);
     }
 
     #[test]
@@ -136,7 +192,7 @@ mod tests {
         let mut manifest = OmegonDeploymentManifest::default();
         manifest.activation.skills = vec!["d2-authoring".into()];
 
-        let report = resolve_deployment_skills(&manifest, tmp.path(), tmp.path(), None);
+        let report = resolve_deployment_skills_with_dev_root(&manifest, tmp.path(), tmp.path(), None, None);
         assert_eq!(report.missing_required_skills(), vec!["d2-authoring"]);
     }
 }
