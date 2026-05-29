@@ -29,6 +29,12 @@ pub fn SettingsView() -> Element {
         ctx.deployment_metadata().as_ref(),
         &ctx.project_root(),
     );
+    let armory_report = crate::armory_resolution::resolve_deployment_skills(
+        &loaded_deployment.manifest,
+        &ctx.project_root(),
+        &ctx.omegon().home_dir,
+        None,
+    );
     let cli_probe = ctx.omegon_cli_probe();
     let probe_ctx = ctx.clone();
     use_effect(move || {
@@ -922,6 +928,7 @@ pub fn SettingsView() -> Element {
                 if *active_page.read() == SettingsPage::OmegonRuntime {
                     SettingsSection { heading: "Runtime",
                         DeploymentDiagnosticCard { diagnostic: deployment_diagnostic.clone() }
+                        ArmorySkillsDiagnosticCard { report: armory_report.clone() }
                         CliProbeDiagnosticCard { probe: cli_probe.clone() }
                         SettingsRow {
                             label: "Channel",
@@ -1277,6 +1284,43 @@ fn DeploymentDiagnosticCard(diagnostic: DeploymentDiagnostic) -> Element {
                         ul { class: "deployment-diagnostic-details",
                             for detail in diagnostic.details.iter() {
                                 li { "{detail}" }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn ArmorySkillsDiagnosticCard(report: crate::armory_resolution::ArmoryResolutionReport) -> Element {
+    let missing = report.missing_required_skills();
+    let status = if missing.is_empty() { "Ready" } else { "Warning" };
+    let summary = if missing.is_empty() {
+        "All required Flynt skills resolve from project overrides, user Armory, or bundled fallbacks.".to_string()
+    } else {
+        format!("{} required Flynt skill(s) are not installed.", missing.len())
+    };
+    let class = if missing.is_empty() { "deployment-diagnostic ok" } else { "deployment-diagnostic warning" };
+
+    rsx! {
+        div { class: "settings-row",
+            span { class: "settings-label", "Armory skills" }
+            div { class: "settings-control",
+                div { class: "{class}",
+                    div { class: "deployment-diagnostic-head",
+                        span { class: "deployment-diagnostic-status", "{status}" }
+                        span { class: "deployment-diagnostic-summary", "{summary}" }
+                    }
+                    ul { class: "deployment-diagnostic-details",
+                        for skill in report.skills.iter() {
+                            li {
+                                strong { "{skill.name}" }
+                                " — {skill.source.label()}"
+                                if let Some(path) = skill.path.as_ref() {
+                                    " ({path.display()})"
+                                }
                             }
                         }
                     }
