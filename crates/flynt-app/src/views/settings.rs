@@ -35,6 +35,9 @@ pub fn SettingsView() -> Element {
         &ctx.omegon().home_dir,
         None,
     );
+    let mut armory_install_msg = use_signal(|| Option::<String>::None);
+    let mut armory_install_refresh = use_signal(|| 0u64);
+    let _ = armory_install_refresh.read();
     let cli_probe = ctx.omegon_cli_probe();
     let probe_ctx = ctx.clone();
     use_effect(move || {
@@ -928,7 +931,28 @@ pub fn SettingsView() -> Element {
                 if *active_page.read() == SettingsPage::OmegonRuntime {
                     SettingsSection { heading: "Runtime",
                         DeploymentDiagnosticCard { diagnostic: deployment_diagnostic.clone() }
-                        ArmorySkillsDiagnosticCard { report: armory_report.clone() }
+                        ArmorySkillsDiagnosticCard {
+                            report: armory_report.clone(),
+                            message: armory_install_msg.read().clone(),
+                            on_install: move |_| {
+                                let Some(src) = rfd::FileDialog::new()
+                                    .set_title("Select Armory skill package")
+                                    .pick_folder()
+                                else { return; };
+                                let omegon_home = ctx.omegon().home_dir.clone();
+                                match crate::armory_install::install_user_skill_package(&src, &omegon_home) {
+                                    Ok(installed) => {
+                                        armory_install_msg.set(Some(format!(
+                                            "Installed {} to {}",
+                                            installed.id,
+                                            installed.destination.display()
+                                        )));
+                                        armory_install_refresh += 1;
+                                    }
+                                    Err(error) => armory_install_msg.set(Some(format!("Install failed: {error}"))),
+                                }
+                            }
+                        }
                         CliProbeDiagnosticCard { probe: cli_probe.clone() }
                         SettingsRow {
                             label: "Channel",
@@ -1294,7 +1318,11 @@ fn DeploymentDiagnosticCard(diagnostic: DeploymentDiagnostic) -> Element {
 }
 
 #[component]
-fn ArmorySkillsDiagnosticCard(report: crate::armory_resolution::ArmoryResolutionReport) -> Element {
+fn ArmorySkillsDiagnosticCard(
+    report: crate::armory_resolution::ArmoryResolutionReport,
+    message: Option<String>,
+    on_install: EventHandler<()>,
+) -> Element {
     let missing = report.missing_required_skills();
     let status = if missing.is_empty() { "Ready" } else { "Warning" };
     let summary = if missing.is_empty() {
@@ -1322,6 +1350,16 @@ fn ArmorySkillsDiagnosticCard(report: crate::armory_resolution::ArmoryResolution
                                     " ({path.display()})"
                                 }
                             }
+                        }
+                    }
+                    if let Some(message) = message.as_ref() {
+                        div { class: "deployment-diagnostic-summary", "{message}" }
+                    }
+                    div { class: "deployment-diagnostic-actions",
+                        button {
+                            class: "btn btn-ghost btn-xs",
+                            onclick: move |_| on_install.call(()),
+                            "Install skill package…"
                         }
                     }
                 }

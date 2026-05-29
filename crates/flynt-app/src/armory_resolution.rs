@@ -131,7 +131,7 @@ fn resolve_skill(
     ArmorySkillResolution { name: name.into(), source: ArmoryArtifactSource::Missing, path: None }
 }
 
-fn is_skill_package(path: &Path) -> bool {
+pub fn is_skill_package(path: &Path) -> bool {
     path.join("plugin.toml").is_file() && path.join("SKILL.md").is_file()
 }
 

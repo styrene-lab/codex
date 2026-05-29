@@ -1,5 +1,6 @@
 pub mod acp;
 pub mod app;
+pub mod armory_install;
 pub mod armory_resolution;
 pub mod bootstrap;
 pub mod components;
