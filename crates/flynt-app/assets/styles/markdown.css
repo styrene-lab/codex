@@ -1550,3 +1550,29 @@
   box-shadow:    0 0 0 2px var(--primary);
   cursor:        zoom-in;
 }
+
+.diagram-preview-pane {
+  min-height: 100%;
+  padding: var(--space-4);
+  overflow: auto;
+  background: var(--background);
+}
+
+.d2-embed {
+  min-height: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.d2-embed svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.d2-embed-placeholder {
+  color: var(--muted-foreground);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+}

@@ -18,6 +18,7 @@ use std::time::Duration;
 enum EditMode {
     Live,
     Source,
+    Diagram,
 }
 
 #[derive(Clone, PartialEq)]
@@ -380,6 +381,10 @@ mod tests {
         assert_eq!(diff[2].old_line, Some(2));
         assert_eq!(diff[2].new_line, None);
     }
+}
+
+fn is_d2_path(path: &std::path::Path) -> bool {
+    path.extension().is_some_and(|ext| ext == "d2")
 }
 
 fn render_html(content: &str) -> String {
@@ -2680,6 +2685,16 @@ pub fn NotesView() -> Element {
     // edits never appeared in Live mode.
     let mut cm6_load_source: Signal<Option<(flynt_core::models::DocumentId, String)>> =
         use_signal(|| None);
+
+    {
+        let active_path = rendered
+            .read()
+            .as_ref()
+            .and_then(|r| r.as_ref().map(|t| t.0.clone()));
+        if active_path.as_ref().is_some_and(|path| is_d2_path(path)) && *mode.read() == EditMode::Live {
+            mode.set(EditMode::Diagram);
+        }
+    }
     use_effect(move || {
         let current_id = tab_state.read().active_id().cloned();
         let Some(active_id) = current_id else { return };
@@ -3293,6 +3308,10 @@ pub fn NotesView() -> Element {
                                     "Live"
                                 }
                             },
+                            EditMode::Diagram => rsx! {
+                                span { class: "mode-hint", "D2 preview" }
+                                button { class: "btn btn-ghost", onclick: move |_| *mode.write() = EditMode::Source, "Source" }
+                            },
                         }
                     }
                 }
@@ -3329,6 +3348,21 @@ pub fn NotesView() -> Element {
                 }
 
                 match *mode.read() {
+                    EditMode::Diagram if is_d2_path(&check_path) => {
+                        let svg_path = check_path.with_extension("svg");
+                        let abs = ctx.project_root().join(&svg_path);
+                        let svg = std::fs::read_to_string(&abs).ok();
+                        rsx! {
+                            div { class: "diagram-preview-pane",
+                                if let Some(svg) = svg {
+                                    div { class: "d2-embed", dangerous_inner_html: "{svg}" }
+                                } else {
+                                    div { class: "d2-embed-placeholder", "D2 render pending or unavailable for {check_path.display()}" }
+                                }
+                            }
+                        }
+                    },
+                    EditMode::Diagram => rsx! {},
                     EditMode::Live if !is_special => {
                         rsx! {
                             div {
