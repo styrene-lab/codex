@@ -514,20 +514,30 @@ fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix
 }
 
 fn count_source_files(path: &std::path::Path) -> usize {
-    std::fs::read_dir(path)
+    d2_source_files(path).len()
+}
+
+fn d2_source_files(path: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut files: Vec<_> = std::fs::read_dir(path)
         .ok()
         .into_iter()
         .flatten()
         .flatten()
-        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "d2"))
-        .count()
+        .filter_map(|entry| {
+            let path = entry.path();
+            path.extension().is_some_and(|ext| ext == "d2").then_some(path)
+        })
+        .collect();
+    files.sort();
+    files
 }
 
 fn render_virtual_folder_keyed(name: &str, path: &std::path::Path, depth: u32) -> Element {
     let name = name.to_string();
     let path = path.to_path_buf();
-    let count = count_source_files(&path);
-    let mut open = use_signal(|| false);
+    let files = d2_source_files(&path);
+    let count = files.len();
+    let mut open = use_signal(|| true);
     let indent = depth as f32 * 12.0;
 
     rsx! {
@@ -541,7 +551,49 @@ fn render_virtual_folder_keyed(name: &str, path: &std::path::Path, depth: u32) -
             span { class: "tree-count", "{count}" }
         }
         if *open.read() {
-            div { class: "tree-empty", style: "padding-left: {indent + 28.0}px;", "D2 source files are not indexed as notes yet." }
+            for file in files.iter() {
+                VirtualD2File { key: "{file.display()}", path: file.clone(), depth: depth + 1 }
+            }
+        }
+    }
+}
+
+#[component]
+fn VirtualD2File(path: std::path::PathBuf, depth: u32) -> Element {
+    let ctx = use_context::<AppContext>();
+    let mut tab_state = use_context::<Signal<TabState>>();
+    let mut active_route = use_context::<Signal<Route>>();
+    let rel_path = path
+        .strip_prefix(ctx.project_root())
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|_| path.clone());
+    let title = rel_path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .map_or_else(|| rel_path.to_string_lossy().to_string(), ToString::to_string);
+    let indent = depth as f32 * 12.0;
+
+    rsx! {
+        button {
+            class: "tree-item tree-file",
+            style: "padding-left: {indent + 20.0}px;",
+            onclick: move |_| {
+                let project = ctx.project();
+                let rel = rel_path.clone();
+                let title = title.clone();
+                spawn(async move {
+                    let abs = project.root.join(&rel);
+                    let _ = project.index_file(&abs);
+                    if let Ok(Some(doc)) = project.store.find_document_by_slug(
+                        rel.file_stem().and_then(|stem| stem.to_str()).unwrap_or_default()
+                    ) {
+                        tab_state.write().open(doc.id, title);
+                        *active_route.write() = Route::Notes;
+                    }
+                });
+            },
+            span { class: "tree-file-icon", "\u{25C7}" }
+            span { class: "tree-name", "{title}" }
         }
     }
 }
