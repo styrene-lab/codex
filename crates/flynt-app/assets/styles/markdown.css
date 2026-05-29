@@ -1556,18 +1556,15 @@
   padding: var(--space-4);
   overflow: auto;
   background: var(--background);
-}
-
-.diagram-preview-pane.pan-enabled {
   cursor: grab;
   user-select: none;
 }
 
-.diagram-preview-pane.pan-enabled.panning {
+.diagram-preview-pane.panning {
   cursor: grabbing;
 }
 
-.diagram-preview-pane.pan-enabled .d2-embed {
+.diagram-preview-pane .d2-embed {
   pointer-events: none;
 }
 

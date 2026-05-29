@@ -2364,7 +2364,6 @@ pub fn NotesView() -> Element {
 
     let mut mode = use_signal(|| EditMode::Live);
     let mut diagram_zoom = use_signal(|| 1.0_f32);
-    let mut diagram_pan_enabled = use_signal(|| false);
     let mut edit_body = use_signal(String::new);
     let mut save_err = use_signal(|| Option::<String>::None);
     let mut save_state = use_signal(|| SaveState::Clean);
@@ -3358,15 +3357,6 @@ pub fn NotesView() -> Element {
                                 span { class: "mode-hint", "{((*diagram_zoom.read() * 100.0).round() as i32)}%" }
                                 button { class: "btn btn-ghost", onclick: move |_| { let next = { *diagram_zoom.read() * 1.25 }; diagram_zoom.set(next.min(8.0)); }, "+" }
                                 button { class: "btn btn-ghost", onclick: move |_| diagram_zoom.set(1.0), "Reset" }
-                                button {
-                                    class: if *diagram_pan_enabled.read() { "btn btn-primary" } else { "btn btn-ghost" },
-                                    title: "Toggle click-drag pan",
-                                    onclick: move |_| {
-                                        let enabled = *diagram_pan_enabled.read();
-                                        diagram_pan_enabled.set(!enabled);
-                                    },
-                                    if *diagram_pan_enabled.read() { "✊ Pan" } else { "✋ Pan" }
-                                }
                                 button { class: "btn btn-ghost", onclick: move |_| *mode.write() = EditMode::Source, "Source" }
                             },
                         }
@@ -3410,43 +3400,37 @@ pub fn NotesView() -> Element {
                         let abs = d2_path.with_extension("svg");
                         let svg = std::fs::read_to_string(&abs).ok();
                         let zoom = *diagram_zoom.read();
-                        let pan_enabled = *diagram_pan_enabled.read();
                         let zoom_style = format!("width: {}%;", zoom * 100.0);
-                        let pane_class = if pan_enabled { "diagram-preview-pane pan-enabled" } else { "diagram-preview-pane" };
-                        let pan_js = if pan_enabled {
-                            r#"(function(){
-                                const panes = document.querySelectorAll('.diagram-preview-pane.pan-enabled');
-                                panes.forEach((pane) => {
-                                    if (pane._flyntPanBound) return;
-                                    pane._flyntPanBound = true;
-                                    pane.addEventListener('mousedown', (event) => {
-                                        if (event.button !== 0) return;
-                                        event.preventDefault();
-                                        pane.classList.add('panning');
-                                        const startX = event.clientX;
-                                        const startY = event.clientY;
-                                        const startLeft = pane.scrollLeft;
-                                        const startTop = pane.scrollTop;
-                                        const move = (moveEvent) => {
-                                            pane.scrollLeft = startLeft - (moveEvent.clientX - startX);
-                                            pane.scrollTop = startTop - (moveEvent.clientY - startY);
-                                        };
-                                        const up = () => {
-                                            pane.classList.remove('panning');
-                                            window.removeEventListener('mousemove', move);
-                                            window.removeEventListener('mouseup', up);
-                                        };
-                                        window.addEventListener('mousemove', move);
-                                        window.addEventListener('mouseup', up);
-                                    });
+                        let pan_js = r#"(function(){
+                            const panes = document.querySelectorAll('.diagram-preview-pane');
+                            panes.forEach((pane) => {
+                                if (pane._flyntPanBound) return;
+                                pane._flyntPanBound = true;
+                                pane.addEventListener('mousedown', (event) => {
+                                    if (event.button !== 0) return;
+                                    event.preventDefault();
+                                    pane.classList.add('panning');
+                                    const startX = event.clientX;
+                                    const startY = event.clientY;
+                                    const startLeft = pane.scrollLeft;
+                                    const startTop = pane.scrollTop;
+                                    const move = (moveEvent) => {
+                                        pane.scrollLeft = startLeft - (moveEvent.clientX - startX);
+                                        pane.scrollTop = startTop - (moveEvent.clientY - startY);
+                                    };
+                                    const up = () => {
+                                        pane.classList.remove('panning');
+                                        window.removeEventListener('mousemove', move);
+                                        window.removeEventListener('mouseup', up);
+                                    };
+                                    window.addEventListener('mousemove', move);
+                                    window.addEventListener('mouseup', up);
                                 });
-                            })();"#
-                        } else {
-                            r#"document.querySelectorAll('.diagram-preview-pane.panning').forEach((pane) => pane.classList.remove('panning'));"#
-                        };
+                            });
+                        })();"#;
                         rsx! {
                             { document::eval(pan_js); }
-                            div { class: "{pane_class}",
+                            div { class: "diagram-preview-pane",
                                 if let Some(svg) = svg {
                                     div { class: "d2-embed", style: "{zoom_style}", dangerous_inner_html: "{svg}" }
                                 } else {
