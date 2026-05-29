@@ -387,6 +387,47 @@ fn is_d2_path(path: &std::path::Path) -> bool {
     path.extension().is_some_and(|ext| ext == "d2")
 }
 
+fn content_without_frontmatter(content: &str) -> &str {
+    let Some(rest) = content.strip_prefix("+++") else {
+        return content;
+    };
+    let Some(end) = rest.find("\n+++") else {
+        return content;
+    };
+    &rest[end + 5..]
+}
+
+fn d2_embed_path(content: &str) -> Option<String> {
+    let trimmed = content_without_frontmatter(content).trim();
+    if !trimmed.starts_with("![[") || !trimmed.ends_with("]]" ) {
+        return None;
+    }
+    let inner = &trimmed[3..trimmed.len() - 2];
+    let file_ref = inner.split('|').next().unwrap_or(inner).trim();
+    file_ref.ends_with(".d2").then(|| file_ref.to_string())
+}
+
+fn resolve_d2_path(root: &std::path::Path, wrapper_path: &std::path::Path, content: &str) -> std::path::PathBuf {
+    if is_d2_path(wrapper_path) {
+        return root.join(wrapper_path);
+    }
+    if let Some(embed) = d2_embed_path(content) {
+        let wrapper_dir = wrapper_path.parent().unwrap_or_else(|| std::path::Path::new(""));
+        let candidates = [
+            root.join(wrapper_dir).join(&embed),
+            root.join(&embed),
+            root.join("diagrams").join(&embed),
+            root.join("drawings").join(&embed),
+        ];
+        return candidates
+            .iter()
+            .find(|p| p.exists())
+            .cloned()
+            .unwrap_or_else(|| root.join(wrapper_dir).join(embed));
+    }
+    root.join(wrapper_path)
+}
+
 fn render_html(content: &str) -> String {
     render_html_with_store(content, None, None)
 }
@@ -498,6 +539,7 @@ fn render_html_with_store(
                     root.join(file_ref),
                     root.join("diagrams").join(file_ref),
                     root.join("drawings").join(file_ref),
+                    root.join("boards").join(file_ref),
                 ];
                 let d2_path = candidates
                     .iter()
@@ -2691,7 +2733,7 @@ pub fn NotesView() -> Element {
             .read()
             .as_ref()
             .and_then(|r| r.as_ref().map(|t| t.0.clone()));
-        if active_path.as_ref().is_some_and(|path| is_d2_path(path)) && *mode.read() == EditMode::Live {
+        if active_path.as_ref().is_some_and(|path| is_d2_path(path) || d2_embed_path(&edit_body.read()).is_some()) && *mode.read() == EditMode::Live {
             mode.set(EditMode::Diagram);
         }
     }
@@ -3348,16 +3390,16 @@ pub fn NotesView() -> Element {
                 }
 
                 match *mode.read() {
-                    EditMode::Diagram if is_d2_path(&check_path) => {
-                        let svg_path = check_path.with_extension("svg");
-                        let abs = ctx.project_root().join(&svg_path);
+                    EditMode::Diagram if is_d2_path(&check_path) || d2_embed_path(&edit_body.read()).is_some() => {
+                        let d2_path = resolve_d2_path(&ctx.project_root(), &check_path, &edit_body.read());
+                        let abs = d2_path.with_extension("svg");
                         let svg = std::fs::read_to_string(&abs).ok();
                         rsx! {
                             div { class: "diagram-preview-pane",
                                 if let Some(svg) = svg {
                                     div { class: "d2-embed", dangerous_inner_html: "{svg}" }
                                 } else {
-                                    div { class: "d2-embed-placeholder", "D2 render pending or unavailable for {check_path.display()}" }
+                                    div { class: "d2-embed-placeholder", "D2 render pending or unavailable for {d2_path.display()}" }
                                 }
                             }
                         }
