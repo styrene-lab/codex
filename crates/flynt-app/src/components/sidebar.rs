@@ -502,12 +502,12 @@ fn render_virtual_diagram_file(title: &str, path: &std::path::Path, depth: u32) 
             onclick: move |_| {
                 let project = ctx.project();
                 let abs = project.root.join(&path);
-                if let Ok(()) = project.index_file(&abs) {
-                    let _ = project.reindex();
-                }
-                if let Ok(Some(doc)) = project.store.get_document_by_path(&path) {
-                    tab_state.write().open(doc.id.clone(), doc.title.clone());
-                    *active_route.write() = Route::Notes;
+                let indexed = project.index_file(&abs).is_ok() || project.reindex().is_ok();
+                if indexed {
+                    if let Ok(Some(doc)) = project.store.get_document_by_path(&path) {
+                        tab_state.write().open(doc.id.clone(), doc.title.clone());
+                        *active_route.write() = Route::Notes;
+                    }
                 }
             },
             span { class: "tree-file-icon", "\u{25C7}" }
