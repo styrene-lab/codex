@@ -53,6 +53,7 @@ pub fn Sidebar(mut active_route: Signal<Route>) -> Element {
                 && !path.starts_with("references/comms/")
         });
         list.sort_by(|a, b| a.path.cmp(&b.path));
+        include_orphan_diagram_directories(&project.root, &mut list);
         *docs.write() = Some(list);
     });
 
@@ -159,6 +160,52 @@ pub fn Sidebar(mut active_route: Signal<Route>) -> Element {
             }
         }
     }
+}
+
+fn include_orphan_diagram_directories(root: &std::path::Path, docs: &mut Vec<DocumentMeta>) {
+    let diagrams = root.join("diagrams");
+    let Ok(entries) = std::fs::read_dir(&diagrams) else {
+        return;
+    };
+    let existing: std::collections::HashSet<std::path::PathBuf> = docs
+        .iter()
+        .filter_map(|doc| doc.path.parent().map(|parent| parent.to_path_buf()))
+        .collect();
+
+    for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if !file_type.is_dir() {
+            continue;
+        }
+        let Some(name) = entry.file_name().to_str().map(ToString::to_string) else {
+            continue;
+        };
+        let rel = std::path::PathBuf::from("diagrams").join(&name);
+        if existing.contains(&rel) || !diagram_directory_has_source_files(&entry.path()) {
+            continue;
+        }
+        docs.push(DocumentMeta {
+            id: flynt_core::models::DocumentId::new(),
+            path: rel,
+            title: name,
+            tags: Vec::new(),
+            updated_at: chrono::Utc::now(),
+            metadata: Default::default(),
+            entity_kind: None,
+        });
+    }
+    docs.sort_by(|a, b| a.path.cmp(&b.path));
+}
+
+fn diagram_directory_has_source_files(path: &std::path::Path) -> bool {
+    std::fs::read_dir(path)
+        .ok()
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|entry| entry.path().extension().is_some_and(|ext| ext == "d2"))
 }
 
 #[component]
