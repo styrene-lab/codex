@@ -53,7 +53,6 @@ pub fn Sidebar(mut active_route: Signal<Route>) -> Element {
                 && !path.starts_with("references/comms/")
         });
         list.sort_by(|a, b| a.path.cmp(&b.path));
-        include_orphan_diagram_directories(&project.root, &mut list);
         *docs.write() = Some(list);
     });
 
@@ -160,52 +159,6 @@ pub fn Sidebar(mut active_route: Signal<Route>) -> Element {
             }
         }
     }
-}
-
-fn include_orphan_diagram_directories(root: &std::path::Path, docs: &mut Vec<DocumentMeta>) {
-    let diagrams = root.join("diagrams");
-    let Ok(entries) = std::fs::read_dir(&diagrams) else {
-        return;
-    };
-    let existing: std::collections::HashSet<std::path::PathBuf> = docs
-        .iter()
-        .filter_map(|doc| doc.path.parent().map(|parent| parent.to_path_buf()))
-        .collect();
-
-    for entry in entries.flatten() {
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-        if !file_type.is_dir() {
-            continue;
-        }
-        let Some(name) = entry.file_name().to_str().map(ToString::to_string) else {
-            continue;
-        };
-        let rel = std::path::PathBuf::from("diagrams").join(&name);
-        if existing.contains(&rel) || !diagram_directory_has_source_files(&entry.path()) {
-            continue;
-        }
-        docs.push(DocumentMeta {
-            id: flynt_core::models::DocumentId::new(),
-            path: rel,
-            title: name,
-            tags: Vec::new(),
-            updated_at: chrono::Utc::now(),
-            metadata: Default::default(),
-            entity_kind: None,
-        });
-    }
-    docs.sort_by(|a, b| a.path.cmp(&b.path));
-}
-
-fn diagram_directory_has_source_files(path: &std::path::Path) -> bool {
-    std::fs::read_dir(path)
-        .ok()
-        .into_iter()
-        .flatten()
-        .flatten()
-        .any(|entry| entry.path().extension().is_some_and(|ext| ext == "d2"))
 }
 
 #[component]
@@ -365,7 +318,6 @@ enum TreeNode {
     },
     VirtualFolder {
         name: String,
-        path: std::path::PathBuf,
     },
     File(DocumentMeta),
 }
@@ -374,7 +326,7 @@ impl TreeNode {
     fn file_count(&self) -> usize {
         match self {
             Self::File(_) => 1,
-            Self::VirtualFolder { path, .. } => count_source_files(path),
+            Self::VirtualFolder { .. } => 0,
             Self::Folder { children, .. } => children.values().map(|c| c.file_count()).sum(),
         }
     }
@@ -435,40 +387,34 @@ fn build_tree(docs: &[DocumentMeta]) -> Element {
                 .or_insert(TreeNode::File(doc.clone()));
         }
     }
-    add_virtual_diagram_directories(docs, &mut root);
+    add_virtual_diagram_directories(&mut root);
 
     rsx! { { render_tree_level(&root, 0, "") } }
 }
 
-fn add_virtual_diagram_directories(docs: &[DocumentMeta], root: &mut BTreeMap<String, TreeNode>) {
-    let existing_dirs: std::collections::HashSet<std::path::PathBuf> = docs
-        .iter()
-        .filter_map(|doc| doc.path.parent().map(|parent| parent.to_path_buf()))
-        .collect();
-    for doc in docs.iter().filter(|doc| doc.path.starts_with("diagrams/")) {
-        let Some(parent) = doc.path.parent() else { continue; };
-        let root_dir = parent.components().next().map(|c| c.as_os_str().to_string_lossy().to_string());
-        if root_dir.as_deref() != Some("diagrams") || parent.components().count() != 2 {
-            continue;
-        }
-        let Some(name) = parent.file_name().and_then(|name| name.to_str()) else { continue; };
-        let diagrams_entry = root.entry("diagrams".into()).or_insert_with(|| TreeNode::Folder {
-            name: "diagrams".into(),
-            children: BTreeMap::new(),
-        });
-        let TreeNode::Folder { children, .. } = diagrams_entry else {
-            continue;
-        };
-        if existing_dirs.contains(parent) || children.contains_key(name) {
-            children.remove(&format!("~{name}"));
-            continue;
-        }
+fn add_virtual_diagram_directories(root: &mut BTreeMap<String, TreeNode>) {
+    let Some(TreeNode::Folder { children, .. }) = root.get_mut("diagrams") else {
+        return;
+    };
+    for name in find_diagram_source_directories(children) {
         children.remove(&format!("~{name}"));
-        children.entry(name.to_string()).or_insert_with(|| TreeNode::VirtualFolder {
-            name: name.to_string(),
-            path: parent.to_path_buf(),
+        children.entry(name.clone()).or_insert_with(|| TreeNode::VirtualFolder {
+            name: name.clone(),
         });
     }
+}
+
+fn find_diagram_source_directories(children: &BTreeMap<String, TreeNode>) -> Vec<String> {
+    let mut names: Vec<_> = children
+        .keys()
+        .filter_map(|key| key.strip_prefix('~'))
+        .filter_map(|filename| filename.strip_suffix(".d2"))
+        .filter_map(|stem| stem.split('/').next().filter(|part| !part.is_empty()))
+        .map(ToString::to_string)
+        .collect();
+    names.sort();
+    names.dedup();
+    names
 }
 
 /// Recursively render a tree level using keyed components for stable hook identity.
@@ -490,7 +436,7 @@ fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix
                         }
                     }
                 },
-                TreeNode::VirtualFolder { name, path } => {
+                TreeNode::VirtualFolder { name } => {
                     let full_path = if path_prefix.is_empty() {
                         name.clone()
                     } else {
@@ -498,7 +444,7 @@ fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix
                     };
                     rsx! {
                         div { key: "{full_path}",
-                            { render_virtual_folder_keyed(name, path, depth) }
+                            { render_folder_keyed(name, &full_path, &BTreeMap::new(), depth) }
                         }
                     }
                 },
@@ -509,91 +455,6 @@ fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix
                     }
                 },
             }
-        }
-    }
-}
-
-fn count_source_files(path: &std::path::Path) -> usize {
-    d2_source_files(path).len()
-}
-
-fn d2_source_files(path: &std::path::Path) -> Vec<std::path::PathBuf> {
-    let mut files: Vec<_> = std::fs::read_dir(path)
-        .ok()
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|entry| {
-            let path = entry.path();
-            path.extension().is_some_and(|ext| ext == "d2").then_some(path)
-        })
-        .collect();
-    files.sort();
-    files
-}
-
-fn render_virtual_folder_keyed(name: &str, path: &std::path::Path, depth: u32) -> Element {
-    let name = name.to_string();
-    let path = path.to_path_buf();
-    let files = d2_source_files(&path);
-    let count = files.len();
-    let mut open = use_signal(|| true);
-    let indent = depth as f32 * 12.0;
-
-    rsx! {
-        button {
-            class: "tree-item tree-folder",
-            style: "padding-left: {indent + 8.0}px;",
-            onclick: move |_| { let v = *open.read(); *open.write() = !v; },
-            span { class: "tree-chevron", if *open.read() { "\u{25BE}" } else { "\u{25B8}" } }
-            span { class: "tree-folder-icon", "\u{25C7}" }
-            span { class: "tree-name", "{name}" }
-            span { class: "tree-count", "{count}" }
-        }
-        if *open.read() {
-            for file in files.iter() {
-                VirtualD2File { key: "{file.display()}", path: file.clone(), depth: depth + 1 }
-            }
-        }
-    }
-}
-
-#[component]
-fn VirtualD2File(path: std::path::PathBuf, depth: u32) -> Element {
-    let ctx = use_context::<AppContext>();
-    let mut tab_state = use_context::<Signal<TabState>>();
-    let mut active_route = use_context::<Signal<Route>>();
-    let rel_path = path
-        .strip_prefix(ctx.project_root())
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|_| path.clone());
-    let title = rel_path
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .map_or_else(|| rel_path.to_string_lossy().to_string(), ToString::to_string);
-    let indent = depth as f32 * 12.0;
-
-    rsx! {
-        button {
-            class: "tree-item tree-file",
-            style: "padding-left: {indent + 20.0}px;",
-            onclick: move |_| {
-                let project = ctx.project();
-                let rel = rel_path.clone();
-                let title = title.clone();
-                spawn(async move {
-                    let abs = project.root.join(&rel);
-                    let _ = project.index_file(&abs);
-                    if let Ok(Some(doc)) = project.store.find_document_by_slug(
-                        rel.file_stem().and_then(|stem| stem.to_str()).unwrap_or_default()
-                    ) {
-                        tab_state.write().open(doc.id, title);
-                        *active_route.write() = Route::Notes;
-                    }
-                });
-            },
-            span { class: "tree-file-icon", "\u{25C7}" }
-            span { class: "tree-name", "{title}" }
         }
     }
 }
