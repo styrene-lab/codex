@@ -511,6 +511,17 @@ pub fn AgentRail() -> Element {
         &ctx.project_root(),
     );
     let cli_probe = ctx.omegon_cli_probe();
+    let probe_ctx = ctx.clone();
+    use_effect(move || {
+        if probe_ctx.omegon_cli_probe().is_none() {
+            let probe_ctx = probe_ctx.clone();
+            spawn(async move {
+                let binary = probe_ctx.omegon().resolve_binary();
+                let result = crate::omegon_cli_probe::probe_omegon_cli(binary).await;
+                probe_ctx.set_omegon_cli_probe(result);
+            });
+        }
+    });
     let preflight_blocked = preflight_is_blocked(&deployment_diagnostic, cli_probe.as_ref());
 
     // ── Eager connect on mount + apply saved config ─────────
