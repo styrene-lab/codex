@@ -452,25 +452,22 @@ fn add_virtual_diagram_directories(docs: &[DocumentMeta], root: &mut BTreeMap<St
             continue;
         }
         let Some(name) = parent.file_name().and_then(|name| name.to_str()) else { continue; };
-        if existing_dirs.contains(parent) {
-            root.entry("diagrams".into()).or_insert_with(|| TreeNode::Folder {
-                name: "diagrams".into(),
-                children: BTreeMap::new(),
-            });
-            continue;
-        }
-        if let TreeNode::Folder { children, .. } = root.entry("diagrams".into()).or_insert_with(|| TreeNode::Folder {
+        let diagrams_entry = root.entry("diagrams".into()).or_insert_with(|| TreeNode::Folder {
             name: "diagrams".into(),
             children: BTreeMap::new(),
-        }) {
-            if children.contains_key(name) || children.contains_key(&format!("~{name}")) {
-                continue;
-            }
-            children.entry(name.to_string()).or_insert_with(|| TreeNode::VirtualFolder {
-                name: name.to_string(),
-                path: parent.to_path_buf(),
-            });
+        });
+        let TreeNode::Folder { children, .. } = diagrams_entry else {
+            continue;
+        };
+        if existing_dirs.contains(parent) || children.contains_key(name) {
+            children.remove(&format!("~{name}"));
+            continue;
         }
+        children.remove(&format!("~{name}"));
+        children.entry(name.to_string()).or_insert_with(|| TreeNode::VirtualFolder {
+            name: name.to_string(),
+            path: parent.to_path_buf(),
+        });
     }
 }
 
