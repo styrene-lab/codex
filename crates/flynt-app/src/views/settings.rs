@@ -1,5 +1,8 @@
 use crate::self_update::UpdateChannel;
-use crate::omegon_deployment_diagnostics::{classify_deployment, DeploymentDiagnostic};
+use crate::omegon_deployment_diagnostics::{
+    classify_loaded_deployment, DeploymentDiagnostic, DeploymentManifestSource,
+    LoadedDeploymentManifest,
+};
 use crate::{
     bootstrap::{AppContext, OmegonRuntimeContext, PendingProjectSetup},
     components::daemon_settings::DaemonSettingsSection,
@@ -20,12 +23,11 @@ use flynt_core::models::{
 #[component]
 pub fn SettingsView() -> Element {
     let ctx = use_context::<AppContext>();
-    let deployment_manifest = ctx.omegon().load_deployment_manifest();
-    let deployment_diagnostic = classify_deployment(
-        &deployment_manifest,
-        None,
+    let loaded_deployment = load_deployment_for_settings(&ctx.omegon());
+    let deployment_diagnostic = classify_loaded_deployment(
+        &loaded_deployment,
+        ctx.deployment_metadata().as_ref(),
         &ctx.project_root(),
-        false,
     );
 
     // Appearance — reactive, applied immediately via context signals.
@@ -1226,6 +1228,22 @@ fn ThemeCard(entry: UiTheme, active: bool, on_select: EventHandler<String>) -> E
                 span { class: "theme-active-badge", "✓" }
             }
         }
+    }
+}
+
+fn load_deployment_for_settings(omegon: &OmegonRuntimeContext) -> LoadedDeploymentManifest {
+    match std::fs::read_to_string(&omegon.deployment_path) {
+        Ok(content) => match flynt_core::omegon_deployment::OmegonDeploymentManifest::from_toml(&content) {
+            Ok(manifest) => LoadedDeploymentManifest::loaded(manifest),
+            Err(error) => LoadedDeploymentManifest {
+                manifest: flynt_core::omegon_deployment::OmegonDeploymentManifest::default(),
+                source: DeploymentManifestSource::Invalid { error: error.to_string() },
+            },
+        },
+        Err(_) => LoadedDeploymentManifest {
+            manifest: flynt_core::omegon_deployment::OmegonDeploymentManifest::default(),
+            source: DeploymentManifestSource::MissingDefault,
+        },
     }
 }
 

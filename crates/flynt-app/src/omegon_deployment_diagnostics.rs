@@ -34,24 +34,83 @@ impl DeploymentStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeploymentManifestSource {
+    Loaded,
+    Generated,
+    MissingDefault,
+    Invalid { error: String },
+}
+
+impl DeploymentManifestSource {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Loaded => "loaded",
+            Self::Generated => "generated",
+            Self::MissingDefault => "default",
+            Self::Invalid { .. } => "invalid",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoadedDeploymentManifest {
+    pub manifest: OmegonDeploymentManifest,
+    pub source: DeploymentManifestSource,
+}
+
+impl LoadedDeploymentManifest {
+    pub fn loaded(manifest: OmegonDeploymentManifest) -> Self {
+        Self { manifest, source: DeploymentManifestSource::Loaded }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeploymentDiagnostic {
     pub status: DeploymentStatus,
     pub summary: String,
     pub details: Vec<String>,
 }
 
+pub fn classify_loaded_deployment(
+    loaded: &LoadedDeploymentManifest,
+    extension_initialize: Option<&Value>,
+    project_root: &Path,
+) -> DeploymentDiagnostic {
+    classify_deployment(
+        &loaded.manifest,
+        extension_initialize,
+        project_root,
+        &loaded.source,
+    )
+}
+
 pub fn classify_deployment(
     manifest: &OmegonDeploymentManifest,
     extension_initialize: Option<&Value>,
     project_root: &Path,
-    manifest_generated: bool,
+    source: &DeploymentManifestSource,
 ) -> DeploymentDiagnostic {
-    let mut status = if manifest_generated {
-        DeploymentStatus::Warning
-    } else {
-        DeploymentStatus::Ok
+    let mut status = match source {
+        DeploymentManifestSource::Loaded => DeploymentStatus::Ok,
+        DeploymentManifestSource::Generated | DeploymentManifestSource::MissingDefault => {
+            DeploymentStatus::Warning
+        }
+        DeploymentManifestSource::Invalid { .. } => DeploymentStatus::Blocked,
     };
     let mut details = Vec::new();
+
+    match source {
+        DeploymentManifestSource::Loaded => {}
+        DeploymentManifestSource::Generated => {
+            details.push("deployment manifest was synthesized from Flynt defaults".into());
+        }
+        DeploymentManifestSource::MissingDefault => {
+            details.push("deployment manifest is missing; using in-memory Flynt defaults".into());
+        }
+        DeploymentManifestSource::Invalid { error } => {
+            details.push(format!("deployment manifest is invalid: {error}"));
+        }
+    }
 
     if manifest.deployment.profile != FLYNT_DEPLOYMENT_PROFILE {
         status = DeploymentStatus::Blocked;
@@ -98,7 +157,7 @@ pub fn classify_deployment(
                 status = DeploymentStatus::Blocked;
                 details.push("flynt extension did not report the required flynt-agent profile".into());
             }
-            if info["project_root"].as_str() != Some(&project_root.to_string_lossy()) {
+            if info["project_root"].as_str() != Some(project_root.to_string_lossy().as_ref()) {
                 status = DeploymentStatus::Blocked;
                 details.push("flynt extension project root does not match the open Flynt project".into());
             }
@@ -118,11 +177,8 @@ pub fn classify_deployment(
                 status = DeploymentStatus::Unknown;
             }
             details.push("flynt extension initialize metadata has not been observed yet".into());
+            details.push("actual active profile and memory scope have not been verified".into());
         }
-    }
-
-    if manifest_generated {
-        details.push("deployment manifest was synthesized from Flynt defaults".into());
     }
 
     let summary = match status {
@@ -160,7 +216,7 @@ mod tests {
     fn matching_manifest_and_extension_is_ok() {
         let tmp = TempDir::new().unwrap();
         let manifest = OmegonDeploymentManifest::default();
-        let diagnostic = classify_deployment(&manifest, Some(&init(tmp.path())), tmp.path(), false);
+        let diagnostic = classify_deployment(&manifest, Some(&init(tmp.path())), tmp.path(), &DeploymentManifestSource::Loaded);
         assert_eq!(diagnostic.status, DeploymentStatus::Ok);
     }
 
@@ -168,7 +224,7 @@ mod tests {
     fn missing_extension_metadata_is_unknown() {
         let tmp = TempDir::new().unwrap();
         let manifest = OmegonDeploymentManifest::default();
-        let diagnostic = classify_deployment(&manifest, None, tmp.path(), false);
+        let diagnostic = classify_deployment(&manifest, None, tmp.path(), &DeploymentManifestSource::Loaded);
         assert_eq!(diagnostic.status, DeploymentStatus::Unknown);
     }
 
@@ -177,7 +233,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let mut manifest = OmegonDeploymentManifest::default();
         manifest.deployment.profile = "default".into();
-        let diagnostic = classify_deployment(&manifest, Some(&init(tmp.path())), tmp.path(), false);
+        let diagnostic = classify_deployment(&manifest, Some(&init(tmp.path())), tmp.path(), &DeploymentManifestSource::Loaded);
         assert_eq!(diagnostic.status, DeploymentStatus::Blocked);
     }
 
@@ -186,7 +242,22 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let other = TempDir::new().unwrap();
         let manifest = OmegonDeploymentManifest::default();
-        let diagnostic = classify_deployment(&manifest, Some(&init(other.path())), tmp.path(), false);
+        let diagnostic = classify_deployment(&manifest, Some(&init(other.path())), tmp.path(), &DeploymentManifestSource::Loaded);
         assert_eq!(diagnostic.status, DeploymentStatus::Blocked);
     }
+
+    #[test]
+    fn invalid_manifest_source_blocks() {
+        let tmp = TempDir::new().unwrap();
+        let manifest = OmegonDeploymentManifest::default();
+        let diagnostic = classify_deployment(
+            &manifest,
+            Some(&init(tmp.path())),
+            tmp.path(),
+            &DeploymentManifestSource::Invalid { error: "bad toml".into() },
+        );
+        assert_eq!(diagnostic.status, DeploymentStatus::Blocked);
+        assert!(diagnostic.details.iter().any(|detail| detail.contains("bad toml")));
+    }
+
 }

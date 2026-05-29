@@ -1,5 +1,5 @@
 use crate::self_update::UpdateChannel;
-use dioxus::prelude::{ReadableExt, Signal};
+use dioxus::prelude::{ReadableExt, Signal, WritableExt};
 use flynt_core::{
     models::{
         FlyntOperatorSettings, LocalRuntimeConfig, OmegonProfile, ProjectConfig, PublicationTarget,
@@ -897,6 +897,8 @@ pub struct RuntimeState {
     pub sync_status_rx: Option<tokio::sync::watch::Receiver<flynt_store::sync::AutoSyncStatus>>,
     /// Agent daemon lifecycle manager.
     pub daemon: Arc<crate::daemon_manager::DaemonManager>,
+    /// Last Flynt deployment metadata observed from the ACP handshake/session.
+    pub deployment_metadata: Option<serde_json::Value>,
     /// Push pipeline — drives auto-push for tasks linked to forge issues.
     /// Held as `Option` so a fallback project (no `.flynt` writable, etc.)
     /// can still produce a RuntimeState; the pill in the UI degrades to
@@ -928,6 +930,17 @@ impl AppContext {
 
     pub fn daemon(&self) -> Arc<crate::daemon_manager::DaemonManager> {
         self.runtime.read().daemon.clone()
+    }
+
+    pub fn deployment_metadata(&self) -> Option<serde_json::Value> {
+        self.runtime.read().deployment_metadata.clone()
+    }
+
+    pub fn set_deployment_metadata(&self, metadata: serde_json::Value) {
+        let mut runtime = self.runtime;
+        if let Ok(mut runtime) = runtime.try_write() {
+            runtime.deployment_metadata = Some(metadata);
+        }
     }
 
     pub fn push_pipeline(&self) -> Option<Arc<crate::push_pipeline::PushPipeline>> {
@@ -1195,6 +1208,7 @@ pub(crate) fn runtime_state_for_project_root(project_root: PathBuf) -> RuntimeSt
         _sync_handle: sync_handle,
         sync_status_rx,
         daemon,
+        deployment_metadata: None,
         push_pipeline,
     }
 }

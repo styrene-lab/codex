@@ -1221,12 +1221,13 @@ fn handle_acp_event(
 ) {
     match event {
         AcpEvent::DeploymentMetadata(ref meta) => {
+            ctx.set_deployment_metadata(meta.clone());
             let manifest = ctx.omegon().load_deployment_manifest();
             let diagnostic = crate::omegon_deployment_diagnostics::classify_deployment(
                 &manifest,
                 Some(meta),
                 &ctx.project_root(),
-                false,
+                &crate::omegon_deployment_diagnostics::DeploymentManifestSource::Loaded,
             );
             tracing::info!(status = diagnostic.status.label(), "ACP deployment metadata received");
             if diagnostic.status != crate::omegon_deployment_diagnostics::DeploymentStatus::Ok {
