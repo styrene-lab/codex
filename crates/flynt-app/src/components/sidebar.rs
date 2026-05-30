@@ -474,11 +474,8 @@ fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix
                     }
                 },
                 TreeNode::VirtualFile { title, path } => {
-                    let key = path.display().to_string();
                     rsx! {
-                        div { key: "{key}",
-                            { render_virtual_diagram_file(title, path, depth) }
-                        }
+                        VirtualDiagramFile { key: "{path.display()}", title: title.clone(), path: path.clone(), depth }
                     }
                 },
                 TreeNode::File(doc) => {
@@ -490,6 +487,11 @@ fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix
             }
         }
     }
+}
+
+#[component]
+fn VirtualDiagramFile(title: String, path: std::path::PathBuf, depth: u32) -> Element {
+    render_virtual_diagram_file(&title, &path, depth)
 }
 
 fn render_virtual_diagram_file(title: &str, path: &std::path::Path, depth: u32) -> Element {
