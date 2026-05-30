@@ -586,16 +586,22 @@ fn open_visual_artifact_document(
         return Some((doc.id, doc.title));
     }
 
-    let abs = project.root.join(open_path);
+    let durable_open_path =
+        ensure_visual_artifact_wrapper(&project, open_path, source_path, kind, title)
+            .unwrap_or_else(|| open_path.to_path_buf());
+    if let Ok(Some(doc)) = project.store.get_document_by_path(&durable_open_path) {
+        return Some((doc.id, doc.title));
+    }
+
+    let abs = project.root.join(&durable_open_path);
     let content = std::fs::read_to_string(&abs)
         .ok()
-        .or_else(|| synthetic_visual_artifact_wrapper(source_path, kind));
-    let content = content?;
+        .or_else(|| source_content_for_virtual_document(&project.root, source_path, kind))?;
     let id = DocumentId::new();
     let now = chrono::Utc::now();
     let doc = Document {
         id: id.clone(),
-        path: open_path.to_path_buf(),
+        path: durable_open_path,
         title: title.to_string(),
         content,
         frontmatter: Frontmatter::default(),
@@ -608,17 +614,44 @@ fn open_visual_artifact_document(
     Some((id, title.to_string()))
 }
 
-fn synthetic_visual_artifact_wrapper(
+fn ensure_visual_artifact_wrapper(
+    project: &flynt_store::project::Project,
+    open_path: &std::path::Path,
+    source_path: &std::path::Path,
+    kind: VisualArtifactKind,
+    title: &str,
+) -> Option<std::path::PathBuf> {
+    if project.root.join(open_path).exists() {
+        return Some(open_path.to_path_buf());
+    }
+    if kind != VisualArtifactKind::ExcalidrawDrawing {
+        return None;
+    }
+
+    let wrapper_path = source_path.with_extension("md");
+    let file_name = source_path.file_name()?.to_string_lossy();
+    let escaped_title = title.replace('"', "\\\"");
+    let content = format!(
+        "+++\ntitle = \"{escaped_title}\"\ntags = [\"drawing\"]\n+++\n\n![[{file_name}]]\n"
+    );
+    project
+        .save_document_content(&wrapper_path, &content)
+        .ok()?;
+    Some(wrapper_path)
+}
+
+fn source_content_for_virtual_document(
+    project_root: &std::path::Path,
     source_path: &std::path::Path,
     kind: VisualArtifactKind,
 ) -> Option<String> {
-    let file_name = source_path.file_name()?.to_string_lossy();
     match kind {
-        VisualArtifactKind::D2Diagram => std::fs::read_to_string(source_path).ok(),
-        VisualArtifactKind::ExcalidrawDrawing => Some(format!(
-            "![[{file_name}]]
-"
-        )),
+        VisualArtifactKind::D2Diagram => {
+            std::fs::read_to_string(project_root.join(source_path)).ok()
+        }
+        VisualArtifactKind::ExcalidrawDrawing => source_path
+            .file_name()
+            .map(|file_name| format!("![[{}]]\n", file_name.to_string_lossy())),
         _ => None,
     }
 }
