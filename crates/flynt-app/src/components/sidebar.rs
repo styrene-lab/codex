@@ -7,7 +7,10 @@ use dioxus::prelude::*;
 use flynt_core::{
     models::{Bookmark, BookmarkTarget, Document, DocumentId, DocumentMeta, Frontmatter},
     store::ProjectStore,
-    visual_artifacts::{RenderArtifact, RenderFormat, RenderStatus, discover_d2_artifacts},
+    visual_artifacts::{
+        RenderArtifact, RenderFormat, RenderStatus, VisualArtifactKind, discover_d2_artifacts,
+        discover_excalidraw_artifacts,
+    },
 };
 use rfd::FileDialog;
 use std::{collections::BTreeMap, path::PathBuf};
@@ -321,6 +324,8 @@ enum TreeNode {
     VirtualFile {
         title: String,
         path: std::path::PathBuf,
+        wrapper_path: Option<std::path::PathBuf>,
+        kind: VisualArtifactKind,
         renders: Vec<RenderArtifact>,
     },
     File(DocumentMeta),
@@ -398,13 +403,32 @@ fn build_tree(docs: &[DocumentMeta]) -> Element {
 fn add_diagram_files_from_filesystem(root: &mut BTreeMap<String, TreeNode>) {
     let ctx = use_context::<AppContext>();
     for artifact in discover_d2_artifacts(&ctx.project_root()) {
-        add_visual_artifact_file(artifact.title, artifact.source_path, artifact.renders, root);
+        add_visual_artifact_file(
+            artifact.title,
+            artifact.source_path,
+            artifact.wrapper_path,
+            artifact.kind,
+            artifact.renders,
+            root,
+        );
+    }
+    for artifact in discover_excalidraw_artifacts(&ctx.project_root()) {
+        add_visual_artifact_file(
+            artifact.title,
+            artifact.source_path,
+            artifact.wrapper_path,
+            artifact.kind,
+            artifact.renders,
+            root,
+        );
     }
 }
 
 fn add_visual_artifact_file(
     title: String,
     path: std::path::PathBuf,
+    wrapper_path: Option<std::path::PathBuf>,
+    kind: VisualArtifactKind,
     renders: Vec<RenderArtifact>,
     root: &mut BTreeMap<String, TreeNode>,
 ) {
@@ -436,6 +460,8 @@ fn add_visual_artifact_file(
         .or_insert_with(|| TreeNode::VirtualFile {
             title,
             path,
+            wrapper_path,
+            kind,
             renders,
         });
 }
@@ -459,9 +485,9 @@ fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix
                         }
                     }
                 },
-                TreeNode::VirtualFile { title, path, renders } => {
+                TreeNode::VirtualFile { title, path, wrapper_path, kind, renders } => {
                     rsx! {
-                        VirtualDiagramFile { key: "{path.display()}", title: title.clone(), path: path.clone(), renders: renders.clone(), depth }
+                        VirtualDiagramFile { key: "{path.display()}", title: title.clone(), path: path.clone(), wrapper_path: wrapper_path.clone(), kind: *kind, renders: renders.clone(), depth }
                     }
                 },
                 TreeNode::File(doc) => {
@@ -479,15 +505,26 @@ fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix
 fn VirtualDiagramFile(
     title: String,
     path: std::path::PathBuf,
+    wrapper_path: Option<std::path::PathBuf>,
+    kind: VisualArtifactKind,
     renders: Vec<RenderArtifact>,
     depth: u32,
 ) -> Element {
-    render_virtual_diagram_file(&title, &path, &renders, depth)
+    render_virtual_diagram_file(
+        &title,
+        &path,
+        wrapper_path.as_deref(),
+        kind,
+        &renders,
+        depth,
+    )
 }
 
 fn render_virtual_diagram_file(
     title: &str,
     path: &std::path::Path,
+    wrapper_path: Option<&std::path::Path>,
+    kind: VisualArtifactKind,
     renders: &[RenderArtifact],
     depth: u32,
 ) -> Element {
@@ -496,6 +533,7 @@ fn render_virtual_diagram_file(
     let mut active_route = use_context::<Signal<Route>>();
     let title = title.to_string();
     let path = path.to_path_buf();
+    let open_path = wrapper_path.unwrap_or(&path).to_path_buf();
     let svg_status = render_status_for(renders, RenderFormat::Svg);
     let png_status = render_status_for(renders, RenderFormat::Png);
     let indent = depth as f32 * 12.0;
@@ -505,7 +543,7 @@ fn render_virtual_diagram_file(
             style: "padding-left: {indent + 24.0}px;",
             title: "{path.display()}",
             onclick: move |_| {
-                if let Some((id, title)) = open_visual_artifact_document(&ctx, &path, &title) {
+                if let Some((id, title)) = open_visual_artifact_document(&ctx, &open_path, &path, kind, &title) {
                     tab_state.write().open(id, title);
                     *active_route.write() = Route::Notes;
                 }
@@ -520,21 +558,26 @@ fn render_virtual_diagram_file(
 
 fn open_visual_artifact_document(
     ctx: &AppContext,
-    path: &std::path::Path,
+    open_path: &std::path::Path,
+    source_path: &std::path::Path,
+    kind: VisualArtifactKind,
     title: &str,
 ) -> Option<(DocumentId, String)> {
     let project = ctx.project();
-    if let Ok(Some(doc)) = project.store.get_document_by_path(path) {
+    if let Ok(Some(doc)) = project.store.get_document_by_path(open_path) {
         return Some((doc.id, doc.title));
     }
 
-    let abs = project.root.join(path);
-    let content = std::fs::read_to_string(&abs).ok()?;
+    let abs = project.root.join(open_path);
+    let content = std::fs::read_to_string(&abs)
+        .ok()
+        .or_else(|| synthetic_visual_artifact_wrapper(source_path, kind));
+    let content = content?;
     let id = DocumentId::new();
     let now = chrono::Utc::now();
     let doc = Document {
         id: id.clone(),
-        path: path.to_path_buf(),
+        path: open_path.to_path_buf(),
         title: title.to_string(),
         content,
         frontmatter: Frontmatter::default(),
@@ -545,6 +588,21 @@ fn open_visual_artifact_document(
     };
     project.store.save_document(&doc).ok()?;
     Some((id, title.to_string()))
+}
+
+fn synthetic_visual_artifact_wrapper(
+    source_path: &std::path::Path,
+    kind: VisualArtifactKind,
+) -> Option<String> {
+    let file_name = source_path.file_name()?.to_string_lossy();
+    match kind {
+        VisualArtifactKind::D2Diagram => std::fs::read_to_string(source_path).ok(),
+        VisualArtifactKind::ExcalidrawDrawing => Some(format!(
+            "![[{file_name}]]
+"
+        )),
+        _ => None,
+    }
 }
 
 fn render_status_for(renders: &[RenderArtifact], format: RenderFormat) -> RenderStatus {
