@@ -6,8 +6,13 @@
 
 use crate::bootstrap::AppContext;
 use dioxus::prelude::*;
-use flynt_core::design_board::{Cell, CellContent, DesignBoard};
-use flynt_core::design_components;
+use flynt_core::{
+    design_board::{Cell, CellContent, DesignBoard},
+    design_components,
+    visual_artifacts::{
+        VisualArtifactKind, VisualArtifactRef, discover_design_board_consumed_artifacts,
+    },
+};
 use std::path::PathBuf;
 
 /// Tailwind CSS bundled into the app binary. Phase 4 ships a placeholder
@@ -479,6 +484,51 @@ pub fn frontmatter_has_design_board_tag(content: &str) -> bool {
     false
 }
 
+#[component]
+fn DesignBoardDependenciesStrip(consumed: Vec<VisualArtifactRef>) -> Element {
+    rsx! {
+        div { class: "design-board-dependencies-strip",
+            span { class: "design-board-dependencies-label", "Consumes" }
+            for artifact in consumed.iter() {
+                {
+                    let label = artifact
+                        .source_path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or_else(|| artifact.source_path.to_str().unwrap_or("artifact"))
+                        .to_string();
+                    rsx! {
+                        span {
+                            class: "design-board-dependency-pill",
+                            title: "{visual_artifact_label(artifact.kind)}: {artifact.source_path.display()}",
+                            span { class: "design-board-dependency-icon", "{visual_artifact_icon(artifact.kind)}" }
+                            span { class: "design-board-dependency-path", "{label}" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn visual_artifact_icon(kind: VisualArtifactKind) -> &'static str {
+    match kind {
+        VisualArtifactKind::D2Diagram => "◇",
+        VisualArtifactKind::ExcalidrawDrawing => "✎",
+        VisualArtifactKind::DesignBoard => "▦",
+        VisualArtifactKind::Flow => "⇄",
+    }
+}
+
+fn visual_artifact_label(kind: VisualArtifactKind) -> &'static str {
+    match kind {
+        VisualArtifactKind::D2Diagram => "D2 diagram",
+        VisualArtifactKind::ExcalidrawDrawing => "Excalidraw drawing",
+        VisualArtifactKind::DesignBoard => "Design board",
+        VisualArtifactKind::Flow => "Flow",
+    }
+}
+
 /// Re-export of `flynt_core::design_board::create_design_board` for callers in this
 /// crate (menu handler, command palette). The actual implementation lives
 /// in flynt-core so flynt-agent can call into the same code via the
@@ -631,6 +681,8 @@ pub fn DesignBoardView(path: PathBuf) -> Element {
         }
     };
 
+    let consumed_artifacts = discover_design_board_consumed_artifacts(&ctx.project_root(), &path);
+
     let grid_style = format!(
         "grid-template-columns: repeat({}, 1fr); grid-auto-rows: minmax(120px, auto); gap: {}px;",
         design_board.grid.cols.max(1),
@@ -649,6 +701,9 @@ pub fn DesignBoardView(path: PathBuf) -> Element {
                         "{focus.event_type}: {focus.label()}"
                     }
                 }
+            }
+            if !consumed_artifacts.is_empty() {
+                DesignBoardDependenciesStrip { consumed: consumed_artifacts.clone() }
             }
             if design_board.cells.is_empty() {
                 div { class: "design-board-empty",
