@@ -7,6 +7,7 @@ use dioxus::prelude::*;
 use flynt_core::{
     models::{Bookmark, BookmarkTarget, Document, DocumentMeta},
     store::ProjectStore,
+    visual_artifacts::{sibling_render, RenderFormat, RenderStatus},
 };
 use rfd::FileDialog;
 use std::{collections::BTreeMap, path::PathBuf};
@@ -501,8 +502,8 @@ fn render_virtual_diagram_file(title: &str, path: &std::path::Path, depth: u32) 
     let title = title.to_string();
     let path = path.to_path_buf();
     let abs_source = ctx.project_root().join(&path);
-    let svg_status = diagram_artifact_status(&abs_source, "svg");
-    let png_status = diagram_artifact_status(&abs_source, "png");
+    let svg_status = sibling_render(&abs_source, RenderFormat::Svg).status;
+    let png_status = sibling_render(&abs_source, RenderFormat::Png).status;
     let indent = depth as f32 * 12.0;
     rsx! {
         button {
@@ -528,24 +529,7 @@ fn render_virtual_diagram_file(title: &str, path: &std::path::Path, depth: u32) 
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum DiagramArtifactStatus {
-    Missing,
-    Current,
-    Stale,
-    Present,
-}
-
-impl DiagramArtifactStatus {
-    fn label(self) -> &'static str {
-        match self {
-            Self::Missing => "missing",
-            Self::Current => "current",
-            Self::Stale => "stale",
-            Self::Present => "present",
-        }
-    }
-
+impl RenderStatusBadgeClass for RenderStatus {
     fn class(self) -> &'static str {
         match self {
             Self::Missing => "missing",
@@ -556,19 +540,8 @@ impl DiagramArtifactStatus {
     }
 }
 
-fn diagram_artifact_status(source: &std::path::Path, ext: &str) -> DiagramArtifactStatus {
-    let artifact = source.with_extension(ext);
-    if !artifact.exists() {
-        return DiagramArtifactStatus::Missing;
-    }
-    match (
-        std::fs::metadata(source).and_then(|m| m.modified()),
-        std::fs::metadata(&artifact).and_then(|m| m.modified()),
-    ) {
-        (Ok(source_time), Ok(artifact_time)) if artifact_time >= source_time => DiagramArtifactStatus::Current,
-        (Ok(_), Ok(_)) => DiagramArtifactStatus::Stale,
-        _ => DiagramArtifactStatus::Present,
-    }
+trait RenderStatusBadgeClass {
+    fn class(self) -> &'static str;
 }
 
 /// Folder wrapper — uses a keyed div so Dioxus allocates a stable hook scope
