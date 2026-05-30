@@ -5,7 +5,7 @@ use crate::{
 };
 use dioxus::prelude::*;
 use flynt_core::{
-    models::{Bookmark, BookmarkTarget, Document, DocumentMeta},
+    models::{Bookmark, BookmarkTarget, Document, DocumentId, DocumentMeta, Frontmatter},
     store::ProjectStore,
     visual_artifacts::{RenderArtifact, RenderFormat, RenderStatus, discover_d2_artifacts},
 };
@@ -505,13 +505,8 @@ fn render_virtual_diagram_file(
             style: "padding-left: {indent + 24.0}px;",
             title: "{path.display()}",
             onclick: move |_| {
-                let project = ctx.project();
-                let abs = project.root.join(&path);
-                if project.index_file(&abs).is_err() {
-                    let _ = project.reindex();
-                }
-                if let Ok(Some(doc)) = project.store.get_document_by_path(&path) {
-                    tab_state.write().open(doc.id.clone(), doc.title.clone());
+                if let Some((id, title)) = open_visual_artifact_document(&ctx, &path, &title) {
+                    tab_state.write().open(id, title);
                     *active_route.write() = Route::Notes;
                 }
             },
@@ -521,6 +516,35 @@ fn render_virtual_diagram_file(
             span { class: "diagram-artifact-badge {png_status.class()}", title: "PNG {png_status.label()}", "PNG" }
         }
     }
+}
+
+fn open_visual_artifact_document(
+    ctx: &AppContext,
+    path: &std::path::Path,
+    title: &str,
+) -> Option<(DocumentId, String)> {
+    let project = ctx.project();
+    if let Ok(Some(doc)) = project.store.get_document_by_path(path) {
+        return Some((doc.id, doc.title));
+    }
+
+    let abs = project.root.join(path);
+    let content = std::fs::read_to_string(&abs).ok()?;
+    let id = DocumentId::new();
+    let now = chrono::Utc::now();
+    let doc = Document {
+        id: id.clone(),
+        path: path.to_path_buf(),
+        title: title.to_string(),
+        content,
+        frontmatter: Frontmatter::default(),
+        outgoing_links: Vec::new(),
+        created_at: now,
+        updated_at: now,
+        entity: None,
+    };
+    project.store.save_document(&doc).ok()?;
+    Some((id, title.to_string()))
 }
 
 fn render_status_for(renders: &[RenderArtifact], format: RenderFormat) -> RenderStatus {
