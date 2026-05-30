@@ -1587,3 +1587,24 @@
   border-radius: var(--radius);
   padding: var(--space-4);
 }
+
+.diagram-render-badges {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: color-mix(in srgb, var(--background) 82%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+.diagram-render-badge {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px var(--space-2);
+  color: var(--muted-foreground);
+  background: var(--card);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}

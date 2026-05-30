@@ -2728,6 +2728,7 @@ pub fn NotesView() -> Element {
     // edits never appeared in Live mode.
     let mut cm6_load_source: Signal<Option<(flynt_core::models::DocumentId, String)>> =
         use_signal(|| None);
+    let render_message = use_signal(|| Option::<String>::None);
 
     {
         let active_path = rendered
@@ -3414,6 +3415,27 @@ pub fn NotesView() -> Element {
                             .cloned()
                             .unwrap_or_else(|| d2_path.with_extension("svg"));
                         let svg = std::fs::read_to_string(&abs).ok();
+                        let svg_status = if abs.exists() {
+                            match (std::fs::metadata(&d2_path).and_then(|m| m.modified()), std::fs::metadata(&abs).and_then(|m| m.modified())) {
+                                (Ok(source_time), Ok(render_time)) if render_time >= source_time => "SVG current",
+                                (Ok(_), Ok(_)) => "SVG stale",
+                                _ => "SVG present",
+                            }
+                        } else {
+                            "SVG missing"
+                        };
+                        let png_path = abs.with_extension("png");
+                        let png_status = if png_path.exists() {
+                            match (std::fs::metadata(&d2_path).and_then(|m| m.modified()), std::fs::metadata(&png_path).and_then(|m| m.modified())) {
+                                (Ok(source_time), Ok(render_time)) if render_time >= source_time => "PNG current",
+                                (Ok(_), Ok(_)) => "PNG stale",
+                                _ => "PNG present",
+                            }
+                        } else {
+                            "PNG missing"
+                        };
+                        let d2_path_for_render = d2_path.clone();
+                        let render_message_for_button = render_message;
                         let zoom = *diagram_zoom.read();
                         let zoom_style = format!("width: {}%;", zoom * 100.0);
                         let pan_js = r#"(function(){
@@ -3447,6 +3469,10 @@ pub fn NotesView() -> Element {
                             { document::eval(pan_js); }
                             div { class: "diagram-preview-pane",
                                 if let Some(svg) = svg {
+                                    div { class: "diagram-render-badges",
+                                        span { class: "diagram-render-badge", "{svg_status}" }
+                                        span { class: "diagram-render-badge", "{png_status}" }
+                                    }
                                     div { class: "d2-embed", style: "{zoom_style}", dangerous_inner_html: "{svg}" }
                                 } else {
                                     div { class: "d2-embed-placeholder", "D2 render pending or unavailable for {d2_path.display()}" }
