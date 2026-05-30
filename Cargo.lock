@@ -2349,6 +2349,7 @@ dependencies = [
  "comrak",
  "flynt-models",
  "git2",
+ "regex",
  "security-framework",
  "serde",
  "serde_json",

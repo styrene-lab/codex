@@ -7,7 +7,7 @@ use dioxus::prelude::*;
 use flynt_core::{
     models::{Bookmark, BookmarkTarget, Document, DocumentMeta},
     store::ProjectStore,
-    visual_artifacts::{sibling_render, RenderFormat, RenderStatus},
+    visual_artifacts::{RenderArtifact, RenderFormat, RenderStatus, discover_d2_artifacts},
 };
 use rfd::FileDialog;
 use std::{collections::BTreeMap, path::PathBuf};
@@ -321,6 +321,7 @@ enum TreeNode {
     VirtualFile {
         title: String,
         path: std::path::PathBuf,
+        renders: Vec<RenderArtifact>,
     },
     File(DocumentMeta),
 }
@@ -396,64 +397,48 @@ fn build_tree(docs: &[DocumentMeta]) -> Element {
 
 fn add_diagram_files_from_filesystem(root: &mut BTreeMap<String, TreeNode>) {
     let ctx = use_context::<AppContext>();
-    let diagrams_root = ctx.project_root().join("diagrams");
-    add_diagram_dir_files(&diagrams_root, &diagrams_root, root);
-}
-
-fn is_diagram_file(path: &std::path::Path) -> bool {
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| matches!(ext, "d2" | "svg" | "png"))
-}
-
-fn add_diagram_dir_files(diagrams_root: &std::path::Path, dir: &std::path::Path, root: &mut BTreeMap<String, TreeNode>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            add_diagram_dir_files(diagrams_root, &path, root);
-        } else if is_diagram_file(&path) {
-            add_diagram_file(diagrams_root, &path, root);
-        }
+    for artifact in discover_d2_artifacts(&ctx.project_root()) {
+        add_visual_artifact_file(artifact.title, artifact.source_path, artifact.renders, root);
     }
 }
 
-fn add_diagram_file(diagrams_root: &std::path::Path, path: &std::path::Path, root: &mut BTreeMap<String, TreeNode>) {
-    let Ok(rel) = path.strip_prefix(diagrams_root) else {
-        return;
-    };
-    if !path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| ext == "d2") {
-        return;
-    }
-    let mut current = root
-        .entry("diagrams".into())
-        .or_insert_with(|| TreeNode::Folder { name: "diagrams".into(), children: BTreeMap::new(), default_open: true });
-
-    let parts: Vec<_> = rel.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect();
+fn add_visual_artifact_file(
+    title: String,
+    path: std::path::PathBuf,
+    renders: Vec<RenderArtifact>,
+    root: &mut BTreeMap<String, TreeNode>,
+) {
+    let parts: Vec<_> = path
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        .collect();
     if parts.is_empty() {
         return;
     }
+
+    let mut current = root;
     for part in &parts[..parts.len() - 1] {
-        current = match current {
-            TreeNode::Folder { children, .. } => children
-                .entry(part.clone())
-                .or_insert_with(|| TreeNode::Folder { name: part.clone(), children: BTreeMap::new(), default_open: true }),
+        current = match current
+            .entry(part.clone())
+            .or_insert_with(|| TreeNode::Folder {
+                name: part.clone(),
+                children: BTreeMap::new(),
+                default_open: true,
+            }) {
+            TreeNode::Folder { children, .. } => children,
             _ => return,
         };
     }
-    if let TreeNode::Folder { children, .. } = current {
-        let file = parts.last().cloned().unwrap_or_default();
-        let rel_path = std::path::PathBuf::from("diagrams").join(rel);
-        children.entry(format!("~{file}")).or_insert_with(|| TreeNode::VirtualFile {
-            title: file,
-            path: rel_path,
+
+    let file = parts.last().cloned().unwrap_or_else(|| title.clone());
+    current
+        .entry(format!("~{file}"))
+        .or_insert_with(|| TreeNode::VirtualFile {
+            title,
+            path,
+            renders,
         });
-    }
 }
-
-
 
 /// Recursively render a tree level using keyed components for stable hook identity.
 fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix: &str) -> Element {
@@ -474,9 +459,9 @@ fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix
                         }
                     }
                 },
-                TreeNode::VirtualFile { title, path } => {
+                TreeNode::VirtualFile { title, path, renders } => {
                     rsx! {
-                        VirtualDiagramFile { key: "{path.display()}", title: title.clone(), path: path.clone(), depth }
+                        VirtualDiagramFile { key: "{path.display()}", title: title.clone(), path: path.clone(), renders: renders.clone(), depth }
                     }
                 },
                 TreeNode::File(doc) => {
@@ -491,19 +476,28 @@ fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix
 }
 
 #[component]
-fn VirtualDiagramFile(title: String, path: std::path::PathBuf, depth: u32) -> Element {
-    render_virtual_diagram_file(&title, &path, depth)
+fn VirtualDiagramFile(
+    title: String,
+    path: std::path::PathBuf,
+    renders: Vec<RenderArtifact>,
+    depth: u32,
+) -> Element {
+    render_virtual_diagram_file(&title, &path, &renders, depth)
 }
 
-fn render_virtual_diagram_file(title: &str, path: &std::path::Path, depth: u32) -> Element {
+fn render_virtual_diagram_file(
+    title: &str,
+    path: &std::path::Path,
+    renders: &[RenderArtifact],
+    depth: u32,
+) -> Element {
     let ctx = use_context::<AppContext>();
     let mut tab_state = use_context::<Signal<TabState>>();
     let mut active_route = use_context::<Signal<Route>>();
     let title = title.to_string();
     let path = path.to_path_buf();
-    let abs_source = ctx.project_root().join(&path);
-    let svg_status = sibling_render(&abs_source, RenderFormat::Svg).status;
-    let png_status = sibling_render(&abs_source, RenderFormat::Png).status;
+    let svg_status = render_status_for(renders, RenderFormat::Svg);
+    let png_status = render_status_for(renders, RenderFormat::Png);
     let indent = depth as f32 * 12.0;
     rsx! {
         button {
@@ -527,6 +521,14 @@ fn render_virtual_diagram_file(title: &str, path: &std::path::Path, depth: u32) 
             span { class: "diagram-artifact-badge {png_status.class()}", title: "PNG {png_status.label()}", "PNG" }
         }
     }
+}
+
+fn render_status_for(renders: &[RenderArtifact], format: RenderFormat) -> RenderStatus {
+    renders
+        .iter()
+        .find(|render| render.format == format)
+        .map(|render| render.status)
+        .unwrap_or(RenderStatus::Missing)
 }
 
 impl RenderStatusBadgeClass for RenderStatus {

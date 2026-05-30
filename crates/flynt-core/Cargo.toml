@@ -15,6 +15,7 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 comrak = { workspace = true }
+regex = "1"
 base64 = "0.22"
 styrene-identity = { version = "0.3.2", features = ["file-signer"] }
 git2 = { version = "0.20", default-features = false, features = ["vendored-libgit2"] }
