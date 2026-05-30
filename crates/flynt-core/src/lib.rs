@@ -23,3 +23,4 @@ pub mod store;
 pub mod sync;
 pub mod task_file;
 pub mod templates;
+pub mod visual_artifacts;
