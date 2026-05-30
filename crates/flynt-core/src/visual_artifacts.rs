@@ -447,8 +447,14 @@ mod tests {
         assert_eq!(artifacts.len(), 1);
         let artifact = &artifacts[0];
         assert_eq!(artifact.kind, VisualArtifactKind::ExcalidrawDrawing);
-        assert_eq!(artifact.source_path, PathBuf::from("drawings/map.excalidraw"));
-        assert_eq!(artifact.wrapper_path, Some(PathBuf::from("drawings/map.md")));
+        assert_eq!(
+            artifact.source_path,
+            PathBuf::from("drawings/map.excalidraw")
+        );
+        assert_eq!(
+            artifact.wrapper_path,
+            Some(PathBuf::from("drawings/map.md"))
+        );
         let svg = artifact
             .renders
             .iter()
@@ -467,5 +473,40 @@ mod tests {
         fs::write(drawings.join("rendered/map.png"), "png").unwrap();
 
         assert!(discover_excalidraw_artifacts(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn wrapper_pairing_supports_project_relative_and_sibling_embeds() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join("drawings/nested")).unwrap();
+        fs::write(tmp.path().join("drawings/nested/local.excalidraw"), "{}").unwrap();
+        fs::write(
+            tmp.path().join("drawings/nested/local.md"),
+            "![[local.excalidraw]]",
+        )
+        .unwrap();
+        fs::write(tmp.path().join("drawings/global.excalidraw"), "{}").unwrap();
+        fs::write(
+            tmp.path().join("global.md"),
+            "![[drawings/global.excalidraw]]",
+        )
+        .unwrap();
+
+        let artifacts = discover_excalidraw_artifacts(tmp.path());
+        let local = artifacts
+            .iter()
+            .find(|artifact| {
+                artifact.source_path == PathBuf::from("drawings/nested/local.excalidraw")
+            })
+            .unwrap();
+        assert_eq!(
+            local.wrapper_path,
+            Some(PathBuf::from("drawings/nested/local.md"))
+        );
+        let global = artifacts
+            .iter()
+            .find(|artifact| artifact.source_path == PathBuf::from("drawings/global.excalidraw"))
+            .unwrap();
+        assert_eq!(global.wrapper_path, Some(PathBuf::from("global.md")));
     }
 }

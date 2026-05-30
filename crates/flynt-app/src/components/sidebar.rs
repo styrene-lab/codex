@@ -395,12 +395,12 @@ fn build_tree(docs: &[DocumentMeta]) -> Element {
                 .or_insert(TreeNode::File(doc.clone()));
         }
     }
-    add_diagram_files_from_filesystem(&mut root);
+    add_visual_artifact_files_from_filesystem(&mut root);
 
     rsx! { { render_tree_level(&root, 0, "") } }
 }
 
-fn add_diagram_files_from_filesystem(root: &mut BTreeMap<String, TreeNode>) {
+fn add_visual_artifact_files_from_filesystem(root: &mut BTreeMap<String, TreeNode>) {
     let ctx = use_context::<AppContext>();
     for artifact in discover_d2_artifacts(&ctx.project_root()) {
         add_visual_artifact_file(
@@ -487,7 +487,7 @@ fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix
                 },
                 TreeNode::VirtualFile { title, path, wrapper_path, kind, renders } => {
                     rsx! {
-                        VirtualDiagramFile { key: "{path.display()}", title: title.clone(), path: path.clone(), wrapper_path: wrapper_path.clone(), kind: *kind, renders: renders.clone(), depth }
+                        VirtualArtifactFile { key: "{path.display()}", title: title.clone(), path: path.clone(), wrapper_path: wrapper_path.clone(), kind: *kind, renders: renders.clone(), depth }
                     }
                 },
                 TreeNode::File(doc) => {
@@ -502,7 +502,7 @@ fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix
 }
 
 #[component]
-fn VirtualDiagramFile(
+fn VirtualArtifactFile(
     title: String,
     path: std::path::PathBuf,
     wrapper_path: Option<std::path::PathBuf>,
@@ -510,7 +510,7 @@ fn VirtualDiagramFile(
     renders: Vec<RenderArtifact>,
     depth: u32,
 ) -> Element {
-    render_virtual_diagram_file(
+    render_virtual_artifact_file(
         &title,
         &path,
         wrapper_path.as_deref(),
@@ -520,7 +520,7 @@ fn VirtualDiagramFile(
     )
 }
 
-fn render_virtual_diagram_file(
+fn render_virtual_artifact_file(
     title: &str,
     path: &std::path::Path,
     wrapper_path: Option<&std::path::Path>,
@@ -541,18 +541,36 @@ fn render_virtual_diagram_file(
         button {
             class: "tree-item tree-file",
             style: "padding-left: {indent + 24.0}px;",
-            title: "{path.display()}",
+            title: "{visual_artifact_label(kind)}: {path.display()}",
             onclick: move |_| {
                 if let Some((id, title)) = open_visual_artifact_document(&ctx, &open_path, &path, kind, &title) {
                     tab_state.write().open(id, title);
                     *active_route.write() = Route::Notes;
                 }
             },
-            span { class: "tree-file-icon", "\u{25C7}" }
+            span { class: "tree-file-icon", "{visual_artifact_icon(kind)}" }
             span { class: "tree-name", "{title}" }
             span { class: "diagram-artifact-badge {svg_status.class()}", title: "SVG {svg_status.label()}", "SVG" }
             span { class: "diagram-artifact-badge {png_status.class()}", title: "PNG {png_status.label()}", "PNG" }
         }
+    }
+}
+
+fn visual_artifact_icon(kind: VisualArtifactKind) -> &'static str {
+    match kind {
+        VisualArtifactKind::D2Diagram => "◇",
+        VisualArtifactKind::ExcalidrawDrawing => "✎",
+        VisualArtifactKind::DesignBoard => "▦",
+        VisualArtifactKind::Flow => "⇄",
+    }
+}
+
+fn visual_artifact_label(kind: VisualArtifactKind) -> &'static str {
+    match kind {
+        VisualArtifactKind::D2Diagram => "D2 diagram",
+        VisualArtifactKind::ExcalidrawDrawing => "Excalidraw drawing",
+        VisualArtifactKind::DesignBoard => "Design board",
+        VisualArtifactKind::Flow => "Flow",
     }
 }
 
