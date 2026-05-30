@@ -8,8 +8,9 @@ use flynt_core::{
     models::{Bookmark, BookmarkTarget, Document, DocumentId, DocumentMeta, Frontmatter},
     store::ProjectStore,
     visual_artifacts::{
-        RenderArtifact, RenderFormat, RenderStatus, VisualArtifactKind, discover_d2_artifacts,
-        discover_design_board_artifacts, discover_excalidraw_artifacts,
+        RenderArtifact, RenderFormat, RenderStatus, VisualArtifactKind, VisualArtifactRef,
+        discover_d2_artifacts, discover_design_board_artifacts,
+        discover_design_board_consumed_artifacts, discover_excalidraw_artifacts,
     },
 };
 use rfd::FileDialog;
@@ -327,6 +328,7 @@ enum TreeNode {
         wrapper_path: Option<std::path::PathBuf>,
         kind: VisualArtifactKind,
         renders: Vec<RenderArtifact>,
+        consumes: Vec<VisualArtifactRef>,
     },
     File(DocumentMeta),
 }
@@ -409,6 +411,7 @@ fn add_visual_artifact_files_from_filesystem(root: &mut BTreeMap<String, TreeNod
             artifact.wrapper_path,
             artifact.kind,
             artifact.renders,
+            Vec::new(),
             root,
         );
     }
@@ -419,16 +422,21 @@ fn add_visual_artifact_files_from_filesystem(root: &mut BTreeMap<String, TreeNod
             artifact.wrapper_path,
             artifact.kind,
             artifact.renders,
+            Vec::new(),
             root,
         );
     }
-    for artifact in discover_design_board_artifacts(&ctx.project_root()) {
+    let project_root = ctx.project_root();
+    for artifact in discover_design_board_artifacts(&project_root) {
+        let consumes =
+            discover_design_board_consumed_artifacts(&project_root, &artifact.source_path);
         add_visual_artifact_file(
             artifact.title,
             artifact.source_path,
             artifact.wrapper_path,
             artifact.kind,
             artifact.renders,
+            consumes,
             root,
         );
     }
@@ -440,6 +448,7 @@ fn add_visual_artifact_file(
     wrapper_path: Option<std::path::PathBuf>,
     kind: VisualArtifactKind,
     renders: Vec<RenderArtifact>,
+    consumes: Vec<VisualArtifactRef>,
     root: &mut BTreeMap<String, TreeNode>,
 ) {
     let parts: Vec<_> = path
@@ -473,6 +482,7 @@ fn add_visual_artifact_file(
             wrapper_path,
             kind,
             renders,
+            consumes,
         });
 }
 
@@ -495,9 +505,9 @@ fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix
                         }
                     }
                 },
-                TreeNode::VirtualFile { title, path, wrapper_path, kind, renders } => {
+                TreeNode::VirtualFile { title, path, wrapper_path, kind, renders, consumes } => {
                     rsx! {
-                        VirtualArtifactFile { key: "{path.display()}", title: title.clone(), path: path.clone(), wrapper_path: wrapper_path.clone(), kind: *kind, renders: renders.clone(), depth }
+                        VirtualArtifactFile { key: "{path.display()}", title: title.clone(), path: path.clone(), wrapper_path: wrapper_path.clone(), kind: *kind, renders: renders.clone(), consumes: consumes.clone(), depth }
                     }
                 },
                 TreeNode::File(doc) => {
@@ -518,6 +528,7 @@ fn VirtualArtifactFile(
     wrapper_path: Option<std::path::PathBuf>,
     kind: VisualArtifactKind,
     renders: Vec<RenderArtifact>,
+    consumes: Vec<VisualArtifactRef>,
     depth: u32,
 ) -> Element {
     render_virtual_artifact_file(
@@ -526,6 +537,7 @@ fn VirtualArtifactFile(
         wrapper_path.as_deref(),
         kind,
         &renders,
+        &consumes,
         depth,
     )
 }
@@ -536,6 +548,7 @@ fn render_virtual_artifact_file(
     wrapper_path: Option<&std::path::Path>,
     kind: VisualArtifactKind,
     renders: &[RenderArtifact],
+    consumes: &[VisualArtifactRef],
     depth: u32,
 ) -> Element {
     let ctx = use_context::<AppContext>();
@@ -548,12 +561,15 @@ fn render_virtual_artifact_file(
     let secondary_format = secondary_render_format(kind);
     let primary_status = render_status_for(renders, primary_format);
     let secondary_status = render_status_for(renders, secondary_format);
+    let artifact_title = visual_artifact_title(kind, &path, consumes);
+    let d2_count = consumed_count(consumes, VisualArtifactKind::D2Diagram);
+    let drawing_count = consumed_count(consumes, VisualArtifactKind::ExcalidrawDrawing);
     let indent = depth as f32 * 12.0;
     rsx! {
         button {
             class: "tree-item tree-file",
             style: "padding-left: {indent + 24.0}px;",
-            title: "{visual_artifact_label(kind)}: {path.display()}",
+            title: "{artifact_title}",
             onclick: move |_| {
                 if let Some((id, title)) = open_visual_artifact_document(&ctx, &open_path, &path, kind, &title) {
                     tab_state.write().open(id, title);
@@ -564,8 +580,38 @@ fn render_virtual_artifact_file(
             span { class: "tree-name", "{title}" }
             span { class: "diagram-artifact-badge {primary_status.class()}", title: "{primary_format.label()} {primary_status.label()}", "{primary_format.label()}" }
             span { class: "diagram-artifact-badge {secondary_status.class()}", title: "{secondary_format.label()} {secondary_status.label()}", "{secondary_format.label()}" }
+            if d2_count > 0 {
+                span { class: "diagram-artifact-badge present", title: "Consumes {d2_count} D2 diagram(s)", "◇{d2_count}" }
+            }
+            if drawing_count > 0 {
+                span { class: "diagram-artifact-badge present", title: "Consumes {drawing_count} Excalidraw drawing(s)", "✎{drawing_count}" }
+            }
         }
     }
+}
+
+fn visual_artifact_title(
+    kind: VisualArtifactKind,
+    path: &std::path::Path,
+    consumes: &[VisualArtifactRef],
+) -> String {
+    let mut title = format!("{}: {}", visual_artifact_label(kind), path.display());
+    if consumes.is_empty() {
+        return title;
+    }
+    title.push_str("\nConsumes:");
+    for item in consumes {
+        title.push_str(&format!(
+            "\n- {}: {}",
+            visual_artifact_label(item.kind),
+            item.source_path.display()
+        ));
+    }
+    title
+}
+
+fn consumed_count(consumes: &[VisualArtifactRef], kind: VisualArtifactKind) -> usize {
+    consumes.iter().filter(|item| item.kind == kind).count()
 }
 
 fn primary_render_format(kind: VisualArtifactKind) -> RenderFormat {
