@@ -4,7 +4,10 @@
 //! and theme tokens injected. Mirrors the `.excalidraw` document pattern:
 //! data file + sibling `.md` wrapper that embeds it.
 
-use crate::bootstrap::AppContext;
+use crate::{
+    bootstrap::AppContext,
+    state::{Route, TabState},
+};
 use dioxus::prelude::*;
 use flynt_core::{
     design_board::{Cell, CellContent, DesignBoard},
@@ -486,21 +489,26 @@ pub fn frontmatter_has_design_board_tag(content: &str) -> bool {
 
 #[component]
 fn DesignBoardDependenciesStrip(consumed: Vec<VisualArtifactRef>) -> Element {
+    let ctx = use_context::<AppContext>();
+    let mut tab_state = use_context::<Signal<TabState>>();
+    let mut active_route = use_context::<Signal<Route>>();
     rsx! {
         div { class: "design-board-dependencies-strip",
             span { class: "design-board-dependencies-label", "Consumes" }
             for artifact in consumed.iter() {
                 {
-                    let label = artifact
-                        .source_path
-                        .file_name()
-                        .and_then(|name| name.to_str())
-                        .unwrap_or_else(|| artifact.source_path.to_str().unwrap_or("artifact"))
-                        .to_string();
+                    let artifact = artifact.clone();
+                    let label = artifact_label(&artifact.source_path);
                     rsx! {
-                        span {
+                        button {
                             class: "design-board-dependency-pill",
-                            title: "{visual_artifact_label(artifact.kind)}: {artifact.source_path.display()}",
+                            title: "Open {visual_artifact_label(artifact.kind)}: {artifact.source_path.display()}",
+                            onclick: move |_| {
+                                if let Some((id, title)) = open_consumed_artifact(&ctx, &artifact) {
+                                    tab_state.write().open(id, title);
+                                    *active_route.write() = Route::Notes;
+                                }
+                            },
                             span { class: "design-board-dependency-icon", "{visual_artifact_icon(artifact.kind)}" }
                             span { class: "design-board-dependency-path", "{label}" }
                         }
@@ -509,6 +517,65 @@ fn DesignBoardDependenciesStrip(consumed: Vec<VisualArtifactRef>) -> Element {
             }
         }
     }
+}
+
+fn artifact_label(path: &std::path::Path) -> String {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_else(|| path.to_str().unwrap_or("artifact"))
+        .to_string()
+}
+
+fn open_consumed_artifact(
+    ctx: &AppContext,
+    artifact: &VisualArtifactRef,
+) -> Option<(flynt_core::models::DocumentId, String)> {
+    use flynt_core::{
+        models::{Document, DocumentId, Frontmatter},
+        store::ProjectStore,
+    };
+    let project = ctx.project();
+    let open_path = match artifact.kind {
+        VisualArtifactKind::D2Diagram => artifact.source_path.clone(),
+        VisualArtifactKind::ExcalidrawDrawing => artifact.source_path.with_extension("md"),
+        _ => artifact.source_path.clone(),
+    };
+    if let Ok(Some(doc)) = project.store.get_document_by_path(&open_path) {
+        return Some((doc.id, doc.title));
+    }
+
+    if artifact.kind == VisualArtifactKind::ExcalidrawDrawing
+        && !project.root.join(&open_path).exists()
+    {
+        let file_name = artifact.source_path.file_name()?.to_string_lossy();
+        let title = artifact_label(&artifact.source_path);
+        let escaped_title = title.replace('"', "\\\"");
+        let content = format!(
+            "+++\ntitle = \"{escaped_title}\"\ntags = [\"drawing\"]\n+++\n\n![[{file_name}]]\n"
+        );
+        project.save_document_content(&open_path, &content).ok()?;
+    }
+
+    let abs = project.root.join(&open_path);
+    let content = std::fs::read_to_string(&abs)
+        .ok()
+        .or_else(|| std::fs::read_to_string(project.root.join(&artifact.source_path)).ok())?;
+    let title = artifact_label(&artifact.source_path);
+    let id = DocumentId::new();
+    let now = chrono::Utc::now();
+    let doc = Document {
+        id: id.clone(),
+        path: open_path,
+        title: title.clone(),
+        content,
+        frontmatter: Frontmatter::default(),
+        outgoing_links: Vec::new(),
+        created_at: now,
+        updated_at: now,
+        entity: None,
+    };
+    project.store.save_document(&doc).ok()?;
+    Some((id, title))
 }
 
 fn visual_artifact_icon(kind: VisualArtifactKind) -> &'static str {

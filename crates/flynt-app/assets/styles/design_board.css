@@ -118,3 +118,14 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+button.design-board-dependency-pill {
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+button.design-board-dependency-pill:hover {
+  border-color: var(--primary);
+  color: var(--foreground);
+}
