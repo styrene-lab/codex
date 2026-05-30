@@ -70,6 +70,12 @@ pub struct VisualArtifact {
     pub renders: Vec<RenderArtifact>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VisualArtifactRef {
+    pub kind: VisualArtifactKind,
+    pub source_path: PathBuf,
+}
+
 pub fn render_status(source: &Path, render: &Path) -> RenderStatus {
     if !render.exists() {
         return RenderStatus::Missing;
@@ -195,6 +201,121 @@ pub fn discover_excalidraw_artifacts(project_root: &Path) -> Vec<VisualArtifact>
             })
         })
         .collect()
+}
+
+/// Discover Flynt Design Board artifacts under the boards directory.
+pub fn discover_design_board_artifacts(project_root: &Path) -> Vec<VisualArtifact> {
+    let boards_root = project_root.join("boards");
+    let wrappers = discover_wrappers(project_root, "board");
+    let mut sources = Vec::new();
+    collect_sources_with_extension(&boards_root, "board", &mut sources);
+    sources.sort();
+
+    sources
+        .into_iter()
+        .filter_map(|source| {
+            let rel_source = source.strip_prefix(project_root).ok()?.to_path_buf();
+            let title = source.file_name()?.to_string_lossy().into_owned();
+            let wrapper_path = wrappers.iter().find_map(|(target, wrapper)| {
+                if target == &rel_source || source_matches_embed(project_root, &source, target) {
+                    Some(wrapper.clone())
+                } else {
+                    None
+                }
+            });
+            Some(VisualArtifact {
+                kind: VisualArtifactKind::DesignBoard,
+                title,
+                source_path: rel_source,
+                wrapper_path,
+                renders: rendered_dir_renders(
+                    project_root,
+                    "boards",
+                    &source,
+                    &[RenderFormat::Html, RenderFormat::Png],
+                ),
+            })
+        })
+        .collect()
+}
+
+pub fn discover_design_board_consumed_artifacts(
+    project_root: &Path,
+    board_source_path: &Path,
+) -> Vec<VisualArtifactRef> {
+    let abs = project_root.join(board_source_path);
+    let Ok(board) = crate::design_board::DesignBoard::load(&abs) else {
+        return Vec::new();
+    };
+    let mut refs = Vec::new();
+    for cell in &board.cells {
+        let Some((html, css, js)) = cell.raw_html_parts() else {
+            continue;
+        };
+        collect_consumed_refs(project_root, board_source_path, html, &mut refs);
+        collect_consumed_refs(project_root, board_source_path, css, &mut refs);
+        if let Some(js) = js {
+            collect_consumed_refs(project_root, board_source_path, js, &mut refs);
+        }
+    }
+    refs.sort_by(|a, b| a.source_path.cmp(&b.source_path));
+    refs.dedup();
+    refs
+}
+
+fn collect_consumed_refs(
+    project_root: &Path,
+    board_source_path: &Path,
+    text: &str,
+    refs: &mut Vec<VisualArtifactRef>,
+) {
+    for target in embed_targets(text) {
+        let kind = match target.extension().and_then(|ext| ext.to_str()) {
+            Some("d2") => VisualArtifactKind::D2Diagram,
+            Some("excalidraw") => VisualArtifactKind::ExcalidrawDrawing,
+            _ => continue,
+        };
+        if let Some(source_path) = resolve_artifact_ref(project_root, board_source_path, &target) {
+            refs.push(VisualArtifactRef { kind, source_path });
+        }
+    }
+}
+
+fn embed_targets(text: &str) -> Vec<PathBuf> {
+    let mut targets = Vec::new();
+    let mut rest = text;
+    while let Some(start) = rest.find("![[") {
+        let after = &rest[start + 3..];
+        let Some(end) = after.find("]]") else {
+            break;
+        };
+        let inner = &after[..end];
+        let target = inner.split('|').next().unwrap_or(inner).trim();
+        if !target.is_empty() {
+            targets.push(PathBuf::from(target));
+        }
+        rest = &after[end + 2..];
+    }
+    targets
+}
+
+fn resolve_artifact_ref(
+    project_root: &Path,
+    owner_source_path: &Path,
+    target: &Path,
+) -> Option<PathBuf> {
+    let candidates = [
+        owner_source_path
+            .parent()
+            .unwrap_or_else(|| Path::new(""))
+            .join(target),
+        target.to_path_buf(),
+        PathBuf::from("diagrams").join(target),
+        PathBuf::from("drawings").join(target),
+    ];
+    candidates
+        .into_iter()
+        .find(|candidate| project_root.join(candidate).exists())
 }
 
 fn rendered_dir_renders(
@@ -508,5 +629,65 @@ mod tests {
             .find(|artifact| artifact.source_path == PathBuf::from("drawings/global.excalidraw"))
             .unwrap();
         assert_eq!(global.wrapper_path, Some(PathBuf::from("global.md")));
+    }
+
+    #[test]
+    fn design_board_discovery_pairs_wrapper_and_exports() {
+        let tmp = TempDir::new().unwrap();
+        let boards = tmp.path().join("boards");
+        fs::create_dir_all(boards.join("rendered")).unwrap();
+        fs::write(
+            boards.join("hero.board"),
+            r#"{"version":1,"theme":"default","grid":{"cols":12,"rows":8,"gap":8},"cells":[]}"#,
+        )
+        .unwrap();
+        thread::sleep(Duration::from_millis(5));
+        fs::write(boards.join("rendered/hero.html"), "<html></html>").unwrap();
+        fs::write(
+            boards.join("hero.md"),
+            "+++\ntitle = \"Hero\"\ntags = [\"design_board\"]\n+++\n\n![[hero.board]]\n",
+        )
+        .unwrap();
+
+        let artifacts = discover_design_board_artifacts(tmp.path());
+        assert_eq!(artifacts.len(), 1);
+        let artifact = &artifacts[0];
+        assert_eq!(artifact.kind, VisualArtifactKind::DesignBoard);
+        assert_eq!(artifact.source_path, PathBuf::from("boards/hero.board"));
+        assert_eq!(artifact.wrapper_path, Some(PathBuf::from("boards/hero.md")));
+        let html = artifact
+            .renders
+            .iter()
+            .find(|render| render.format == RenderFormat::Html)
+            .unwrap();
+        assert_eq!(html.path, PathBuf::from("boards/rendered/hero.html"));
+        assert_eq!(html.status, RenderStatus::Current);
+    }
+
+    #[test]
+    fn design_board_consumed_artifacts_detects_d2_and_excalidraw_embeds() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join("boards")).unwrap();
+        fs::create_dir_all(tmp.path().join("diagrams")).unwrap();
+        fs::create_dir_all(tmp.path().join("drawings")).unwrap();
+        fs::write(tmp.path().join("diagrams/flow.d2"), "a -> b").unwrap();
+        fs::write(tmp.path().join("drawings/sketch.excalidraw"), "{}").unwrap();
+        fs::write(
+            tmp.path().join("boards/hero.board"),
+            r#"{"version":1,"theme":"default","grid":{"cols":12,"rows":8,"gap":8},"cells":[{"id":"a","x":0,"y":0,"w":1,"h":1,"content":{"kind":"html","html":"![[diagrams/flow.d2]] ![[drawings/sketch.excalidraw]]"}}]}"#,
+        )
+        .unwrap();
+
+        let refs =
+            discover_design_board_consumed_artifacts(tmp.path(), Path::new("boards/hero.board"));
+        assert_eq!(refs.len(), 2);
+        assert!(refs.contains(&VisualArtifactRef {
+            kind: VisualArtifactKind::D2Diagram,
+            source_path: PathBuf::from("diagrams/flow.d2")
+        }));
+        assert!(refs.contains(&VisualArtifactRef {
+            kind: VisualArtifactKind::ExcalidrawDrawing,
+            source_path: PathBuf::from("drawings/sketch.excalidraw")
+        }));
     }
 }
