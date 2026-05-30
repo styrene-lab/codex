@@ -504,7 +504,7 @@ fn DesignBoardDependenciesStrip(consumed: Vec<VisualArtifactRef>) -> Element {
                             class: "design-board-dependency-pill",
                             title: "Open {visual_artifact_label(artifact.kind)}: {artifact.source_path.display()}",
                             onclick: move |_| {
-                                if let Some((id, title)) = open_consumed_artifact(&ctx, &artifact) {
+                                if let Some((id, title)) = crate::visual_artifact_open::open_visual_artifact_ref(&ctx, &artifact) {
                                     tab_state.write().open(id, title);
                                     *active_route.write() = Route::Notes;
                                 }
@@ -524,58 +524,6 @@ fn artifact_label(path: &std::path::Path) -> String {
         .and_then(|name| name.to_str())
         .unwrap_or_else(|| path.to_str().unwrap_or("artifact"))
         .to_string()
-}
-
-fn open_consumed_artifact(
-    ctx: &AppContext,
-    artifact: &VisualArtifactRef,
-) -> Option<(flynt_core::models::DocumentId, String)> {
-    use flynt_core::{
-        models::{Document, DocumentId, Frontmatter},
-        store::ProjectStore,
-    };
-    let project = ctx.project();
-    let open_path = match artifact.kind {
-        VisualArtifactKind::D2Diagram => artifact.source_path.clone(),
-        VisualArtifactKind::ExcalidrawDrawing => artifact.source_path.with_extension("md"),
-        _ => artifact.source_path.clone(),
-    };
-    if let Ok(Some(doc)) = project.store.get_document_by_path(&open_path) {
-        return Some((doc.id, doc.title));
-    }
-
-    if artifact.kind == VisualArtifactKind::ExcalidrawDrawing
-        && !project.root.join(&open_path).exists()
-    {
-        let file_name = artifact.source_path.file_name()?.to_string_lossy();
-        let title = artifact_label(&artifact.source_path);
-        let escaped_title = title.replace('"', "\\\"");
-        let content = format!(
-            "+++\ntitle = \"{escaped_title}\"\ntags = [\"drawing\"]\n+++\n\n![[{file_name}]]\n"
-        );
-        project.save_document_content(&open_path, &content).ok()?;
-    }
-
-    let abs = project.root.join(&open_path);
-    let content = std::fs::read_to_string(&abs)
-        .ok()
-        .or_else(|| std::fs::read_to_string(project.root.join(&artifact.source_path)).ok())?;
-    let title = artifact_label(&artifact.source_path);
-    let id = DocumentId::new();
-    let now = chrono::Utc::now();
-    let doc = Document {
-        id: id.clone(),
-        path: open_path,
-        title: title.clone(),
-        content,
-        frontmatter: Frontmatter::default(),
-        outgoing_links: Vec::new(),
-        created_at: now,
-        updated_at: now,
-        entity: None,
-    };
-    project.store.save_document(&doc).ok()?;
-    Some((id, title))
 }
 
 fn visual_artifact_icon(kind: VisualArtifactKind) -> &'static str {
