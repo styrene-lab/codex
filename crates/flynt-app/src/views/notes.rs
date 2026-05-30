@@ -2728,7 +2728,7 @@ pub fn NotesView() -> Element {
     // edits never appeared in Live mode.
     let mut cm6_load_source: Signal<Option<(flynt_core::models::DocumentId, String)>> =
         use_signal(|| None);
-    let render_message = use_signal(|| Option::<String>::None);
+    let _render_message = use_signal(|| Option::<String>::None);
 
     {
         let active_path = rendered
@@ -3434,8 +3434,6 @@ pub fn NotesView() -> Element {
                         } else {
                             "PNG missing"
                         };
-                        let d2_path_for_render = d2_path.clone();
-                        let render_message_for_button = render_message;
                         let zoom = *diagram_zoom.read();
                         let zoom_style = format!("width: {}%;", zoom * 100.0);
                         let pan_js = r#"(function(){

@@ -423,6 +423,9 @@ fn add_diagram_file(diagrams_root: &std::path::Path, path: &std::path::Path, roo
     let Ok(rel) = path.strip_prefix(diagrams_root) else {
         return;
     };
+    if !path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| ext == "d2") {
+        return;
+    }
     let mut current = root
         .entry("diagrams".into())
         .or_insert_with(|| TreeNode::Folder { name: "diagrams".into(), children: BTreeMap::new(), default_open: true });
@@ -495,6 +498,9 @@ fn render_virtual_diagram_file(title: &str, path: &std::path::Path, depth: u32) 
     let mut active_route = use_context::<Signal<Route>>();
     let title = title.to_string();
     let path = path.to_path_buf();
+    let abs_source = ctx.project_root().join(&path);
+    let svg_status = diagram_artifact_status(&abs_source, "svg");
+    let png_status = diagram_artifact_status(&abs_source, "png");
     let indent = depth as f32 * 12.0;
     rsx! {
         button {
@@ -514,7 +520,52 @@ fn render_virtual_diagram_file(title: &str, path: &std::path::Path, depth: u32) 
             },
             span { class: "tree-file-icon", "\u{25C7}" }
             span { class: "tree-name", "{title}" }
+            span { class: "diagram-artifact-badge {svg_status.class()}", title: "SVG {svg_status.label()}", "SVG" }
+            span { class: "diagram-artifact-badge {png_status.class()}", title: "PNG {png_status.label()}", "PNG" }
         }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DiagramArtifactStatus {
+    Missing,
+    Current,
+    Stale,
+    Present,
+}
+
+impl DiagramArtifactStatus {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Missing => "missing",
+            Self::Current => "current",
+            Self::Stale => "stale",
+            Self::Present => "present",
+        }
+    }
+
+    fn class(self) -> &'static str {
+        match self {
+            Self::Missing => "missing",
+            Self::Current => "current",
+            Self::Stale => "stale",
+            Self::Present => "present",
+        }
+    }
+}
+
+fn diagram_artifact_status(source: &std::path::Path, ext: &str) -> DiagramArtifactStatus {
+    let artifact = source.with_extension(ext);
+    if !artifact.exists() {
+        return DiagramArtifactStatus::Missing;
+    }
+    match (
+        std::fs::metadata(source).and_then(|m| m.modified()),
+        std::fs::metadata(&artifact).and_then(|m| m.modified()),
+    ) {
+        (Ok(source_time), Ok(artifact_time)) if artifact_time >= source_time => DiagramArtifactStatus::Current,
+        (Ok(_), Ok(_)) => DiagramArtifactStatus::Stale,
+        _ => DiagramArtifactStatus::Present,
     }
 }
 

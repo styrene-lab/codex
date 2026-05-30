@@ -1,0 +1,26 @@
+
+.diagram-artifact-badge {
+  margin-left: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 5px;
+  font-size: 9px;
+  line-height: 14px;
+  color: var(--muted-foreground);
+  background: var(--card);
+}
+
+.diagram-artifact-badge.current {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 45%, var(--border));
+}
+
+.diagram-artifact-badge.stale {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 55%, var(--border));
+}
+
+.diagram-artifact-badge.missing {
+  color: var(--muted-foreground);
+  opacity: 0.45;
+}
