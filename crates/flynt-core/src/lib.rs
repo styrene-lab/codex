@@ -5,6 +5,7 @@ pub mod daily;
 pub mod datum;
 pub mod design_board;
 pub mod design_components;
+pub mod design_deliverable;
 pub mod design_surfaces;
 pub mod drawing;
 pub mod external_ref;
