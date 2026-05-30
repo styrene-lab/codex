@@ -103,9 +103,9 @@ pub fn sibling_renders(source: &Path, formats: &[RenderFormat]) -> Vec<RenderArt
 /// Discover D2 diagram artifacts under `<project>/diagrams`.
 pub fn discover_d2_artifacts(project_root: &Path) -> Vec<VisualArtifact> {
     let diagrams_root = project_root.join("diagrams");
-    let wrappers = discover_d2_wrappers(project_root);
+    let wrappers = discover_wrappers(project_root, "d2");
     let mut sources = Vec::new();
-    collect_d2_sources(&diagrams_root, &mut sources);
+    collect_sources_with_extension(&diagrams_root, "d2", &mut sources);
     sources.sort();
 
     sources
@@ -114,7 +114,7 @@ pub fn discover_d2_artifacts(project_root: &Path) -> Vec<VisualArtifact> {
             let rel_source = source.strip_prefix(project_root).ok()?.to_path_buf();
             let title = source.file_name()?.to_string_lossy().into_owned();
             let wrapper_path = wrappers.iter().find_map(|(target, wrapper)| {
-                if target == &rel_source || project_root.join(target) == source {
+                if target == &rel_source || source_matches_embed(project_root, &source, target) {
                     Some(wrapper.clone())
                 } else {
                     None
@@ -161,40 +161,118 @@ fn canonical_d2_render_path(project_root: &Path, source: &Path, format: RenderFo
         .with_extension(format.extension())
 }
 
-fn collect_d2_sources(dir: &Path, sources: &mut Vec<PathBuf>) {
+/// Discover Excalidraw drawing artifacts under the drawings directory.
+pub fn discover_excalidraw_artifacts(project_root: &Path) -> Vec<VisualArtifact> {
+    let drawings_root = project_root.join("drawings");
+    let wrappers = discover_wrappers(project_root, "excalidraw");
+    let mut sources = Vec::new();
+    collect_sources_with_extension(&drawings_root, "excalidraw", &mut sources);
+    sources.sort();
+
+    sources
+        .into_iter()
+        .filter_map(|source| {
+            let rel_source = source.strip_prefix(project_root).ok()?.to_path_buf();
+            let title = source.file_name()?.to_string_lossy().into_owned();
+            let wrapper_path = wrappers.iter().find_map(|(target, wrapper)| {
+                if target == &rel_source || source_matches_embed(project_root, &source, target) {
+                    Some(wrapper.clone())
+                } else {
+                    None
+                }
+            });
+            Some(VisualArtifact {
+                kind: VisualArtifactKind::ExcalidrawDrawing,
+                title,
+                source_path: rel_source,
+                wrapper_path,
+                renders: rendered_dir_renders(
+                    project_root,
+                    "drawings",
+                    &source,
+                    &[RenderFormat::Svg, RenderFormat::Png],
+                ),
+            })
+        })
+        .collect()
+}
+
+fn rendered_dir_renders(
+    project_root: &Path,
+    artifact_dir: &str,
+    source: &Path,
+    formats: &[RenderFormat],
+) -> Vec<RenderArtifact> {
+    formats
+        .iter()
+        .copied()
+        .map(|format| rendered_dir_render(project_root, artifact_dir, source, format))
+        .collect()
+}
+
+fn rendered_dir_render(
+    project_root: &Path,
+    artifact_dir: &str,
+    source: &Path,
+    format: RenderFormat,
+) -> RenderArtifact {
+    let stem = source.file_stem().unwrap_or_default();
+    let path = project_root
+        .join(artifact_dir)
+        .join("rendered")
+        .join(stem)
+        .with_extension(format.extension());
+    RenderArtifact {
+        format,
+        status: render_status(source, &path),
+        path: path
+            .strip_prefix(project_root)
+            .unwrap_or(&path)
+            .to_path_buf(),
+    }
+}
+
+fn collect_sources_with_extension(dir: &Path, extension: &str, sources: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            collect_d2_sources(&path, sources);
-        } else if path.extension().and_then(|ext| ext.to_str()) == Some("d2") {
+            collect_sources_with_extension(&path, extension, sources);
+        } else if path.extension().and_then(|ext| ext.to_str()) == Some(extension) {
             sources.push(path);
         }
     }
 }
 
-fn discover_d2_wrappers(project_root: &Path) -> Vec<(PathBuf, PathBuf)> {
+fn discover_wrappers(project_root: &Path, extension: &str) -> Vec<(PathBuf, PathBuf)> {
     let mut wrappers = Vec::new();
-    collect_d2_wrappers(project_root, project_root, &mut wrappers);
+    collect_wrappers(project_root, project_root, extension, &mut wrappers);
     wrappers
 }
 
-fn collect_d2_wrappers(project_root: &Path, dir: &Path, wrappers: &mut Vec<(PathBuf, PathBuf)>) {
+fn collect_wrappers(
+    project_root: &Path,
+    dir: &Path,
+    extension: &str,
+    wrappers: &mut Vec<(PathBuf, PathBuf)>,
+) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            collect_d2_wrappers(project_root, &path, wrappers);
+            collect_wrappers(project_root, &path, extension, wrappers);
         } else if path.extension().and_then(|ext| ext.to_str()) == Some("md") {
             let Ok(body) = std::fs::read_to_string(&path) else {
                 continue;
             };
-            if let Some(target) = single_embed_target(body.trim()) {
-                if target.extension().and_then(|ext| ext.to_str()) == Some("d2") {
+            if let Some(target) =
+                single_embed_target(content_without_frontmatter(body.trim()).trim())
+            {
+                if target.extension().and_then(|ext| ext.to_str()) == Some(extension) {
                     if let Ok(wrapper) = path.strip_prefix(project_root) {
                         wrappers.push((target, wrapper.to_path_buf()));
                     }
@@ -202,6 +280,23 @@ fn collect_d2_wrappers(project_root: &Path, dir: &Path, wrappers: &mut Vec<(Path
             }
         }
     }
+}
+
+fn source_matches_embed(project_root: &Path, source: &Path, target: &Path) -> bool {
+    project_root.join(target) == source
+        || source
+            .parent()
+            .is_some_and(|parent| parent.join(target) == source)
+}
+
+fn content_without_frontmatter(content: &str) -> &str {
+    let Some(rest) = content.strip_prefix("+++") else {
+        return content;
+    };
+    let Some(end) = rest.find("\n+++") else {
+        return content;
+    };
+    &rest[end + 5..]
 }
 
 fn single_embed_target(body: &str) -> Option<PathBuf> {
@@ -332,5 +427,45 @@ mod tests {
 
         let artifact = discover_d2_artifacts(tmp.path()).pop().unwrap();
         assert_eq!(artifact.wrapper_path, Some(PathBuf::from("flow.md")));
+    }
+
+    #[test]
+    fn excalidraw_discovery_pairs_wrapper_and_render_exports() {
+        let tmp = TempDir::new().unwrap();
+        let drawings = tmp.path().join("drawings");
+        fs::create_dir_all(drawings.join("rendered")).unwrap();
+        fs::write(drawings.join("map.excalidraw"), "{}").unwrap();
+        thread::sleep(Duration::from_millis(5));
+        fs::write(drawings.join("rendered/map.svg"), "<svg/>").unwrap();
+        fs::write(
+            drawings.join("map.md"),
+            "+++\ntitle = \"Map\"\ntags = [\"drawing\"]\n+++\n\n![[map.excalidraw]]\n",
+        )
+        .unwrap();
+
+        let artifacts = discover_excalidraw_artifacts(tmp.path());
+        assert_eq!(artifacts.len(), 1);
+        let artifact = &artifacts[0];
+        assert_eq!(artifact.kind, VisualArtifactKind::ExcalidrawDrawing);
+        assert_eq!(artifact.source_path, PathBuf::from("drawings/map.excalidraw"));
+        assert_eq!(artifact.wrapper_path, Some(PathBuf::from("drawings/map.md")));
+        let svg = artifact
+            .renders
+            .iter()
+            .find(|render| render.format == RenderFormat::Svg)
+            .unwrap();
+        assert_eq!(svg.path, PathBuf::from("drawings/rendered/map.svg"));
+        assert_eq!(svg.status, RenderStatus::Current);
+    }
+
+    #[test]
+    fn excalidraw_discovery_ignores_render_outputs_as_primary_artifacts() {
+        let tmp = TempDir::new().unwrap();
+        let drawings = tmp.path().join("drawings");
+        fs::create_dir_all(drawings.join("rendered")).unwrap();
+        fs::write(drawings.join("rendered/map.svg"), "<svg/>").unwrap();
+        fs::write(drawings.join("rendered/map.png"), "png").unwrap();
+
+        assert!(discover_excalidraw_artifacts(tmp.path()).is_empty());
     }
 }
