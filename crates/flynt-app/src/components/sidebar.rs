@@ -9,7 +9,7 @@ use flynt_core::{
     store::ProjectStore,
     visual_artifacts::{
         RenderArtifact, RenderFormat, RenderStatus, VisualArtifactKind, discover_d2_artifacts,
-        discover_excalidraw_artifacts,
+        discover_design_board_artifacts, discover_excalidraw_artifacts,
     },
 };
 use rfd::FileDialog;
@@ -422,6 +422,16 @@ fn add_visual_artifact_files_from_filesystem(root: &mut BTreeMap<String, TreeNod
             root,
         );
     }
+    for artifact in discover_design_board_artifacts(&ctx.project_root()) {
+        add_visual_artifact_file(
+            artifact.title,
+            artifact.source_path,
+            artifact.wrapper_path,
+            artifact.kind,
+            artifact.renders,
+            root,
+        );
+    }
 }
 
 fn add_visual_artifact_file(
@@ -534,8 +544,10 @@ fn render_virtual_artifact_file(
     let title = title.to_string();
     let path = path.to_path_buf();
     let open_path = wrapper_path.unwrap_or(&path).to_path_buf();
-    let svg_status = render_status_for(renders, RenderFormat::Svg);
-    let png_status = render_status_for(renders, RenderFormat::Png);
+    let primary_format = primary_render_format(kind);
+    let secondary_format = secondary_render_format(kind);
+    let primary_status = render_status_for(renders, primary_format);
+    let secondary_status = render_status_for(renders, secondary_format);
     let indent = depth as f32 * 12.0;
     rsx! {
         button {
@@ -550,10 +562,21 @@ fn render_virtual_artifact_file(
             },
             span { class: "tree-file-icon", "{visual_artifact_icon(kind)}" }
             span { class: "tree-name", "{title}" }
-            span { class: "diagram-artifact-badge {svg_status.class()}", title: "SVG {svg_status.label()}", "SVG" }
-            span { class: "diagram-artifact-badge {png_status.class()}", title: "PNG {png_status.label()}", "PNG" }
+            span { class: "diagram-artifact-badge {primary_status.class()}", title: "{primary_format.label()} {primary_status.label()}", "{primary_format.label()}" }
+            span { class: "diagram-artifact-badge {secondary_status.class()}", title: "{secondary_format.label()} {secondary_status.label()}", "{secondary_format.label()}" }
         }
     }
+}
+
+fn primary_render_format(kind: VisualArtifactKind) -> RenderFormat {
+    match kind {
+        VisualArtifactKind::DesignBoard => RenderFormat::Html,
+        _ => RenderFormat::Svg,
+    }
+}
+
+fn secondary_render_format(_kind: VisualArtifactKind) -> RenderFormat {
+    RenderFormat::Png
 }
 
 fn visual_artifact_icon(kind: VisualArtifactKind) -> &'static str {
@@ -624,16 +647,19 @@ fn ensure_visual_artifact_wrapper(
     if project.root.join(open_path).exists() {
         return Some(open_path.to_path_buf());
     }
-    if kind != VisualArtifactKind::ExcalidrawDrawing {
-        return None;
-    }
-
     let wrapper_path = source_path.with_extension("md");
     let file_name = source_path.file_name()?.to_string_lossy();
     let escaped_title = title.replace('"', "\\\"");
-    let content = format!(
-        "+++\ntitle = \"{escaped_title}\"\ntags = [\"drawing\"]\n+++\n\n![[{file_name}]]\n"
-    );
+    let (tag, embed_extension) = match kind {
+        VisualArtifactKind::ExcalidrawDrawing => ("drawing", "excalidraw"),
+        VisualArtifactKind::DesignBoard => ("design_board", "board"),
+        _ => return None,
+    };
+    if source_path.extension().and_then(|ext| ext.to_str()) != Some(embed_extension) {
+        return None;
+    }
+    let content =
+        format!("+++\ntitle = \"{escaped_title}\"\ntags = [\"{tag}\"]\n+++\n\n![[{file_name}]]\n");
     project
         .save_document_content(&wrapper_path, &content)
         .ok()?;
@@ -649,7 +675,7 @@ fn source_content_for_virtual_document(
         VisualArtifactKind::D2Diagram => {
             std::fs::read_to_string(project_root.join(source_path)).ok()
         }
-        VisualArtifactKind::ExcalidrawDrawing => source_path
+        VisualArtifactKind::ExcalidrawDrawing | VisualArtifactKind::DesignBoard => source_path
             .file_name()
             .map(|file_name| format!("![[{}]]\n", file_name.to_string_lossy())),
         _ => None,
