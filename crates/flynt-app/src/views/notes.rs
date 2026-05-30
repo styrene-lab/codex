@@ -2734,7 +2734,8 @@ pub fn NotesView() -> Element {
         let active_path = rendered
             .read()
             .as_ref()
-            .and_then(|r| r.as_ref().map(|t| t.0.clone()));
+            .and_then(|r| r.as_ref().map(|t| t.0.clone()))
+            .or_else(|| doc_data.read().as_ref().map(|(_, path, _, _, _)| path.clone()));
         if active_path.as_ref().is_some_and(|path| is_d2_path(path) || d2_embed_path(&edit_body.read()).is_some()) && *mode.read() == EditMode::Live {
             mode.set(EditMode::Diagram);
         }
