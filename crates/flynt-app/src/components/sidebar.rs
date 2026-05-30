@@ -315,6 +315,7 @@ enum TreeNode {
     Folder {
         name: String,
         children: BTreeMap<String, TreeNode>,
+        default_open: bool,
     },
     VirtualFile {
         title: String,
@@ -371,6 +372,7 @@ fn build_tree(docs: &[DocumentMeta]) -> Element {
                     .or_insert_with(|| TreeNode::Folder {
                         name: part.clone(),
                         children: BTreeMap::new(),
+                        default_open: false,
                     });
                 current = match entry {
                     TreeNode::Folder { children, .. } => children,
@@ -423,7 +425,7 @@ fn add_diagram_file(diagrams_root: &std::path::Path, path: &std::path::Path, roo
     };
     let mut current = root
         .entry("diagrams".into())
-        .or_insert_with(|| TreeNode::Folder { name: "diagrams".into(), children: BTreeMap::new() });
+        .or_insert_with(|| TreeNode::Folder { name: "diagrams".into(), children: BTreeMap::new(), default_open: true });
 
     let parts: Vec<_> = rel.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect();
     if parts.is_empty() {
@@ -433,7 +435,7 @@ fn add_diagram_file(diagrams_root: &std::path::Path, path: &std::path::Path, roo
         current = match current {
             TreeNode::Folder { children, .. } => children
                 .entry(part.clone())
-                .or_insert_with(|| TreeNode::Folder { name: part.clone(), children: BTreeMap::new() }),
+                .or_insert_with(|| TreeNode::Folder { name: part.clone(), children: BTreeMap::new(), default_open: true }),
             _ => return,
         };
     }
@@ -456,7 +458,7 @@ fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix
     rsx! {
         for (_key, node) in entries.iter() {
             match *node {
-                TreeNode::Folder { name, children } => {
+                TreeNode::Folder { name, children, default_open } => {
                     let full_path = if path_prefix.is_empty() {
                         name.clone()
                     } else {
@@ -464,7 +466,7 @@ fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix
                     };
                     rsx! {
                         div { key: "{full_path}",
-                            { render_folder_keyed(name, &full_path, children, depth) }
+                            { render_folder_keyed(name, &full_path, children, depth, *default_open) }
                         }
                     }
                 },
@@ -524,6 +526,7 @@ fn render_folder_keyed(
     path: &str,
     children: &BTreeMap<String, TreeNode>,
     depth: u32,
+    default_open: bool,
 ) -> Element {
     let name = name.to_string();
     let path = path.to_string();
@@ -536,7 +539,7 @@ fn render_folder_keyed(
             .values()
             .any(|child| child.contains_document_id(id))
     });
-    let mut open = use_signal(|| should_open);
+    let mut open = use_signal(|| should_open || default_open);
     use_effect(move || {
         if should_open && !*open.read() {
             *open.write() = true;
