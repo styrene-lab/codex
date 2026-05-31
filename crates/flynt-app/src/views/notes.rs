@@ -3054,6 +3054,20 @@ pub fn NotesView() -> Element {
         };
     };
 
+    // Raw Excalidraw source tabs are editor surfaces, not markdown notes.
+    // Route them through the same full-bleed container used by wrappers so
+    // the editor is not nested inside the note titlebar/scroll layout.
+    if crate::views::excalidraw::is_excalidraw(&rel_path) {
+        is_drawing.set(true);
+        return rsx! {
+            crate::components::TabBar {}
+            div {
+                style: "display:flex;flex-direction:column;flex:1;overflow:hidden;padding:0;min-height:0;height:100%;",
+                crate::views::ExcalidrawView { key: "{rel_path.display()}", path: rel_path }
+            }
+        };
+    }
+
     // Visual artifact wrappers render through a central surface resolver.
     // This preserves the current UX while moving Excalidraw/Design Board
     // dispatch out of ad hoc NotesView body parsing.
