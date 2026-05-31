@@ -3130,6 +3130,10 @@ pub fn NotesView() -> Element {
     // edit_body is seeded by the use_effect that watches rendered,
     // and synced from CM6 on mode switch. No eager write here.
 
+    if crate::views::excalidraw::is_excalidraw(&rel_path) && *inspector_open.peek() {
+        *inspector_open.write() = false;
+    }
+
     let title = title.clone();
     let _body = body.clone();
     let path = rel_path.clone();
