@@ -37,10 +37,6 @@ pub fn ExcalidrawView(path: PathBuf) -> Element {
                 if (np) { np.style.overflow = 'hidden'; np.style.padding = '0'; np.style.display = 'flex'; np.style.flexDirection = 'column'; np.style.flex = '1'; np.style.minHeight = '0'; }
             }
             fixLayout();
-            // Hide tab bar in drawing mode — it eats space and isn't useful
-            var tabBar = document.querySelector('.tab-bar');
-            if (tabBar) tabBar.style.display = 'none';
-
             // Force Excalidraw to re-measure after layout settles
             requestAnimationFrame(function() {
                 fixLayout();
@@ -62,8 +58,6 @@ pub fn ExcalidrawView(path: PathBuf) -> Element {
                 window._excSaveQueue = [];
                 window._excSaveBridgeGeneration = (window._excSaveBridgeGeneration || 0) + 1;
                 window._excalidrawMountedKey = null;
-                var tb = document.querySelector('.tab-bar');
-                if (tb) tb.style.display = '';
                 var mc = document.querySelector('.main-content');
                 if (mc) { mc.style.overflow = ''; mc.style.display = ''; mc.style.flexDirection = ''; }
                 var np = document.querySelector('.notes-pane');

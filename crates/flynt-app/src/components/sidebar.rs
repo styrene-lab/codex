@@ -583,6 +583,7 @@ fn render_virtual_artifact_file(
             },
             span { class: "tree-file-icon", "{visual_artifact_icon(kind)}" }
             span { class: "tree-name", "{title}" }
+            span { class: "diagram-artifact-badge present", title: "{visual_artifact_label(kind)}", "{visual_artifact_short_label(kind)}" }
             span { class: "diagram-artifact-badge {primary_status.class()}", title: "{primary_format.label()} {primary_status.label()}", "{primary_format.label()}" }
             span { class: "diagram-artifact-badge {secondary_status.class()}", title: "{secondary_format.label()} {secondary_status.label()}", "{secondary_format.label()}" }
             if d2_count > 0 {
@@ -682,6 +683,15 @@ fn visual_artifact_label(kind: VisualArtifactKind) -> &'static str {
         VisualArtifactKind::ExcalidrawDrawing => "Excalidraw drawing",
         VisualArtifactKind::DesignBoard => "Design board",
         VisualArtifactKind::Flow => "Flow",
+    }
+}
+
+fn visual_artifact_short_label(kind: VisualArtifactKind) -> &'static str {
+    match kind {
+        VisualArtifactKind::D2Diagram => "D2",
+        VisualArtifactKind::ExcalidrawDrawing => "DRAW",
+        VisualArtifactKind::DesignBoard => "BOARD",
+        VisualArtifactKind::Flow => "FLOW",
     }
 }
 
