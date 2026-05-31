@@ -16,6 +16,16 @@ pub fn open_visual_artifact(
     title: &str,
 ) -> Option<(DocumentId, String)> {
     let project = ctx.project();
+    open_visual_artifact_for_project(&project, kind, source_path, wrapper_path, title)
+}
+
+fn open_visual_artifact_for_project(
+    project: &flynt_store::project::Project,
+    kind: VisualArtifactKind,
+    source_path: &Path,
+    wrapper_path: Option<&Path>,
+    title: &str,
+) -> Option<(DocumentId, String)> {
     let open_path = wrapper_path.unwrap_or(source_path);
     if let Ok(Some(doc)) = project.store.get_document_by_path(open_path) {
         return Some((doc.id, doc.title));
@@ -52,6 +62,14 @@ pub fn execute_artifact_action(
     ctx: &AppContext,
     request: &ArtifactActionRequest,
 ) -> Option<(DocumentId, String)> {
+    let project = ctx.project();
+    execute_artifact_action_for_project(&project, request)
+}
+
+fn execute_artifact_action_for_project(
+    project: &flynt_store::project::Project,
+    request: &ArtifactActionRequest,
+) -> Option<(DocumentId, String)> {
     match request.action {
         ArtifactActionKind::Open => {
             let title = artifact_label(&request.target.source_path);
@@ -61,16 +79,16 @@ pub fn execute_artifact_action(
                 }
                 _ => None,
             };
-            open_visual_artifact(
-                ctx,
+            open_visual_artifact_for_project(
+                project,
                 request.target.kind,
                 &request.target.source_path,
                 wrapper_path.as_deref(),
                 &title,
             )
         }
-        ArtifactActionKind::RevealSource => open_visual_artifact(
-            ctx,
+        ArtifactActionKind::RevealSource => open_visual_artifact_for_project(
+            project,
             request.target.kind,
             &request.target.source_path,
             Some(&request.target.source_path),
@@ -153,4 +171,73 @@ fn artifact_label(path: &Path) -> String {
         .and_then(|name| name.to_str())
         .unwrap_or_else(|| path.to_str().unwrap_or("artifact"))
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn artifact_action_open_repairs_missing_excalidraw_wrapper() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("drawings")).unwrap();
+        std::fs::write(tmp.path().join("drawings/sketch.excalidraw"), "{}").unwrap();
+        let project = flynt_store::project::Project::open(tmp.path()).unwrap();
+
+        let target = VisualArtifactRef {
+            kind: VisualArtifactKind::ExcalidrawDrawing,
+            source_path: PathBuf::from("drawings/sketch.excalidraw"),
+        };
+        let request = ArtifactActionRequest::open(target);
+        let (id, title) = execute_artifact_action_for_project(&project, &request).unwrap();
+
+        assert_eq!(title, "sketch.excalidraw");
+        let wrapper = tmp.path().join("drawings/sketch.md");
+        let wrapper_content = std::fs::read_to_string(wrapper).unwrap();
+        assert!(wrapper_content.contains("tags = [\"drawing\"]"));
+        assert!(wrapper_content.contains("![[sketch.excalidraw]]"));
+        let doc = project
+            .store
+            .get_document_by_path(Path::new("drawings/sketch.md"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(doc.id, id);
+    }
+
+    #[test]
+    fn artifact_action_reveal_source_opens_design_board_source_not_wrapper() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("boards")).unwrap();
+        std::fs::write(
+            tmp.path().join("boards/hero.board"),
+            r#"{"version":1,"theme":"default","grid":{"cols":12,"rows":8,"gap":8},"cells":[]}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.path().join("boards/hero.md"),
+            "+++\ntitle = \"Hero\"\ntags = [\"design_board\"]\n+++\n\n![[hero.board]]\n",
+        )
+        .unwrap();
+        let project = flynt_store::project::Project::open(tmp.path()).unwrap();
+        project
+            .index_file(&tmp.path().join("boards/hero.md"))
+            .unwrap();
+
+        let target = VisualArtifactRef {
+            kind: VisualArtifactKind::DesignBoard,
+            source_path: PathBuf::from("boards/hero.board"),
+        };
+        let request = ArtifactActionRequest::reveal_source(target);
+        let (_id, title) = execute_artifact_action_for_project(&project, &request).unwrap();
+
+        assert_eq!(title, "hero.board");
+        assert!(
+            project
+                .store
+                .get_document_by_path(Path::new("boards/hero.board"))
+                .unwrap()
+                .is_some()
+        );
+    }
 }
