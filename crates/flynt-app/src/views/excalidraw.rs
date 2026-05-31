@@ -90,7 +90,7 @@ pub fn ExcalidrawView(path: PathBuf) -> Element {
             (function() {{
                 const mountKey = {key};
                 function tryMount() {{
-                    const container = document.getElementById(mountKey);
+                    const container = document.getElementById('flynt-excalidraw');
                     if (!container) {{ setTimeout(tryMount, 50); return; }}
                     if (!window.FlyntExcalidraw) {{ setTimeout(tryMount, 100); return; }}
 
