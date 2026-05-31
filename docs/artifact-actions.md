@@ -16,6 +16,12 @@ related: []
 
 Define and implement a shared action model for visual artifacts so D2 diagrams, Excalidraw drawings, Design Boards, and future Flow artifacts expose consistent open, reveal source, render, inspect, patch, dependency, and wrapper-repair behavior. The model should regularize existing scattered behavior rather than replace every surface at once.
 
+## Research
+
+### Visual Artifact Registry struct set and primitive map
+
+Drafted docs/visual-artifact-registry.md. The proposed model introduces VisualArtifactRegistry, VisualArtifactRecord, ArtifactSource, ArtifactWrapper, RenderArtifact, ArtifactSurfaceCapability, ArtifactMetadata, and VisualArtifactEdge. Initial primitive map covers D2, Excalidraw, image formats, external URIs, HTML/CSS components, Design Boards, and Flow graphs. Key relation distinction: wrapper.md WRAPS foo.excalidraw, architecture.md EMBEDS foo.excalidraw, board.board CONSUMES foo.excalidraw, foo.excalidraw RENDERS_TO foo.svg.
+
 ## Decisions
 
 ### Split action model from executor
@@ -29,6 +35,18 @@ Define and implement a shared action model for visual artifacts so D2 diagrams, 
 **Status:** accepted
 
 **Rationale:** The first implementation should migrate existing sidebar and DesignBoard dependency Open behavior onto ArtifactAction rather than introduce new rendering or patching semantics immediately.
+
+### Dogfood Excalidraw through Visual Artifact surfaces
+
+**Status:** accepted
+
+**Rationale:** Excalidraw .excalidraw files are source artifacts and .md wrappers are index/open shims; rendering/editing should be resolved through the Visual Artifact action/surface layer rather than NotesView special cases.
+
+### Introduce VisualArtifactRegistry as the artifact source of truth
+
+**Status:** accepted
+
+**Rationale:** Markdown wrappers remain the standardized document interface, but raw artifact identity, wrappers, renders, consumers, and surfaces should be modeled in a typed registry rather than repeatedly inferred from filesystem conventions and wrapper bodies.
 
 ## Open Questions
 
