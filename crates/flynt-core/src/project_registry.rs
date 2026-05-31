@@ -1,5 +1,9 @@
-use crate::models::{DocumentId, Frontmatter, PublicationConfig, WikiLink};
-use crate::visual_artifacts::{RenderArtifact, VisualArtifact, VisualArtifactKind};
+use crate::models::{Document, DocumentId, Frontmatter, PublicationConfig, WikiLink};
+use crate::store::ProjectStore;
+use crate::visual_artifacts::{
+    discover_d2_artifacts, discover_design_board_artifacts, discover_excalidraw_artifacts,
+    RenderArtifact, VisualArtifact, VisualArtifactKind,
+};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -13,6 +17,154 @@ pub struct ProjectRegistry {
     pub task_refs: TaskRegistryView,
     pub spec_refs: SpecRegistryView,
     pub edges: Vec<ProjectEdge>,
+}
+
+
+impl ProjectRegistry {
+    pub fn discover(project_root: PathBuf, store: &dyn ProjectStore) -> anyhow::Result<Self> {
+        let scope = ProjectScope {
+            project_root: project_root.clone(),
+            project_id: None,
+            sync_identity: None,
+        };
+        let documents = DocumentRegistry::from_store(store)?;
+        let visual_artifacts = VisualArtifactRegistry::discover(&project_root);
+        let edges = build_project_edges(&documents, &visual_artifacts);
+        Ok(Self {
+            scope,
+            documents,
+            visual_artifacts,
+            external_refs: ExternalRefRegistry::default(),
+            raw_assets: RawAssetRegistry::default(),
+            task_refs: TaskRegistryView::default(),
+            spec_refs: SpecRegistryView::default(),
+            edges,
+        })
+    }
+}
+
+impl DocumentRegistry {
+    pub fn from_store(store: &dyn ProjectStore) -> anyhow::Result<Self> {
+        let mut documents = Vec::new();
+        for meta in store.list_documents()? {
+            if let Some(doc) = store.get_document(&meta.id)? {
+                let backlinks = store
+                    .get_backlinks(&meta.id)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|backlink| backlink.id)
+                    .collect();
+                documents.push(DocumentRecord::from_document(doc, backlinks));
+            }
+        }
+        documents.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(Self { documents })
+    }
+
+    pub fn by_path(&self, path: &std::path::Path) -> Option<&DocumentRecord> {
+        self.documents.iter().find(|doc| doc.path == path)
+    }
+}
+
+impl DocumentRecord {
+    pub fn from_document(doc: Document, backlinks: Vec<DocumentId>) -> Self {
+        let kind = classify_document_kind(&doc);
+        Self {
+            id: doc.id,
+            path: doc.path,
+            title: doc.title,
+            aliases: doc.frontmatter.aliases.clone(),
+            tags: doc.frontmatter.tags.clone(),
+            publication: doc.frontmatter.publication.clone(),
+            frontmatter: doc.frontmatter,
+            kind,
+            outgoing: doc.outgoing_links,
+            backlinks,
+        }
+    }
+}
+
+impl VisualArtifactRegistry {
+    pub fn discover(project_root: &std::path::Path) -> Self {
+        let mut artifacts = Vec::new();
+        artifacts.extend(discover_d2_artifacts(project_root).into_iter().map(VisualArtifactRecord::from));
+        artifacts.extend(
+            discover_excalidraw_artifacts(project_root)
+                .into_iter()
+                .map(VisualArtifactRecord::from),
+        );
+        artifacts.extend(
+            discover_design_board_artifacts(project_root)
+                .into_iter()
+                .map(VisualArtifactRecord::from),
+        );
+        artifacts.sort_by(|a, b| a.id.0.cmp(&b.id.0));
+        Self { artifacts }
+    }
+
+    pub fn by_source(&self, path: &std::path::Path) -> Option<&VisualArtifactRecord> {
+        self.artifacts.iter().find(|record| record.artifact.source_path == path)
+    }
+
+    pub fn by_wrapper(&self, path: &std::path::Path) -> Option<&VisualArtifactRecord> {
+        self.artifacts
+            .iter()
+            .find(|record| record.artifact.wrapper_path.as_deref() == Some(path))
+    }
+}
+
+fn classify_document_kind(doc: &Document) -> DocumentKind {
+    if doc.frontmatter.tags.iter().any(|tag| tag == "drawing" || tag == "design_board") {
+        return DocumentKind::ArtifactWrapper;
+    }
+    match doc.frontmatter.kind.as_deref() {
+        Some("task") => DocumentKind::Task,
+        Some("spec") | Some("openspec_scenario") => DocumentKind::Spec,
+        Some("design_node") => DocumentKind::DesignNode,
+        Some("generated_index") => DocumentKind::GeneratedIndex,
+        _ => DocumentKind::Note,
+    }
+}
+
+fn build_project_edges(
+    documents: &DocumentRegistry,
+    visual_artifacts: &VisualArtifactRegistry,
+) -> Vec<ProjectEdge> {
+    let mut edges = Vec::new();
+    for artifact in &visual_artifacts.artifacts {
+        if let Some(wrapper_path) = &artifact.artifact.wrapper_path {
+            if let Some(wrapper_doc) = documents.by_path(wrapper_path) {
+                edges.push(ProjectEdge {
+                    from: ProjectNodeRef::Document(wrapper_doc.id.clone()),
+                    to: ProjectNodeRef::VisualArtifact(artifact.id.clone()),
+                    relation: ProjectRelation::Wraps,
+                    source: EdgeSource::ArtifactDiscovery,
+                });
+            }
+        }
+        for render in &artifact.artifact.renders {
+            edges.push(ProjectEdge {
+                from: ProjectNodeRef::VisualArtifact(artifact.id.clone()),
+                to: ProjectNodeRef::ProjectPath(render.path.clone()),
+                relation: ProjectRelation::RendersTo,
+                source: EdgeSource::ArtifactDiscovery,
+            });
+        }
+    }
+
+    for doc in &documents.documents {
+        for link in &doc.outgoing {
+            edges.push(ProjectEdge {
+                from: ProjectNodeRef::Document(doc.id.clone()),
+                to: ProjectNodeRef::ProjectPath(PathBuf::from(&link.target)),
+                relation: ProjectRelation::LinksTo,
+                source: EdgeSource::MarkdownWikilink {
+                    path: doc.path.clone(),
+                },
+            });
+        }
+    }
+    edges
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
