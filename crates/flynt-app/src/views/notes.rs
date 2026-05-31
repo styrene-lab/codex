@@ -3075,6 +3075,7 @@ pub fn NotesView() -> Element {
         if abs.exists() {
             is_drawing.set(true);
             return rsx! {
+                crate::components::TabBar {}
                 div {
                     style: "display:flex;flex-direction:column;flex:1;overflow:hidden;padding:0;min-height:0;height:100%;",
                     crate::views::ExcalidrawView { key: "{excalidraw_path.display()}", path: excalidraw_path }
@@ -3110,6 +3111,7 @@ pub fn NotesView() -> Element {
         if abs.exists() {
             is_drawing.set(true);
             return rsx! {
+                crate::components::TabBar {}
                 div {
                     style: "display:flex;flex-direction:column;flex:1;overflow:hidden;padding:0;min-height:0;height:100%;",
                     crate::views::DesignBoardView { path: design_board_path }
