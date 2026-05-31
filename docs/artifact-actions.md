@@ -48,6 +48,12 @@ Drafted docs/visual-artifact-registry.md. The proposed model introduces VisualAr
 
 **Rationale:** Markdown wrappers remain the standardized document interface, but raw artifact identity, wrappers, renders, consumers, and surfaces should be modeled in a typed registry rather than repeatedly inferred from filesystem conventions and wrapper bodies.
 
+### Scope VisualArtifactRegistry to one open project root
+
+**Status:** accepted
+
+**Rationale:** Artifact identity, wrapper paths, renders, consumers, and sync semantics must be bounded to the currently open Flynt project/vault/repo root. Registry records should store project-relative paths and never merge artifacts across roots.
+
 ## Open Questions
 
 - [assumption] The initial action executor only needs to preserve existing Open behavior and can defer Render/Inspect/Patch execution to later phases.

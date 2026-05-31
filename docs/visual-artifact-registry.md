@@ -34,10 +34,107 @@ That works for simple 1:1 drawings, but it breaks down when:
 - external URIs are consumed by diagrams or notes
 - HTML/CSS components need to be treated as reusable visual artifacts
 
+
+## Project-root boundary and sync semantics
+
+A `VisualArtifactRegistry` is scoped to exactly one open Flynt project/vault/repo root. It must never merge or compare artifact records across different roots unless an explicit cross-project feature is later designed.
+
+```rust
+pub struct VisualArtifactRegistry {
+    pub scope: ArtifactRegistryScope,
+    pub artifacts: Vec<VisualArtifactRecord>,
+    pub edges: Vec<VisualArtifactEdge>,
+}
+
+pub struct ArtifactRegistryScope {
+    /// Absolute canonical path of the open Flynt project/vault/repo root.
+    /// Used only as the runtime boundary, not as durable synced identity.
+    pub project_root: PathBuf,
+
+    /// Stable local project identifier when available from Flynt project metadata.
+    pub project_id: Option<String>,
+
+    /// Optional VCS/workspace identity for sync diagnostics, never for path resolution.
+    pub sync_identity: Option<ArtifactSyncIdentity>,
+}
+
+pub struct ArtifactSyncIdentity {
+    pub vcs_kind: Option<String>,
+    pub remote_url: Option<String>,
+    pub branch: Option<String>,
+    pub worktree_root: Option<PathBuf>,
+}
+```
+
+### Path rules
+
+Registry records store project-relative paths for durable artifact identity:
+
+```text
+source.path = drawings/foo.excalidraw
+wrapper.path = drawings/foo.md
+render.path = drawings/foo.svg
+```
+
+Absolute paths are allowed only in `ArtifactRegistryScope.project_root` and transient runtime caches. They must not be written into synced metadata, wrappers, notes, or artifact records intended to survive checkout relocation.
+
+All path resolution must follow:
+
+```text
+absolute_path = registry.scope.project_root.join(project_relative_path)
+```
+
+No `..` segments, absolute source paths, symlink escapes, or paths outside `project_root` are valid registry entries. External references must use `ArtifactSource::ExternalUri`, not fake project paths.
+
+### Sync implications
+
+The registry is a derived index over files in the open project root. For initial implementation it should be rebuilt from project files and the document store, not synced as an authoritative database.
+
+This matters because:
+
+- multiple clones of the same repo have different absolute roots
+- one machine may have stale render sidecars until export/render runs
+- wrapper repair must create files inside the current project root only
+- artifact ids must remain stable across clones if paths are unchanged
+- source, wrapper, and render sidecars are normal sync participants
+- external URI artifacts are references, not copied project files
+
+### Artifact id stability
+
+Initial deterministic id rule:
+
+```text
+artifact_id = kind + ":" + normalized_project_relative_source
+```
+
+Examples:
+
+```text
+d2:diagrams/system.d2
+excalidraw:drawings/foo.excalidraw
+image:assets/logo.svg
+external-uri:https://example.com/spec
+component:components/button.component.html
+```
+
+This keeps ids portable across machines while remaining bounded to one project. If a file moves, it is a new artifact unless a future move/rename tracker records lineage.
+
+### Multi-root non-goal
+
+Do not let one running registry span:
+
+- multiple Flynt projects
+- nested git worktrees as independent roots
+- user-global asset libraries
+- external URI caches shared across projects
+
+Those may become separate registries or federated registry views later. The first registry is strictly one open root.
+
 ## Core model
 
 ```rust
 pub struct VisualArtifactRegistry {
+    pub scope: ArtifactRegistryScope,
     pub artifacts: Vec<VisualArtifactRecord>,
     pub edges: Vec<VisualArtifactEdge>,
 }
