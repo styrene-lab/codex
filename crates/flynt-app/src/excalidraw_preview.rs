@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 pub fn render_excalidraw_preview_html(project_root: &Path, source_path: &Path) -> String {
     let source_abs = project_root.join(source_path);
@@ -44,6 +44,7 @@ fn escape_html(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     use tempfile::TempDir;
 
     #[test]
