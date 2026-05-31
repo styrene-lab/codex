@@ -3066,10 +3066,9 @@ pub fn NotesView() -> Element {
         is_drawing.set(true);
         return match surface {
             crate::visual_artifact_surface::VisualArtifactSurface::ExcalidrawPreview { source_path } => {
-                let html = render_html_with_store(
-                    &format!("![[{}]]\n", source_path.file_name().and_then(|name| name.to_str()).unwrap_or("drawing.excalidraw")),
-                    Some(&*ctx.project().store),
-                    Some(&ctx.project_root()),
+                let html = crate::excalidraw_preview::render_excalidraw_preview_html(
+                    &ctx.project_root(),
+                    &source_path,
                 );
                 rsx! {
                     crate::components::TabBar {}
