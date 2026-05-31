@@ -354,8 +354,16 @@ impl TreeNode {
 
 /// Build a fully nested tree from flat document list using all path components.
 fn build_tree(docs: &[DocumentMeta]) -> Element {
+    let ctx = use_context::<AppContext>();
+    let visual_artifacts = discover_project_visual_artifacts(&ctx.project_root());
     let mut root: BTreeMap<String, TreeNode> = BTreeMap::new();
     for doc in docs {
+        if visual_artifacts
+            .iter()
+            .any(|artifact| artifact.wrapper_path.as_ref() == Some(&doc.path))
+        {
+            continue;
+        }
         let components: Vec<_> = doc
             .path
             .components()
@@ -397,39 +405,32 @@ fn build_tree(docs: &[DocumentMeta]) -> Element {
                 .or_insert(TreeNode::File(doc.clone()));
         }
     }
-    add_visual_artifact_files_from_filesystem(&mut root);
+    add_visual_artifact_files(&ctx.project_root(), visual_artifacts, &mut root);
 
     rsx! { { render_tree_level(&root, 0, "") } }
 }
 
-fn add_visual_artifact_files_from_filesystem(root: &mut BTreeMap<String, TreeNode>) {
-    let ctx = use_context::<AppContext>();
-    for artifact in discover_d2_artifacts(&ctx.project_root()) {
-        add_visual_artifact_file(
-            artifact.title,
-            artifact.source_path,
-            artifact.wrapper_path,
-            artifact.kind,
-            artifact.renders,
-            Vec::new(),
-            root,
-        );
-    }
-    for artifact in discover_excalidraw_artifacts(&ctx.project_root()) {
-        add_visual_artifact_file(
-            artifact.title,
-            artifact.source_path,
-            artifact.wrapper_path,
-            artifact.kind,
-            artifact.renders,
-            Vec::new(),
-            root,
-        );
-    }
-    let project_root = ctx.project_root();
-    for artifact in discover_design_board_artifacts(&project_root) {
-        let consumes =
-            discover_design_board_consumed_artifacts(&project_root, &artifact.source_path);
+fn discover_project_visual_artifacts(
+    project_root: &std::path::Path,
+) -> Vec<flynt_core::visual_artifacts::VisualArtifact> {
+    let mut artifacts = Vec::new();
+    artifacts.extend(discover_d2_artifacts(project_root));
+    artifacts.extend(discover_excalidraw_artifacts(project_root));
+    artifacts.extend(discover_design_board_artifacts(project_root));
+    artifacts
+}
+
+fn add_visual_artifact_files(
+    project_root: &std::path::Path,
+    artifacts: Vec<flynt_core::visual_artifacts::VisualArtifact>,
+    root: &mut BTreeMap<String, TreeNode>,
+) {
+    for artifact in artifacts {
+        let consumes = if artifact.kind == VisualArtifactKind::DesignBoard {
+            discover_design_board_consumed_artifacts(project_root, &artifact.source_path)
+        } else {
+            Vec::new()
+        };
         add_visual_artifact_file(
             artifact.title,
             artifact.source_path,
