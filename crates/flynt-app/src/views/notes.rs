@@ -399,7 +399,7 @@ fn content_without_frontmatter(content: &str) -> &str {
 
 fn d2_embed_path(content: &str) -> Option<String> {
     let trimmed = content_without_frontmatter(content).trim();
-    if !trimmed.starts_with("![[") || !trimmed.ends_with("]]" ) {
+    if !trimmed.starts_with("![[") || !trimmed.ends_with("]]") {
         return None;
     }
     let inner = &trimmed[3..trimmed.len() - 2];
@@ -407,12 +407,18 @@ fn d2_embed_path(content: &str) -> Option<String> {
     file_ref.ends_with(".d2").then(|| file_ref.to_string())
 }
 
-fn resolve_d2_path(root: &std::path::Path, wrapper_path: &std::path::Path, content: &str) -> std::path::PathBuf {
+fn resolve_d2_path(
+    root: &std::path::Path,
+    wrapper_path: &std::path::Path,
+    content: &str,
+) -> std::path::PathBuf {
     if is_d2_path(wrapper_path) {
         return root.join(wrapper_path);
     }
     if let Some(embed) = d2_embed_path(content) {
-        let wrapper_dir = wrapper_path.parent().unwrap_or_else(|| std::path::Path::new(""));
+        let wrapper_dir = wrapper_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new(""));
         let candidates = [
             root.join(wrapper_dir).join(&embed),
             root.join(&embed),
@@ -2735,8 +2741,17 @@ pub fn NotesView() -> Element {
             .read()
             .as_ref()
             .and_then(|r| r.as_ref().map(|t| t.0.clone()))
-            .or_else(|| doc_data.read().as_ref().map(|(_, path, _, _, _)| path.clone()));
-        if active_path.as_ref().is_some_and(|path| is_d2_path(path) || d2_embed_path(&edit_body.read()).is_some()) && *mode.read() == EditMode::Live {
+            .or_else(|| {
+                doc_data
+                    .read()
+                    .as_ref()
+                    .map(|(_, path, _, _, _)| path.clone())
+            });
+        if active_path
+            .as_ref()
+            .is_some_and(|path| is_d2_path(path) || d2_embed_path(&edit_body.read()).is_some())
+            && *mode.read() == EditMode::Live
+        {
             mode.set(EditMode::Diagram);
         }
     }
@@ -3062,7 +3077,7 @@ pub fn NotesView() -> Element {
             return rsx! {
                 div {
                     style: "display:flex;flex-direction:column;flex:1;overflow:hidden;padding:0;min-height:0;height:100%;",
-                    crate::views::ExcalidrawView { path: excalidraw_path }
+                    crate::views::ExcalidrawView { key: "{excalidraw_path.display()}", path: excalidraw_path }
                 }
             };
         }
@@ -3391,7 +3406,7 @@ pub fn NotesView() -> Element {
                     || crate::views::flow::is_flow(&check_path);
                 rsx! {
                 if crate::views::excalidraw::is_excalidraw(&check_path) {
-                    crate::views::ExcalidrawView { path: rel_path.clone() }
+                    crate::views::ExcalidrawView { key: "{rel_path.display()}", path: rel_path.clone() }
                 } else if crate::views::flow::is_flow(&check_path) {
                     crate::views::FlowView { path: rel_path.clone() }
                 }
