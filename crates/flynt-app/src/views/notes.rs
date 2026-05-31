@@ -2510,10 +2510,14 @@ pub fn NotesView() -> Element {
     use_effect(move || {
         let _ver = *render_ver.read();
         let selected_id = tab_state.read().active_id().cloned();
+        let previous_doc_id = doc_data.peek().as_ref().map(|(id, _, _, _, _)| id.clone());
         let Some(doc_id) = selected_id else {
             *doc_data.write() = None;
             return;
         };
+        if previous_doc_id.as_ref() != Some(&doc_id) {
+            *doc_data.write() = None;
+        }
         // Synchronous SQLite read — <1ms for any document
         let project = ctx_res.project();
         match project.store.get_document(&doc_id) {
