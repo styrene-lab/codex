@@ -79,17 +79,18 @@ pub fn ExcalidrawView(path: PathBuf) -> Element {
 
     // Initialize Excalidraw when component mounts — bundle is loaded eagerly in app.rs
     let path_for_save = path.clone();
+    let mount_key_for_js = mount_key.clone();
     use_effect(move || {
         let data = content.read().clone();
         let escaped = serde_json::to_string(&data).unwrap_or("\"{}\"".into());
-        let key = serde_json::to_string(&mount_key).unwrap_or("\"\"".into());
+        let key = serde_json::to_string(&mount_key_for_js).unwrap_or("\"\"".into());
 
         let js = format!(
             r#"
             (function() {{
                 const mountKey = {key};
                 function tryMount() {{
-                    const container = document.getElementById('flynt-excalidraw');
+                    const container = document.getElementById(mountKey);
                     if (!container) {{ setTimeout(tryMount, 50); return; }}
                     if (!window.FlyntExcalidraw) {{ setTimeout(tryMount, 100); return; }}
 
@@ -335,7 +336,8 @@ pub fn ExcalidrawView(path: PathBuf) -> Element {
                     }
                 }
             div {
-                id: "flynt-excalidraw",
+                key: "{mount_key}",
+                id: "{mount_key}",
                 class: "excalidraw-container",
                 style: "flex:1;min-height:0;width:100%;",
             }
