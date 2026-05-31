@@ -337,7 +337,7 @@ pub fn ExcalidrawView(path: PathBuf) -> Element {
                 }
             div {
                 key: "{mount_key}",
-                id: "{mount_key}",
+                id: "flynt-excalidraw",
                 class: "excalidraw-container",
                 style: "flex:1;min-height:0;width:100%;",
             }
