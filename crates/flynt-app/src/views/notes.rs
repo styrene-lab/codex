@@ -3054,74 +3054,32 @@ pub fn NotesView() -> Element {
         };
     };
 
-    // If this document is an excalidraw wrapper, render ExcalidrawView directly.
-    // Two acceptance paths:
-    //  (1) body is exactly `![[X.excalidraw]]` (the normal wrapper shape), or
-    //  (2) frontmatter has `tags = [..., "drawing", ...]` AND a sibling
-    //      `<stem>.excalidraw` file exists. (2) recovers from wrapper body
-    //      corruption without hiding the user's actual drawing data.
-    let excalidraw_file_from_body = crate::views::excalidraw::excalidraw_embed_path(&body);
-    let excalidraw_file_from_recovery = if excalidraw_file_from_body.is_none()
-        && frontmatter.tags.iter().any(|tag| tag == "drawing")
-    {
-        rel_path
-            .file_stem()
-            .map(|s| format!("{}.excalidraw", s.to_string_lossy()))
-    } else {
-        None
-    };
-    if let Some(excalidraw_file) = excalidraw_file_from_body.or(excalidraw_file_from_recovery) {
-        let project_root = ctx.project_root();
-        // Resolve the .excalidraw file relative to the document's directory
-        let doc_dir = rel_path.parent().unwrap_or(std::path::Path::new(""));
-        let excalidraw_path = doc_dir.join(&excalidraw_file);
-        let abs = project_root.join(&excalidraw_path);
-        if abs.exists() {
-            is_drawing.set(true);
-            return rsx! {
+    // Visual artifact wrappers render through a central surface resolver.
+    // This preserves the current UX while moving Excalidraw/Design Board
+    // dispatch out of ad hoc NotesView body parsing.
+    if let Some(surface) = crate::visual_artifact_surface::resolve_wrapper_surface(
+        &ctx.project_root(),
+        &rel_path,
+        &body,
+        &frontmatter,
+    ) {
+        is_drawing.set(true);
+        return match surface {
+            crate::visual_artifact_surface::VisualArtifactSurface::ExcalidrawEditor { source_path } => rsx! {
                 crate::components::TabBar {}
                 div {
                     style: "display:flex;flex-direction:column;flex:1;overflow:hidden;padding:0;min-height:0;height:100%;",
-                    crate::views::ExcalidrawView { key: "{excalidraw_path.display()}", path: excalidraw_path }
+                    crate::views::ExcalidrawView { key: "{source_path.display()}", path: source_path }
                 }
-            };
-        }
-    }
-
-    // If this document is a design board wrapper, render DesignBoardView directly.
-    // Two acceptance paths:
-    //  (1) body is exactly `![[X.board]]` (the normal wrapper shape), or
-    //  (2) frontmatter has `tags = [..., "design-board", ...]` AND a sibling
-    //      `<stem>.board` file exists. (1) is the happy path; (2) is a
-    //      recovery for cases where another bug has stomped the body but
-    //      the user's design data is still intact on disk — better to
-    //      surface the design board than dump them into an empty note view.
-    let design_board_file_from_body = crate::views::design_board::design_board_embed_path(&body);
-    let design_board_file_from_recovery = if design_board_file_from_body.is_none()
-        && crate::views::design_board::frontmatter_has_design_board_tag(&body)
-    {
-        rel_path
-            .file_stem()
-            .map(|s| format!("{}.board", s.to_string_lossy()))
-    } else {
-        None
-    };
-    if let Some(design_board_file) = design_board_file_from_body.or(design_board_file_from_recovery)
-    {
-        let project_root = ctx.project_root();
-        let doc_dir = rel_path.parent().unwrap_or(std::path::Path::new(""));
-        let design_board_path = doc_dir.join(&design_board_file);
-        let abs = project_root.join(&design_board_path);
-        if abs.exists() {
-            is_drawing.set(true);
-            return rsx! {
+            },
+            crate::visual_artifact_surface::VisualArtifactSurface::DesignBoard { source_path } => rsx! {
                 crate::components::TabBar {}
                 div {
                     style: "display:flex;flex-direction:column;flex:1;overflow:hidden;padding:0;min-height:0;height:100%;",
-                    crate::views::DesignBoardView { path: design_board_path }
+                    crate::views::DesignBoardView { path: source_path }
                 }
-            };
-        }
+            },
+        };
     }
 
     // Clear drawing mode flag — but ONLY if it was set. Dioxus signals

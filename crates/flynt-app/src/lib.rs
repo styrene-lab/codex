@@ -25,3 +25,4 @@ pub mod theme;
 pub mod ui_state;
 pub mod views;
 pub mod visual_artifact_open;
+pub mod visual_artifact_surface;
