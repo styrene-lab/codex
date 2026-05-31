@@ -737,6 +737,34 @@
   color:          var(--muted-foreground);
   font-style:     italic;
 }
+
+/* Visual artifact preview surface for Excalidraw wrappers. This is a
+   read/preview pane, not a clickable markdown embed, so fit the SVG to
+   the available viewport instead of letting huge exported dimensions
+   create a cropped document. */
+.excalidraw-artifact-preview {
+  height:         100%;
+  min-height:     0;
+  padding:        var(--space-3);
+  background:     var(--background);
+  overflow:       auto;
+}
+.excalidraw-artifact-preview-frame {
+  min-height:     calc(100vh - 210px);
+  display:        flex;
+  align-items:    flex-start;
+  justify-content:center;
+  padding:        var(--space-3);
+  background:     var(--surface);
+  border:         1px solid var(--border);
+  border-radius:  var(--radius);
+}
+.excalidraw-artifact-preview svg {
+  display:        block;
+  width:          100%;
+  max-width:      100%;
+  height:         auto;
+}
 .d2-embed {
   margin:         1em 0;
   padding:        var(--space-3);

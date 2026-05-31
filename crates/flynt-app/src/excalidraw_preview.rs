@@ -12,7 +12,7 @@ pub fn render_excalidraw_preview_html(project_root: &Path, source_path: &Path) -
     if svg_abs.exists() {
         return match std::fs::read_to_string(&svg_abs) {
             Ok(svg) => format!(
-                "<div class=\"excalidraw-artifact-preview\" data-drawing=\"{escaped_title}\">{svg}</div>"
+                "<div class=\"excalidraw-artifact-preview\" data-drawing=\"{escaped_title}\"><div class=\"excalidraw-artifact-preview-frame\">{svg}</div></div>"
             ),
             Err(_) => preview_placeholder(&escaped_title, "SVG render could not be read"),
         };
@@ -60,6 +60,7 @@ mod tests {
         );
 
         assert!(html.contains("<svg></svg>"));
+        assert!(html.contains("excalidraw-artifact-preview-frame"));
         assert!(!html.contains("project://"));
     }
 
