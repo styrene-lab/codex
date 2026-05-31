@@ -54,6 +54,12 @@ Drafted docs/visual-artifact-registry.md. The proposed model introduces VisualAr
 
 **Rationale:** Artifact identity, wrapper paths, renders, consumers, and sync semantics must be bounded to the currently open Flynt project/vault/repo root. Registry records should store project-relative paths and never merge artifacts across roots.
 
+### Preserve Obsidian-compatible plaintext portability as a hard constraint
+
+**Status:** accepted
+
+**Rationale:** Flynt should be a superset of Obsidian. Structured project registry and visual artifact features must add semantics without forcing users to abandon plaintext markdown, project-relative portability, local-first sync, or human-editable files.
+
 ## Open Questions
 
 - [assumption] The initial action executor only needs to preserve existing Open behavior and can defer Render/Inspect/Patch execution to later phases.
