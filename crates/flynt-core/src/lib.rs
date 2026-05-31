@@ -1,6 +1,6 @@
 pub mod conflict;
-pub mod daemon;
 pub mod d2_contract;
+pub mod daemon;
 pub mod daily;
 pub mod datum;
 pub mod design_board;
@@ -16,6 +16,7 @@ pub mod manifest;
 pub mod models;
 pub mod omegon_deployment;
 pub mod parser;
+pub mod project_registry;
 pub mod providers;
 pub mod query;
 pub mod seal;
