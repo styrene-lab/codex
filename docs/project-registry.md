@@ -116,6 +116,34 @@ pub enum DocumentKind {
 
 Documents remain markdown/plaintext. Their semantics include frontmatter, wikilinks, embeds, publication state, aliases, tags, and typed relationships.
 
+
+## Image and visual media dependency policy
+
+Core artifact/image features must not require users to install system image libraries or external CLI tools. Default Flynt builds should work from Cargo alone on normal developer machines.
+
+Accepted default stack direction:
+
+- `image` for raster decode/encode compatibility
+- `fast_image_resize` for thumbnails/resizing
+- `resvg` / `usvg` / `tiny-skia` for self-contained SVG rasterization
+- `svg` for simple SVG generation/manipulation
+
+Avoid as default dependencies:
+
+- ImageMagick / GraphicsMagick
+- system `librsvg`, cairo, pango stacks
+- required native `libwebp` bindings
+- shelling out for normal preview/render/import/export behavior
+
+Format policy:
+
+- SVG is the canonical vector/open diagram image format.
+- WebP is the preferred future raster cache/export target when pure-Rust encoding is reliable.
+- PNG is an acceptable fallback raster sidecar/cache format until WebP is boring and system-lib-free.
+- PNG/JPEG/GIF remain compatibility import/export/display formats, not preferred internal primitives.
+
+Native/system-library bindings may exist only behind optional features and must not be required by the default app.
+
 ## Raw asset registry
 
 `RawAssetRegistry` is for plaintext or open web-native assets that are useful inside Flynt but are not semantic documents.

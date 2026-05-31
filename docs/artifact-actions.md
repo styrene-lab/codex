@@ -60,6 +60,12 @@ Drafted docs/visual-artifact-registry.md. The proposed model introduces VisualAr
 
 **Rationale:** Flynt should be a superset of Obsidian. Structured project registry and visual artifact features must add semantics without forcing users to abandon plaintext markdown, project-relative portability, local-first sync, or human-editable files.
 
+### Use pure Rust image stack and avoid required system libraries
+
+**Status:** accepted
+
+**Rationale:** Core preview/render/import/export behavior must work from Cargo builds without users installing system image libraries. WebP can remain the preferred raster target conceptually, but PNG fallback is acceptable until pure-Rust WebP encoding is proven reliable.
+
 ## Open Questions
 
 - [assumption] The initial action executor only needs to preserve existing Open behavior and can defer Render/Inspect/Patch execution to later phases.
