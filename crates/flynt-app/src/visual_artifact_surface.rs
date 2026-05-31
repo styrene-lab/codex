@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VisualArtifactSurface {
+    ExcalidrawPreview { source_path: PathBuf },
     ExcalidrawEditor { source_path: PathBuf },
     DesignBoard { source_path: PathBuf },
 }
@@ -67,7 +68,7 @@ fn resolve_sibling_artifact(
         return None;
     }
     match kind {
-        VisualArtifactKind::ExcalidrawDrawing => Some(VisualArtifactSurface::ExcalidrawEditor { source_path }),
+        VisualArtifactKind::ExcalidrawDrawing => Some(VisualArtifactSurface::ExcalidrawPreview { source_path }),
         VisualArtifactKind::DesignBoard => Some(VisualArtifactSurface::DesignBoard { source_path }),
         _ => None,
     }
@@ -86,7 +87,7 @@ mod tests {
     }
 
     #[test]
-    fn resolves_excalidraw_wrapper_to_editor_surface() {
+    fn resolves_excalidraw_wrapper_to_preview_surface() {
         let tmp = TempDir::new().unwrap();
         std::fs::create_dir_all(tmp.path().join("drawings")).unwrap();
         std::fs::write(tmp.path().join("drawings/sketch.excalidraw"), "{}").unwrap();
@@ -100,7 +101,7 @@ mod tests {
 
         assert_eq!(
             surface,
-            Some(VisualArtifactSurface::ExcalidrawEditor {
+            Some(VisualArtifactSurface::ExcalidrawPreview {
                 source_path: PathBuf::from("drawings/sketch.excalidraw")
             })
         );
@@ -121,7 +122,7 @@ mod tests {
 
         assert_eq!(
             surface,
-            Some(VisualArtifactSurface::ExcalidrawEditor {
+            Some(VisualArtifactSurface::ExcalidrawPreview {
                 source_path: PathBuf::from("drawings/sketch.excalidraw")
             })
         );

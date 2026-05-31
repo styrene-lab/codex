@@ -71,7 +71,7 @@ fn execute_artifact_action_for_project(
     request: &ArtifactActionRequest,
 ) -> Option<(DocumentId, String)> {
     match request.action {
-        ArtifactActionKind::Open | ArtifactActionKind::Edit => {
+        ArtifactActionKind::Open => {
             let title = artifact_label(&request.target.source_path);
             let wrapper_path = match (request.target.kind, request.policy.prefer_wrapper) {
                 (VisualArtifactKind::ExcalidrawDrawing | VisualArtifactKind::DesignBoard, true) => {
@@ -87,6 +87,13 @@ fn execute_artifact_action_for_project(
                 &title,
             )
         }
+        ArtifactActionKind::Edit => open_visual_artifact_for_project(
+            project,
+            request.target.kind,
+            &request.target.source_path,
+            Some(&request.target.source_path),
+            &artifact_label(&request.target.source_path),
+        ),
         ArtifactActionKind::RevealSource => open_visual_artifact_for_project(
             project,
             request.target.kind,

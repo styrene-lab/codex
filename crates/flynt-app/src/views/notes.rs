@@ -3065,6 +3065,42 @@ pub fn NotesView() -> Element {
     ) {
         is_drawing.set(true);
         return match surface {
+            crate::visual_artifact_surface::VisualArtifactSurface::ExcalidrawPreview { source_path } => {
+                let html = render_html_with_store(
+                    &format!("![[{}]]\n", source_path.file_name().and_then(|name| name.to_str()).unwrap_or("drawing.excalidraw")),
+                    Some(&*ctx.project().store),
+                    Some(&ctx.project_root()),
+                );
+                rsx! {
+                    crate::components::TabBar {}
+                    div { class: "notes-workspace",
+                        div { class: "notes-pane",
+                            div { class: "note-titlebar",
+                                h2 { class: "note-title", "{title}" }
+                                div { class: "note-actions",
+                                    button {
+                                        class: "btn btn-ghost",
+                                        onclick: move |_| {
+                                            let target = flynt_core::visual_artifacts::VisualArtifactRef {
+                                                kind: flynt_core::visual_artifacts::VisualArtifactKind::ExcalidrawDrawing,
+                                                source_path: source_path.clone(),
+                                            };
+                                            let request = flynt_core::visual_artifacts::ArtifactActionRequest::edit(target);
+                                            if let Some((id, title)) = crate::visual_artifact_open::execute_artifact_action(&ctx, &request) {
+                                                tab_state.write().open(id, title);
+                                            }
+                                        },
+                                        "Edit"
+                                    }
+                                }
+                            }
+                            div { class: "notes-scroll",
+                                div { class: "markdown-preview", dangerous_inner_html: "{html}" }
+                            }
+                        }
+                    }
+                }
+            }
             crate::visual_artifact_surface::VisualArtifactSurface::ExcalidrawEditor { source_path } => rsx! {
                 crate::components::TabBar {}
                 div {
