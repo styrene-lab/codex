@@ -2,7 +2,9 @@ use crate::bootstrap::AppContext;
 use flynt_core::{
     models::{Document, DocumentId, Frontmatter},
     store::ProjectStore,
-    visual_artifacts::{VisualArtifactKind, VisualArtifactRef},
+    visual_artifacts::{
+        ArtifactActionKind, ArtifactActionRequest, VisualArtifactKind, VisualArtifactRef,
+    },
 };
 use std::path::{Path, PathBuf};
 
@@ -44,6 +46,26 @@ pub fn open_visual_artifact(
     };
     project.store.save_document(&doc).ok()?;
     Some((id, title.to_string()))
+}
+
+pub fn execute_artifact_action(
+    ctx: &AppContext,
+    request: &ArtifactActionRequest,
+) -> Option<(DocumentId, String)> {
+    match request.action {
+        ArtifactActionKind::Open => open_visual_artifact_ref(ctx, &request.target),
+        ArtifactActionKind::RevealSource => open_visual_artifact(
+            ctx,
+            request.target.kind,
+            &request.target.source_path,
+            Some(&request.target.source_path),
+            &artifact_label(&request.target.source_path),
+        ),
+        ArtifactActionKind::ShowDependencies
+        | ArtifactActionKind::ShowConsumers
+        | ArtifactActionKind::Render(_)
+        | ArtifactActionKind::Inspect => None,
+    }
 }
 
 pub fn open_visual_artifact_ref(

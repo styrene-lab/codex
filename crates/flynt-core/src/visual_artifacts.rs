@@ -76,6 +76,62 @@ pub struct VisualArtifactRef {
     pub source_path: PathBuf,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactActionRequest {
+    pub target: VisualArtifactRef,
+    pub action: ArtifactActionKind,
+    #[serde(default)]
+    pub policy: ArtifactActionPolicy,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ArtifactActionKind {
+    Open,
+    RevealSource,
+    ShowDependencies,
+    ShowConsumers,
+    Render(RenderFormat),
+    Inspect,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactActionPolicy {
+    pub repair_wrapper: bool,
+    pub prefer_wrapper: bool,
+    pub allow_destructive: bool,
+}
+
+impl Default for ArtifactActionPolicy {
+    fn default() -> Self {
+        Self {
+            repair_wrapper: true,
+            prefer_wrapper: true,
+            allow_destructive: false,
+        }
+    }
+}
+
+impl ArtifactActionRequest {
+    pub fn open(target: VisualArtifactRef) -> Self {
+        Self {
+            target,
+            action: ArtifactActionKind::Open,
+            policy: ArtifactActionPolicy::default(),
+        }
+    }
+
+    pub fn reveal_source(target: VisualArtifactRef) -> Self {
+        Self {
+            target,
+            action: ArtifactActionKind::RevealSource,
+            policy: ArtifactActionPolicy {
+                prefer_wrapper: false,
+                ..ArtifactActionPolicy::default()
+            },
+        }
+    }
+}
+
 pub fn render_status(source: &Path, render: &Path) -> RenderStatus {
     if !render.exists() {
         return RenderStatus::Missing;
