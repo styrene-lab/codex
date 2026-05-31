@@ -8,8 +8,8 @@ use flynt_core::{
     models::{Bookmark, BookmarkTarget, Document, DocumentMeta},
     store::ProjectStore,
     visual_artifacts::{
-        RenderArtifact, RenderFormat, RenderStatus, VisualArtifactKind, VisualArtifactRef,
-        discover_d2_artifacts, discover_design_board_artifacts,
+        ArtifactActionRequest, RenderArtifact, RenderFormat, RenderStatus, VisualArtifactKind,
+        VisualArtifactRef, discover_d2_artifacts, discover_design_board_artifacts,
         discover_design_board_consumed_artifacts, discover_excalidraw_artifacts,
     },
 };
@@ -545,7 +545,7 @@ fn VirtualArtifactFile(
 fn render_virtual_artifact_file(
     title: &str,
     path: &std::path::Path,
-    wrapper_path: Option<&std::path::Path>,
+    _wrapper_path: Option<&std::path::Path>,
     kind: VisualArtifactKind,
     renders: &[RenderArtifact],
     consumes: &[VisualArtifactRef],
@@ -556,7 +556,6 @@ fn render_virtual_artifact_file(
     let mut active_route = use_context::<Signal<Route>>();
     let title = title.to_string();
     let path = path.to_path_buf();
-    let open_path = wrapper_path.unwrap_or(&path).to_path_buf();
     let primary_format = primary_render_format(kind);
     let secondary_format = secondary_render_format(kind);
     let primary_status = render_status_for(renders, primary_format);
@@ -571,13 +570,9 @@ fn render_virtual_artifact_file(
             style: "padding-left: {indent + 24.0}px;",
             title: "{artifact_title}",
             onclick: move |_| {
-                if let Some((id, title)) = crate::visual_artifact_open::open_visual_artifact(
-                    &ctx,
-                    kind,
-                    &path,
-                    Some(&open_path),
-                    &title,
-                ) {
+                let target = VisualArtifactRef { kind, source_path: path.clone() };
+                let request = ArtifactActionRequest::open(target);
+                if let Some((id, title)) = crate::visual_artifact_open::execute_artifact_action(&ctx, &request) {
                     tab_state.write().open(id, title);
                     *active_route.write() = Route::Notes;
                 }

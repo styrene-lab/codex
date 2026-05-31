@@ -13,7 +13,8 @@ use flynt_core::{
     design_board::{Cell, CellContent, DesignBoard},
     design_components,
     visual_artifacts::{
-        VisualArtifactKind, VisualArtifactRef, discover_design_board_consumed_artifacts,
+        ArtifactActionRequest, VisualArtifactKind, VisualArtifactRef,
+        discover_design_board_consumed_artifacts,
     },
 };
 use std::path::PathBuf;
@@ -504,7 +505,8 @@ fn DesignBoardDependenciesStrip(consumed: Vec<VisualArtifactRef>) -> Element {
                             class: "design-board-dependency-pill",
                             title: "Open {visual_artifact_label(artifact.kind)}: {artifact.source_path.display()}",
                             onclick: move |_| {
-                                if let Some((id, title)) = crate::visual_artifact_open::open_visual_artifact_ref(&ctx, &artifact) {
+                                let request = ArtifactActionRequest::open(artifact.clone());
+                                if let Some((id, title)) = crate::visual_artifact_open::execute_artifact_action(&ctx, &request) {
                                     tab_state.write().open(id, title);
                                     *active_route.write() = Route::Notes;
                                 }

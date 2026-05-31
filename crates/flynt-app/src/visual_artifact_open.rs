@@ -53,7 +53,22 @@ pub fn execute_artifact_action(
     request: &ArtifactActionRequest,
 ) -> Option<(DocumentId, String)> {
     match request.action {
-        ArtifactActionKind::Open => open_visual_artifact_ref(ctx, &request.target),
+        ArtifactActionKind::Open => {
+            let title = artifact_label(&request.target.source_path);
+            let wrapper_path = match (request.target.kind, request.policy.prefer_wrapper) {
+                (VisualArtifactKind::ExcalidrawDrawing | VisualArtifactKind::DesignBoard, true) => {
+                    Some(request.target.source_path.with_extension("md"))
+                }
+                _ => None,
+            };
+            open_visual_artifact(
+                ctx,
+                request.target.kind,
+                &request.target.source_path,
+                wrapper_path.as_deref(),
+                &title,
+            )
+        }
         ArtifactActionKind::RevealSource => open_visual_artifact(
             ctx,
             request.target.kind,
