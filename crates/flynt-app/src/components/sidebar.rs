@@ -554,6 +554,7 @@ fn render_virtual_artifact_file(
     let ctx = use_context::<AppContext>();
     let mut tab_state = use_context::<Signal<TabState>>();
     let mut active_route = use_context::<Signal<Route>>();
+    let mut ctx_menu = use_signal(|| None::<(f64, f64)>);
     let title = title.to_string();
     let path = path.to_path_buf();
     let primary_format = primary_render_format(kind);
@@ -561,6 +562,8 @@ fn render_virtual_artifact_file(
     let primary_status = render_status_for(renders, primary_format);
     let secondary_status = render_status_for(renders, secondary_format);
     let artifact_title = visual_artifact_title(kind, &path, consumes);
+    let click_path = path.clone();
+    let menu_path = path.clone();
     let d2_count = consumed_count(consumes, VisualArtifactKind::D2Diagram);
     let drawing_count = consumed_count(consumes, VisualArtifactKind::ExcalidrawDrawing);
     let indent = depth as f32 * 12.0;
@@ -570,12 +573,12 @@ fn render_virtual_artifact_file(
             style: "padding-left: {indent + 24.0}px;",
             title: "{artifact_title}",
             onclick: move |_| {
-                let target = VisualArtifactRef { kind, source_path: path.clone() };
-                let request = ArtifactActionRequest::open(target);
-                if let Some((id, title)) = crate::visual_artifact_open::execute_artifact_action(&ctx, &request) {
-                    tab_state.write().open(id, title);
-                    *active_route.write() = Route::Notes;
-                }
+                open_artifact_action(&ctx, &mut tab_state, &mut active_route, kind, &click_path, ArtifactActionRequest::open);
+            },
+            oncontextmenu: move |e| {
+                e.prevent_default();
+                let coords = e.client_coordinates();
+                *ctx_menu.write() = Some((coords.x, coords.y));
             },
             span { class: "tree-file-icon", "{visual_artifact_icon(kind)}" }
             span { class: "tree-name", "{title}" }
@@ -588,6 +591,43 @@ fn render_virtual_artifact_file(
                 span { class: "diagram-artifact-badge present", title: "Consumes {drawing_count} Excalidraw drawing(s)", "✎{drawing_count}" }
             }
         }
+        if let Some((x, y)) = *ctx_menu.read() {
+            crate::components::ContextMenu {
+                x, y,
+                items: vec![
+                    crate::components::ContextMenuItem::new("open", "Open"),
+                    crate::components::ContextMenuItem::new("reveal-source", "Reveal Source"),
+                ],
+                on_close: move |_| *ctx_menu.write() = None,
+                on_select: move |action: String| {
+                    *ctx_menu.write() = None;
+                    match action.as_str() {
+                        "open" => open_artifact_action(&ctx, &mut tab_state, &mut active_route, kind, &menu_path, ArtifactActionRequest::open),
+                        "reveal-source" => open_artifact_action(&ctx, &mut tab_state, &mut active_route, kind, &menu_path, ArtifactActionRequest::reveal_source),
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn open_artifact_action(
+    ctx: &AppContext,
+    tab_state: &mut Signal<TabState>,
+    active_route: &mut Signal<Route>,
+    kind: VisualArtifactKind,
+    path: &std::path::Path,
+    build: fn(VisualArtifactRef) -> ArtifactActionRequest,
+) {
+    let target = VisualArtifactRef {
+        kind,
+        source_path: path.to_path_buf(),
+    };
+    let request = build(target);
+    if let Some((id, title)) = crate::visual_artifact_open::execute_artifact_action(ctx, &request) {
+        tab_state.write().open(id, title);
+        *active_route.write() = Route::Notes;
     }
 }
 
