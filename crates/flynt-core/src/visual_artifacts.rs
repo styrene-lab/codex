@@ -87,6 +87,7 @@ pub struct ArtifactActionRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ArtifactActionKind {
     Open,
+    Edit,
     RevealSource,
     ShowDependencies,
     ShowConsumers,
@@ -116,6 +117,14 @@ impl ArtifactActionRequest {
         Self {
             target,
             action: ArtifactActionKind::Open,
+            policy: ArtifactActionPolicy::default(),
+        }
+    }
+
+    pub fn edit(target: VisualArtifactRef) -> Self {
+        Self {
+            target,
+            action: ArtifactActionKind::Edit,
             policy: ArtifactActionPolicy::default(),
         }
     }

@@ -598,6 +598,7 @@ fn render_virtual_artifact_file(
                 x, y,
                 items: vec![
                     crate::components::ContextMenuItem::new("open", "Open"),
+                    crate::components::ContextMenuItem::new("edit", "Edit"),
                     crate::components::ContextMenuItem::new("reveal-source", "Reveal Source"),
                 ],
                 on_close: move |_| *ctx_menu.write() = None,
@@ -605,6 +606,7 @@ fn render_virtual_artifact_file(
                     *ctx_menu.write() = None;
                     match action.as_str() {
                         "open" => open_artifact_action(&ctx, &mut tab_state, &mut active_route, kind, &menu_path, ArtifactActionRequest::open),
+                        "edit" => open_artifact_action(&ctx, &mut tab_state, &mut active_route, kind, &menu_path, ArtifactActionRequest::edit),
                         "reveal-source" => open_artifact_action(&ctx, &mut tab_state, &mut active_route, kind, &menu_path, ArtifactActionRequest::reveal_source),
                         _ => {}
                     }
