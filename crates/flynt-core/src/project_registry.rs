@@ -31,6 +31,7 @@ impl ProjectRegistry {
         let visual_artifacts = VisualArtifactRegistry::discover(&project_root);
         let documents = DocumentRegistry::from_store(store, &visual_artifacts)?;
         let diagnostics = collect_registry_diagnostics(&documents, &visual_artifacts);
+        let raw_assets = RawAssetRegistry::discover(&project_root, &visual_artifacts);
         let edges = build_project_edges(&documents, &visual_artifacts);
         Ok(Self {
             scope,
@@ -39,7 +40,7 @@ impl ProjectRegistry {
             external_refs: ExternalRefRegistry::default(),
             evidence: EvidenceRegistry::discover(&project_root),
             diagnostics,
-            raw_assets: RawAssetRegistry::default(),
+            raw_assets,
             task_refs: TaskRegistryView::default(),
             spec_refs: SpecRegistryView::default(),
             edges,
@@ -731,6 +732,129 @@ pub struct RawAssetRegistry {
     pub assets: Vec<RawAssetRecord>,
 }
 
+impl RawAssetRegistry {
+    pub fn discover(
+        project_root: &std::path::Path,
+        visual_artifacts: &VisualArtifactRegistry,
+    ) -> Self {
+        let mut assets = Vec::new();
+        collect_raw_assets(project_root, project_root, visual_artifacts, &mut assets);
+        assets.sort_by(|a, b| a.id.0.cmp(&b.id.0));
+        assets.dedup_by(|a, b| a.id == b.id);
+        Self { assets }
+    }
+}
+
+fn collect_raw_assets(
+    project_root: &std::path::Path,
+    dir: &std::path::Path,
+    visual_artifacts: &VisualArtifactRegistry,
+    assets: &mut Vec<RawAssetRecord>,
+) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_dir() {
+            if should_skip_registry_dir(project_root, &path) {
+                continue;
+            }
+            collect_raw_assets(project_root, &path, visual_artifacts, assets);
+            continue;
+        }
+        if !file_type.is_file() {
+            continue;
+        }
+        let Ok(rel) = path.strip_prefix(project_root) else {
+            continue;
+        };
+        let rel = rel.to_path_buf();
+        if !is_safe_project_relative_path(&rel) || is_visual_artifact_source(&rel, visual_artifacts)
+        {
+            continue;
+        }
+        let Some((media_type, role)) = classify_raw_asset(&rel, visual_artifacts) else {
+            continue;
+        };
+        assets.push(RawAssetRecord {
+            id: RawAssetId::from_project_relative_path(&rel),
+            path: rel,
+            media_type: media_type.to_string(),
+            role,
+        });
+    }
+}
+
+fn should_skip_registry_dir(project_root: &std::path::Path, path: &std::path::Path) -> bool {
+    let Ok(rel) = path.strip_prefix(project_root) else {
+        return true;
+    };
+    matches!(
+        rel.components()
+            .next()
+            .and_then(|component| component.as_os_str().to_str()),
+        Some(".git") | Some("target") | Some("node_modules") | Some(".venv")
+    )
+}
+
+fn is_visual_artifact_source(
+    path: &std::path::Path,
+    visual_artifacts: &VisualArtifactRegistry,
+) -> bool {
+    visual_artifacts.by_source(path).is_some() || visual_artifacts.by_wrapper(path).is_some()
+}
+
+fn classify_raw_asset(
+    path: &std::path::Path,
+    visual_artifacts: &VisualArtifactRegistry,
+) -> Option<(&'static str, RawAssetRole)> {
+    if visual_artifacts
+        .artifacts
+        .iter()
+        .flat_map(|artifact| artifact.artifact.renders.iter())
+        .any(|render| render.path == path)
+    {
+        return Some((media_type_for_path(path)?, RawAssetRole::RenderSidecar));
+    }
+
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    match ext.as_str() {
+        "svg" => Some(("image/svg+xml", RawAssetRole::Image)),
+        "png" => Some(("image/png", RawAssetRole::Image)),
+        "jpg" | "jpeg" => Some(("image/jpeg", RawAssetRole::Image)),
+        "gif" => Some(("image/gif", RawAssetRole::Image)),
+        "webp" => Some(("image/webp", RawAssetRole::Image)),
+        "css" => Some(("text/css", RawAssetRole::Stylesheet)),
+        "html" | "htm" => Some(("text/html", RawAssetRole::Markup)),
+        "js" | "mjs" => Some(("text/javascript", RawAssetRole::Script)),
+        "json" => Some(("application/json", RawAssetRole::Data)),
+        "toml" => Some(("application/toml", RawAssetRole::Data)),
+        "yaml" | "yml" => Some(("application/yaml", RawAssetRole::Data)),
+        "csv" => Some(("text/csv", RawAssetRole::Data)),
+        "pdf" | "docx" | "xlsx" | "pptx" => {
+            Some(("application/octet-stream", RawAssetRole::ImportExportOnly))
+        }
+        _ => None,
+    }
+}
+
+fn media_type_for_path(path: &std::path::Path) -> Option<&'static str> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    match ext.as_str() {
+        "svg" => Some("image/svg+xml"),
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        "html" | "htm" => Some("text/html"),
+        _ => Some("application/octet-stream"),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RawAssetRecord {
     pub id: RawAssetId,
@@ -754,6 +878,7 @@ pub enum RawAssetRole {
     RenderSidecar,
     Image,
     Stylesheet,
+    Markup,
     Script,
     Data,
     ImportExportOnly,
@@ -1205,7 +1330,8 @@ mod tests {
         std::fs::write(tmp.path().join("drawings/map.excalidraw"), "{}").unwrap();
         std::fs::write(tmp.path().join("drawings/map.md"), "![[map.excalidraw]]").unwrap();
         std::thread::sleep(std::time::Duration::from_millis(5));
-        std::fs::write(tmp.path().join("drawings/map.svg"), "<svg/>").unwrap();
+        std::fs::create_dir_all(tmp.path().join("drawings/rendered")).unwrap();
+        std::fs::write(tmp.path().join("drawings/rendered/map.svg"), "<svg/>").unwrap();
 
         let mut wrapper_frontmatter = Frontmatter::default();
         wrapper_frontmatter.tags = vec!["drawing".into()];
@@ -1267,6 +1393,69 @@ mod tests {
         let json = serde_json::to_string_pretty(&snapshot).unwrap();
         assert!(!json.contains(tmp.path().to_string_lossy().as_ref()));
         assert!(json.contains("drawings/map.excalidraw"));
+    }
+
+    #[test]
+    fn raw_asset_registry_discovers_open_assets_and_marks_render_sidecars() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("drawings")).unwrap();
+        std::fs::create_dir_all(tmp.path().join("assets")).unwrap();
+        std::fs::write(tmp.path().join("drawings/map.excalidraw"), "{}").unwrap();
+        std::fs::write(tmp.path().join("drawings/map.md"), "![[map.excalidraw]]").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        std::fs::create_dir_all(tmp.path().join("drawings/rendered")).unwrap();
+        std::fs::write(tmp.path().join("drawings/rendered/map.svg"), "<svg/>").unwrap();
+        std::fs::write(tmp.path().join("assets/logo.svg"), "<svg/>").unwrap();
+        std::fs::write(tmp.path().join("assets/theme.css"), "body {}").unwrap();
+        std::fs::write(tmp.path().join("assets/data.json"), "{}").unwrap();
+        std::fs::write(tmp.path().join("assets/deck.pptx"), "opaque").unwrap();
+
+        let artifacts = VisualArtifactRegistry::discover(tmp.path());
+        let assets = RawAssetRegistry::discover(tmp.path(), &artifacts);
+
+        assert!(
+            assets
+                .assets
+                .iter()
+                .any(|asset| asset.path == PathBuf::from("assets/logo.svg")
+                    && asset.role == RawAssetRole::Image)
+        );
+        assert!(
+            assets
+                .assets
+                .iter()
+                .any(|asset| asset.path == PathBuf::from("assets/theme.css")
+                    && asset.role == RawAssetRole::Stylesheet)
+        );
+        assert!(
+            assets
+                .assets
+                .iter()
+                .any(|asset| asset.path == PathBuf::from("assets/data.json")
+                    && asset.role == RawAssetRole::Data)
+        );
+        assert!(
+            assets
+                .assets
+                .iter()
+                .any(|asset| asset.path == PathBuf::from("assets/deck.pptx")
+                    && asset.role == RawAssetRole::ImportExportOnly)
+        );
+        assert!(assets.assets.iter().any(|asset| asset.path
+            == PathBuf::from("drawings/rendered/map.svg")
+            && asset.role == RawAssetRole::RenderSidecar));
+        assert!(
+            !assets
+                .assets
+                .iter()
+                .any(|asset| asset.path == PathBuf::from("drawings/map.excalidraw"))
+        );
+        assert!(
+            !assets
+                .assets
+                .iter()
+                .any(|asset| asset.path == PathBuf::from("drawings/map.md"))
+        );
     }
 
     #[test]
@@ -1343,6 +1532,7 @@ mod tests {
         assert!(json.contains("documents"));
         assert!(json.contains("visual_artifacts"));
         assert!(json.contains("evidence"));
+        assert!(json.contains("raw_assets"));
         assert!(json.contains("edges"));
     }
 }
