@@ -1,5 +1,7 @@
 use crate::external_ref::parse_ref;
-use crate::models::{Document, DocumentId, Frontmatter, PublicationConfig, WikiLink};
+use crate::models::{
+    Board, Document, DocumentId, Frontmatter, PublicationConfig, Task, TaskStatus, WikiLink,
+};
 use crate::store::ProjectStore;
 use crate::visual_artifacts::{
     RenderArtifact, VisualArtifact, VisualArtifactKind, discover_d2_artifacts,
@@ -34,7 +36,8 @@ impl ProjectRegistry {
         let diagnostics = collect_registry_diagnostics(&documents, &visual_artifacts);
         let raw_assets = RawAssetRegistry::discover(&project_root, &visual_artifacts);
         let external_refs = ExternalRefRegistry::discover(&documents);
-        let edges = build_project_edges(&documents, &visual_artifacts, &external_refs);
+        let task_refs = TaskRegistryView::from_store(store)?;
+        let edges = build_project_edges(&documents, &visual_artifacts, &external_refs, &task_refs);
         Ok(Self {
             scope,
             documents,
@@ -43,7 +46,7 @@ impl ProjectRegistry {
             evidence: EvidenceRegistry::discover(&project_root),
             diagnostics,
             raw_assets,
-            task_refs: TaskRegistryView::default(),
+            task_refs,
             spec_refs: SpecRegistryView::default(),
             edges,
         })
@@ -176,6 +179,7 @@ fn build_project_edges(
     documents: &DocumentRegistry,
     visual_artifacts: &VisualArtifactRegistry,
     external_refs: &ExternalRefRegistry,
+    task_refs: &TaskRegistryView,
 ) -> Vec<ProjectEdge> {
     let mut edges = Vec::new();
     for artifact in &visual_artifacts.artifacts {
@@ -206,6 +210,32 @@ fn build_project_edges(
                 to: ProjectNodeRef::ExternalRef(external_ref.id.clone()),
                 relation: ProjectRelation::References,
                 source: EdgeSource::Generated,
+            });
+        }
+    }
+
+    for task in &task_refs.tasks {
+        edges.push(ProjectEdge {
+            from: ProjectNodeRef::Task(task.id.clone()),
+            to: ProjectNodeRef::Board(task.board_id.clone()),
+            relation: ProjectRelation::BelongsTo,
+            source: EdgeSource::TaskMembership,
+        });
+        for document_id in &task.document_refs {
+            edges.push(ProjectEdge {
+                from: ProjectNodeRef::Task(task.id.clone()),
+                to: ProjectNodeRef::Document(document_id.clone()),
+                relation: ProjectRelation::References,
+                source: EdgeSource::TaskMembership,
+            });
+        }
+        for external_ref in &task.external_refs {
+            let id = ExternalRefId::from_uri(external_ref);
+            edges.push(ProjectEdge {
+                from: ProjectNodeRef::Task(task.id.clone()),
+                to: ProjectNodeRef::ExternalRef(id),
+                relation: ProjectRelation::References,
+                source: EdgeSource::TaskMembership,
             });
         }
     }
@@ -986,7 +1016,95 @@ pub enum ExternalTarget {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct TaskRegistryView {
-    pub task_ids: Vec<String>,
+    pub tasks: Vec<TaskRecord>,
+    pub boards: Vec<BoardRecord>,
+}
+
+impl TaskRegistryView {
+    pub fn from_store(store: &dyn ProjectStore) -> anyhow::Result<Self> {
+        let mut tasks = store
+            .list_tasks(&crate::store::TaskFilter::default())?
+            .into_iter()
+            .map(TaskRecord::from)
+            .collect::<Vec<_>>();
+        tasks.sort_by(|a, b| a.id.cmp(&b.id));
+
+        let mut boards = store
+            .list_boards()?
+            .into_iter()
+            .map(BoardRecord::from)
+            .collect::<Vec<_>>();
+        boards.sort_by(|a, b| a.id.cmp(&b.id));
+
+        Ok(Self { tasks, boards })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskRecord {
+    pub id: String,
+    pub title: String,
+    pub status: TaskStatus,
+    pub board_id: String,
+    pub column: String,
+    pub document_refs: Vec<DocumentId>,
+    pub external_refs: Vec<String>,
+    pub tags: Vec<String>,
+    pub evidence: TaskEvidenceSummary,
+}
+
+impl From<Task> for TaskRecord {
+    fn from(task: Task) -> Self {
+        Self {
+            id: task.id.0.to_string(),
+            title: task.title,
+            status: task.status,
+            board_id: task.board_id.0.to_string(),
+            column: task.column,
+            document_refs: task.document_refs,
+            external_refs: task.external_refs,
+            tags: task.tags,
+            evidence: TaskEvidenceSummary::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BoardRecord {
+    pub id: String,
+    pub name: String,
+    pub columns: Vec<String>,
+}
+
+impl From<Board> for BoardRecord {
+    fn from(board: Board) -> Self {
+        Self {
+            id: board.id.0.to_string(),
+            name: board.name,
+            columns: board
+                .columns
+                .into_iter()
+                .map(|column| column.name)
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct TaskEvidenceSummary {
+    pub state: TaskEvidenceState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskEvidenceState {
+    #[default]
+    NotRequired,
+    Missing,
+    Partial,
+    Satisfied,
+    Stale,
+    Conflicting,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -1006,6 +1124,7 @@ pub struct ProjectEdge {
 pub enum ProjectNodeRef {
     Document(DocumentId),
     VisualArtifact(VisualArtifactId),
+    Board(String),
     RawAsset(RawAssetId),
     ExternalRef(ExternalRefId),
     Task(String),
@@ -1116,12 +1235,18 @@ mod tests {
     #[derive(Default)]
     struct TestStore {
         docs: Vec<Document>,
+        boards: Vec<Board>,
+        tasks: Vec<Task>,
     }
 
     #[cfg(test)]
     impl TestStore {
         fn with_docs(docs: Vec<Document>) -> Self {
-            Self { docs }
+            Self {
+                docs,
+                boards: Vec::new(),
+                tasks: Vec::new(),
+            }
         }
     }
 
@@ -1199,7 +1324,7 @@ mod tests {
             &self,
             _filter: &crate::store::TaskFilter,
         ) -> anyhow::Result<Vec<crate::models::Task>> {
-            Ok(Vec::new())
+            Ok(self.tasks.clone())
         }
         fn save_task(&self, _task: &crate::models::Task) -> anyhow::Result<()> {
             Ok(())
@@ -1221,7 +1346,7 @@ mod tests {
             Ok(None)
         }
         fn list_boards(&self) -> anyhow::Result<Vec<crate::models::Board>> {
-            Ok(Vec::new())
+            Ok(self.boards.clone())
         }
         fn save_board(&self, _board: &crate::models::Board) -> anyhow::Result<()> {
             Ok(())
@@ -1465,6 +1590,33 @@ mod tests {
         let json = serde_json::to_string_pretty(&snapshot).unwrap();
         assert!(!json.contains(tmp.path().to_string_lossy().as_ref()));
         assert!(json.contains("drawings/map.excalidraw"));
+    }
+
+    #[test]
+    fn task_registry_projects_tasks_boards_and_membership_edges() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let board = Board::minimalist("Agent Work");
+        let mut task = Task::new(board.id.clone(), "Active", "Do the work");
+        task.tags = vec!["agent".into()];
+        let store = TestStore {
+            docs: Vec::new(),
+            boards: vec![board.clone()],
+            tasks: vec![task.clone()],
+        };
+
+        let registry = ProjectRegistry::discover(tmp.path().to_path_buf(), &store).unwrap();
+        assert_eq!(registry.task_refs.boards.len(), 1);
+        assert_eq!(registry.task_refs.tasks.len(), 1);
+        assert_eq!(registry.task_refs.tasks[0].title, "Do the work");
+        assert_eq!(
+            registry.task_refs.tasks[0].evidence.state,
+            TaskEvidenceState::NotRequired
+        );
+        assert!(registry.edges.iter().any(|edge| {
+            edge.relation == ProjectRelation::BelongsTo
+                && matches!(edge.from, ProjectNodeRef::Task(_))
+                && matches!(edge.to, ProjectNodeRef::Board(_))
+        }));
     }
 
     #[test]
