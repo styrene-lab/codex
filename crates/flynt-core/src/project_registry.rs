@@ -314,7 +314,9 @@ impl ProjectRegistrySnapshot {
     pub const SCHEMA: &'static str = "flynt-project-registry-snapshot/v1";
 
     pub fn validate(&self) -> Vec<ProjectRegistryDiagnostic> {
-        validate_snapshot_graph(self)
+        let mut diagnostics = validate_snapshot_paths(self);
+        diagnostics.extend(validate_snapshot_graph(self));
+        diagnostics
     }
 
     pub fn from_registry(registry: &ProjectRegistry) -> Self {
@@ -468,6 +470,124 @@ fn stable_diagnostic_key(diagnostic: &ProjectRegistryDiagnostic) -> String {
 
 fn snapshot_edge_is_safe(edge: &ProjectEdge) -> bool {
     snapshot_node_is_safe(&edge.from) && snapshot_node_is_safe(&edge.to)
+}
+
+fn validate_snapshot_paths(snapshot: &ProjectRegistrySnapshot) -> Vec<ProjectRegistryDiagnostic> {
+    let mut diagnostics = Vec::new();
+    for document in &snapshot.documents {
+        push_unsafe_path_diagnostic(
+            &mut diagnostics,
+            &document.path,
+            "snapshot document path is unsafe",
+        );
+    }
+    for artifact in &snapshot.visual_artifacts {
+        push_unsafe_path_diagnostic(
+            &mut diagnostics,
+            &artifact.source_path,
+            "snapshot visual artifact source path is unsafe",
+        );
+        if let Some(wrapper_path) = &artifact.wrapper_path {
+            push_unsafe_path_diagnostic(
+                &mut diagnostics,
+                wrapper_path,
+                "snapshot visual artifact wrapper path is unsafe",
+            );
+        }
+        for render in &artifact.renders {
+            push_unsafe_path_diagnostic(
+                &mut diagnostics,
+                &render.path,
+                "snapshot visual artifact render path is unsafe",
+            );
+        }
+    }
+    for evidence in &snapshot.evidence_sources {
+        push_unsafe_path_diagnostic(
+            &mut diagnostics,
+            &evidence.root_path,
+            "snapshot evidence root path is unsafe",
+        );
+        push_unsafe_path_diagnostic(
+            &mut diagnostics,
+            &evidence.manifest_path,
+            "snapshot evidence manifest path is unsafe",
+        );
+        for stream in &evidence.streams {
+            push_unsafe_path_diagnostic(
+                &mut diagnostics,
+                &stream.path,
+                "snapshot evidence stream path is unsafe",
+            );
+        }
+    }
+    for asset in &snapshot.raw_assets {
+        push_unsafe_path_diagnostic(
+            &mut diagnostics,
+            &asset.path,
+            "snapshot raw asset path is unsafe",
+        );
+    }
+    for spec in &snapshot.specs {
+        push_unsafe_path_diagnostic(
+            &mut diagnostics,
+            &spec.path,
+            "snapshot spec change path is unsafe",
+        );
+        if let Some(path) = &spec.proposal_path {
+            push_unsafe_path_diagnostic(
+                &mut diagnostics,
+                path,
+                "snapshot spec proposal path is unsafe",
+            );
+        }
+        if let Some(path) = &spec.design_path {
+            push_unsafe_path_diagnostic(
+                &mut diagnostics,
+                path,
+                "snapshot spec design path is unsafe",
+            );
+        }
+        if let Some(path) = &spec.tasks_path {
+            push_unsafe_path_diagnostic(
+                &mut diagnostics,
+                path,
+                "snapshot spec tasks path is unsafe",
+            );
+        }
+        for path in &spec.spec_paths {
+            push_unsafe_path_diagnostic(
+                &mut diagnostics,
+                path,
+                "snapshot spec file path is unsafe",
+            );
+        }
+    }
+    for diagnostic in &snapshot.diagnostics {
+        if let Some(path) = &diagnostic.path {
+            push_unsafe_path_diagnostic(
+                &mut diagnostics,
+                path,
+                "snapshot diagnostic path is unsafe",
+            );
+        }
+    }
+    diagnostics
+}
+
+fn push_unsafe_path_diagnostic(
+    diagnostics: &mut Vec<ProjectRegistryDiagnostic>,
+    path: &std::path::Path,
+    message: impl Into<String>,
+) {
+    if !is_safe_project_relative_path(path) {
+        diagnostics.push(ProjectRegistryDiagnostic {
+            severity: RegistryDiagnosticSeverity::Error,
+            kind: RegistryDiagnosticKind::UnsafePath,
+            path: Some(path.to_path_buf()),
+            message: message.into(),
+        });
+    }
 }
 
 fn snapshot_node_is_safe(node: &ProjectNodeRef) -> bool {
@@ -2148,6 +2268,51 @@ mod tests {
         let json = serde_json::to_string_pretty(&snapshot).unwrap();
         assert!(!json.contains("/tmp/not-portable"));
         assert!(!json.contains("project_root"));
+    }
+
+    #[test]
+    fn snapshot_validation_reports_unsafe_paths_across_node_tables() {
+        let mut snapshot = ProjectRegistrySnapshot::from_registry(&ProjectRegistry::default());
+        snapshot.documents.push(DocumentSnapshot {
+            id: DocumentId::new(),
+            path: PathBuf::from("/tmp/leak.md"),
+            title: "Leak".into(),
+            kind: DocumentKind::Note,
+            aliases: Vec::new(),
+            tags: Vec::new(),
+        });
+        snapshot.visual_artifacts.push(VisualArtifactSnapshot {
+            id: "d2:/tmp/leak.d2".into(),
+            kind: VisualArtifactKind::D2Diagram,
+            title: "Leak".into(),
+            source_path: PathBuf::from("/tmp/leak.d2"),
+            wrapper_path: Some(PathBuf::from("../leak.md")),
+            renders: Vec::new(),
+            surfaces: Vec::new(),
+        });
+        snapshot.raw_assets.push(RawAssetRecord {
+            id: RawAssetId::from_project_relative_path(std::path::Path::new("../secret.png")),
+            path: PathBuf::from("../secret.png"),
+            media_type: "image/png".into(),
+            role: RawAssetRole::Image,
+        });
+        snapshot.specs.push(SpecChangeRecord {
+            name: "leak".into(),
+            path: PathBuf::from("/tmp/openspec/changes/leak"),
+            proposal_path: Some(PathBuf::from("../proposal.md")),
+            design_path: None,
+            tasks_path: None,
+            spec_paths: Vec::new(),
+        });
+
+        let diagnostics = snapshot.validate();
+        assert!(
+            diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.kind == RegistryDiagnosticKind::UnsafePath)
+                .count()
+                >= 4
+        );
     }
 
     #[test]
