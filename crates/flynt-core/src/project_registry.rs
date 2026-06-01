@@ -1,8 +1,8 @@
 use crate::models::{Document, DocumentId, Frontmatter, PublicationConfig, WikiLink};
 use crate::store::ProjectStore;
 use crate::visual_artifacts::{
-    discover_d2_artifacts, discover_design_board_artifacts, discover_excalidraw_artifacts,
-    RenderArtifact, VisualArtifact, VisualArtifactKind,
+    RenderArtifact, VisualArtifact, VisualArtifactKind, discover_d2_artifacts,
+    discover_design_board_artifacts, discover_excalidraw_artifacts,
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -19,7 +19,6 @@ pub struct ProjectRegistry {
     pub spec_refs: SpecRegistryView,
     pub edges: Vec<ProjectEdge>,
 }
-
 
 impl ProjectRegistry {
     pub fn discover(project_root: PathBuf, store: &dyn ProjectStore) -> anyhow::Result<Self> {
@@ -100,7 +99,11 @@ impl DocumentRecord {
 impl VisualArtifactRegistry {
     pub fn discover(project_root: &std::path::Path) -> Self {
         let mut artifacts = Vec::new();
-        artifacts.extend(discover_d2_artifacts(project_root).into_iter().map(VisualArtifactRecord::from));
+        artifacts.extend(
+            discover_d2_artifacts(project_root)
+                .into_iter()
+                .map(VisualArtifactRecord::from),
+        );
         artifacts.extend(
             discover_excalidraw_artifacts(project_root)
                 .into_iter()
@@ -116,7 +119,9 @@ impl VisualArtifactRegistry {
     }
 
     pub fn by_source(&self, path: &std::path::Path) -> Option<&VisualArtifactRecord> {
-        self.artifacts.iter().find(|record| record.artifact.source_path == path)
+        self.artifacts
+            .iter()
+            .find(|record| record.artifact.source_path == path)
     }
 
     pub fn by_wrapper(&self, path: &std::path::Path) -> Option<&VisualArtifactRecord> {
@@ -126,7 +131,10 @@ impl VisualArtifactRegistry {
     }
 }
 
-fn classify_document_kind(doc: &Document, visual_artifacts: &VisualArtifactRegistry) -> DocumentKind {
+fn classify_document_kind(
+    doc: &Document,
+    visual_artifacts: &VisualArtifactRegistry,
+) -> DocumentKind {
     if visual_artifacts.by_wrapper(&doc.path).is_some() {
         return DocumentKind::ArtifactWrapper;
     }
@@ -179,7 +187,6 @@ fn build_project_edges(
     }
     edges
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectRegistrySnapshot {
@@ -376,7 +383,10 @@ pub struct VisualArtifactRecord {
 pub struct VisualArtifactId(pub String);
 
 impl VisualArtifactId {
-    pub fn from_project_relative_source(kind: VisualArtifactKind, source_path: &std::path::Path) -> Self {
+    pub fn from_project_relative_source(
+        kind: VisualArtifactKind,
+        source_path: &std::path::Path,
+    ) -> Self {
         let prefix = match kind {
             VisualArtifactKind::D2Diagram => "d2",
             VisualArtifactKind::ExcalidrawDrawing => "excalidraw",
@@ -426,7 +436,6 @@ pub enum ArtifactPublication {
     Unlisted,
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct EvidenceRegistry {
     pub sources: Vec<EvidenceSourceRecord>,
@@ -475,13 +484,27 @@ impl EvidenceSourceRecord {
 
         let files = manifest.files.unwrap_or_default();
         let streams = [
-            (EvidenceStreamKind::Records, files.records.unwrap_or_else(|| "records.jsonl".into())),
-            (EvidenceStreamKind::Surfaces, files.surfaces.unwrap_or_else(|| "surfaces.jsonl".into())),
-            (EvidenceStreamKind::Edges, files.edges.unwrap_or_else(|| "edges.jsonl".into())),
-            (EvidenceStreamKind::Artifacts, files.artifacts.unwrap_or_else(|| "artifacts.jsonl".into())),
+            (
+                EvidenceStreamKind::Records,
+                files.records.unwrap_or_else(|| "records.jsonl".into()),
+            ),
+            (
+                EvidenceStreamKind::Surfaces,
+                files.surfaces.unwrap_or_else(|| "surfaces.jsonl".into()),
+            ),
+            (
+                EvidenceStreamKind::Edges,
+                files.edges.unwrap_or_else(|| "edges.jsonl".into()),
+            ),
+            (
+                EvidenceStreamKind::Artifacts,
+                files.artifacts.unwrap_or_else(|| "artifacts.jsonl".into()),
+            ),
         ]
         .into_iter()
-        .map(|(kind, rel)| EvidenceStreamRecord::from_relative_path(project_root, &root_path, kind, rel))
+        .map(|(kind, rel)| {
+            EvidenceStreamRecord::from_relative_path(project_root, &root_path, kind, rel)
+        })
         .collect();
 
         Some(Self {
@@ -541,10 +564,7 @@ impl EvidenceStreamRecord {
         let record_count = raw
             .as_deref()
             .map(|raw| raw.lines().filter(|line| !line.trim().is_empty()).count());
-        let ids = raw
-            .as_deref()
-            .map(extract_jsonl_ids)
-            .unwrap_or_default();
+        let ids = raw.as_deref().map(extract_jsonl_ids).unwrap_or_default();
         Self {
             kind,
             path,
@@ -564,7 +584,12 @@ fn extract_jsonl_ids(raw: &str) -> Vec<String> {
             }
             serde_json::from_str::<serde_json::Value>(trimmed)
                 .ok()
-                .and_then(|value| value.get("id").and_then(|id| id.as_str()).map(str::to_string))
+                .and_then(|value| {
+                    value
+                        .get("id")
+                        .and_then(|id| id.as_str())
+                        .map(str::to_string)
+                })
         })
         .collect()
 }
@@ -726,17 +751,15 @@ pub fn normalize_project_path(path: &std::path::Path) -> String {
 pub fn is_safe_project_relative_path(path: &std::path::Path) -> bool {
     use std::path::Component;
     !path.is_absolute()
-        && path.components().all(|component| {
-            matches!(
-                component,
-                Component::Normal(_) | Component::CurDir
-            )
-        })
+        && path
+            .components()
+            .all(|component| matches!(component, Component::Normal(_) | Component::CurDir))
 }
 
 impl From<VisualArtifact> for VisualArtifactRecord {
     fn from(artifact: VisualArtifact) -> Self {
-        let id = VisualArtifactId::from_project_relative_source(artifact.kind, &artifact.source_path);
+        let id =
+            VisualArtifactId::from_project_relative_source(artifact.kind, &artifact.source_path);
         let surfaces = default_surfaces_for_artifact(artifact.kind, &artifact.renders);
         Self {
             id,
@@ -773,7 +796,183 @@ fn default_surfaces_for_artifact(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::DocumentMeta;
     use crate::visual_artifacts::{RenderFormat, RenderStatus};
+
+    #[cfg(test)]
+    #[derive(Default)]
+    struct TestStore {
+        docs: Vec<Document>,
+    }
+
+    #[cfg(test)]
+    impl TestStore {
+        fn with_docs(docs: Vec<Document>) -> Self {
+            Self { docs }
+        }
+    }
+
+    #[cfg(test)]
+    impl ProjectStore for TestStore {
+        fn get_document(&self, id: &DocumentId) -> anyhow::Result<Option<Document>> {
+            Ok(self.docs.iter().find(|doc| &doc.id == id).cloned())
+        }
+
+        fn get_document_by_path(&self, path: &std::path::Path) -> anyhow::Result<Option<Document>> {
+            Ok(self.docs.iter().find(|doc| doc.path == path).cloned())
+        }
+
+        fn find_document_by_slug(&self, slug: &str) -> anyhow::Result<Option<DocumentMeta>> {
+            Ok(self
+                .docs
+                .iter()
+                .find(|doc| {
+                    doc.title.eq_ignore_ascii_case(slug)
+                        || doc.path.to_string_lossy().contains(slug)
+                })
+                .map(document_meta))
+        }
+
+        fn list_documents(&self) -> anyhow::Result<Vec<DocumentMeta>> {
+            Ok(self.docs.iter().map(document_meta).collect())
+        }
+
+        fn list_documents_by_metadata(
+            &self,
+            _filter: &crate::store::DocumentMetadataFilter,
+        ) -> anyhow::Result<Vec<DocumentMeta>> {
+            Ok(Vec::new())
+        }
+
+        fn save_document(&self, _doc: &Document) -> anyhow::Result<()> {
+            Ok(())
+        }
+        fn delete_document(&self, _id: &DocumentId) -> anyhow::Result<()> {
+            Ok(())
+        }
+        fn search_documents(
+            &self,
+            _query: &str,
+        ) -> anyhow::Result<Vec<crate::models::SearchResult>> {
+            Ok(Vec::new())
+        }
+        fn get_backlinks(&self, id: &DocumentId) -> anyhow::Result<Vec<DocumentMeta>> {
+            Ok(self
+                .docs
+                .iter()
+                .filter(|doc| {
+                    doc.outgoing_links.iter().any(|link| {
+                        self.docs.iter().any(|target| {
+                            &target.id == id && target.path.to_string_lossy().contains(&link.target)
+                        })
+                    })
+                })
+                .map(document_meta)
+                .collect())
+        }
+        fn list_entities_by_kind(
+            &self,
+            _kind: &crate::datum::EntityKind,
+        ) -> anyhow::Result<Vec<DocumentMeta>> {
+            Ok(Vec::new())
+        }
+        fn get_task(
+            &self,
+            _id: &crate::models::TaskId,
+        ) -> anyhow::Result<Option<crate::models::Task>> {
+            Ok(None)
+        }
+        fn list_tasks(
+            &self,
+            _filter: &crate::store::TaskFilter,
+        ) -> anyhow::Result<Vec<crate::models::Task>> {
+            Ok(Vec::new())
+        }
+        fn save_task(&self, _task: &crate::models::Task) -> anyhow::Result<()> {
+            Ok(())
+        }
+        fn delete_task(&self, _id: &crate::models::TaskId) -> anyhow::Result<()> {
+            Ok(())
+        }
+        fn update_task(
+            &self,
+            _id: &crate::models::TaskId,
+            _patch: &flynt_models::TaskPatch,
+        ) -> anyhow::Result<bool> {
+            Ok(false)
+        }
+        fn get_board(
+            &self,
+            _id: &crate::models::BoardId,
+        ) -> anyhow::Result<Option<crate::models::Board>> {
+            Ok(None)
+        }
+        fn list_boards(&self) -> anyhow::Result<Vec<crate::models::Board>> {
+            Ok(Vec::new())
+        }
+        fn save_board(&self, _board: &crate::models::Board) -> anyhow::Result<()> {
+            Ok(())
+        }
+        fn delete_board(&self, _id: &crate::models::BoardId) -> anyhow::Result<()> {
+            Ok(())
+        }
+        fn get_engagement(
+            &self,
+            _id: &flynt_models::engagement::EngagementId,
+        ) -> anyhow::Result<Option<flynt_models::engagement::Engagement>> {
+            Ok(None)
+        }
+        fn list_engagements(&self) -> anyhow::Result<Vec<flynt_models::engagement::Engagement>> {
+            Ok(Vec::new())
+        }
+        fn save_engagement(
+            &self,
+            _engagement: &flynt_models::engagement::Engagement,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+        fn delete_engagement(
+            &self,
+            _id: &flynt_models::engagement::EngagementId,
+        ) -> anyhow::Result<bool> {
+            Ok(false)
+        }
+    }
+
+    #[cfg(test)]
+    fn document_meta(doc: &Document) -> crate::models::DocumentMeta {
+        crate::models::DocumentMeta {
+            id: doc.id.clone(),
+            path: doc.path.clone(),
+            title: doc.title.clone(),
+            tags: doc.frontmatter.tags.clone(),
+            metadata: Default::default(),
+            entity_kind: None,
+            updated_at: doc.updated_at,
+        }
+    }
+
+    #[cfg(test)]
+    fn test_doc(
+        path: &str,
+        title: &str,
+        content: &str,
+        frontmatter: Frontmatter,
+        outgoing_links: Vec<WikiLink>,
+    ) -> Document {
+        let now = chrono::Utc::now();
+        Document {
+            id: DocumentId::new(),
+            path: PathBuf::from(path),
+            title: title.to_string(),
+            content: content.to_string(),
+            frontmatter,
+            outgoing_links,
+            created_at: now,
+            updated_at: now,
+            entity: None,
+        }
+    }
 
     #[test]
     fn artifact_ids_are_project_relative_and_kind_prefixed() {
@@ -800,14 +999,18 @@ mod tests {
 
         let record = VisualArtifactRecord::from(artifact);
         assert_eq!(record.id.0, "d2:diagrams/system.d2");
-        assert!(record.surfaces.contains(&ArtifactSurfaceCapability::Preview));
+        assert!(
+            record
+                .surfaces
+                .contains(&ArtifactSurfaceCapability::Preview)
+        );
         assert!(record.surfaces.contains(&ArtifactSurfaceCapability::Edit));
-        assert!(record
-            .surfaces
-            .contains(&ArtifactSurfaceCapability::Render(RenderFormat::Svg)));
+        assert!(
+            record
+                .surfaces
+                .contains(&ArtifactSurfaceCapability::Render(RenderFormat::Svg))
+        );
     }
-
-
 
     #[test]
     fn evidence_registry_discovers_omegon_manifest_and_stream_counts() {
@@ -819,14 +1022,21 @@ mod tests {
             r#"{"schema":"omegon-evidence-manifest/v1","files":{"records":"records.jsonl","surfaces":"surfaces.jsonl","edges":"edges.jsonl","artifacts":"artifacts.jsonl"}}"#,
         )
         .unwrap();
-        std::fs::write(evidence_dir.join("records.jsonl"), "{\"id\":\"a\"}\n{\"id\":\"b\"}\n").unwrap();
+        std::fs::write(
+            evidence_dir.join("records.jsonl"),
+            "{\"id\":\"a\"}\n{\"id\":\"b\"}\n",
+        )
+        .unwrap();
         std::fs::write(evidence_dir.join("surfaces.jsonl"), "{\"id\":\"s\"}\n").unwrap();
 
         let registry = EvidenceRegistry::discover(tmp.path());
         assert_eq!(registry.sources.len(), 1);
         let source = &registry.sources[0];
         assert_eq!(source.kind, EvidenceSourceKind::OmegonEvidenceMap);
-        assert_eq!(source.schema.as_deref(), Some("omegon-evidence-manifest/v1"));
+        assert_eq!(
+            source.schema.as_deref(),
+            Some("omegon-evidence-manifest/v1")
+        );
         let records = source
             .streams
             .iter()
@@ -870,7 +1080,76 @@ mod tests {
         assert!(registry.sources.is_empty());
     }
 
+    #[test]
+    fn startup_registry_builds_wrappers_renders_evidence_and_snapshot_without_absolute_paths() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("drawings")).unwrap();
+        std::fs::write(tmp.path().join("drawings/map.excalidraw"), "{}").unwrap();
+        std::fs::write(tmp.path().join("drawings/map.md"), "![[map.excalidraw]]").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        std::fs::write(tmp.path().join("drawings/map.svg"), "<svg/>").unwrap();
 
+        let mut wrapper_frontmatter = Frontmatter::default();
+        wrapper_frontmatter.tags = vec!["drawing".into()];
+        let wrapper = test_doc(
+            "drawings/map.md",
+            "Map",
+            "![[map.excalidraw]]",
+            wrapper_frontmatter,
+            vec![WikiLink {
+                target: "map.excalidraw".into(),
+                display: None,
+                anchor: None,
+            }],
+        );
+        let note = test_doc(
+            "notes/architecture.md",
+            "Architecture",
+            "See [[drawings/map]]",
+            Frontmatter::default(),
+            vec![WikiLink {
+                target: "drawings/map".into(),
+                display: None,
+                anchor: None,
+            }],
+        );
+        let store = TestStore::with_docs(vec![note, wrapper]);
+
+        let registry = ProjectRegistry::discover(tmp.path().to_path_buf(), &store).unwrap();
+        assert_eq!(registry.documents.documents.len(), 2);
+        assert_eq!(registry.visual_artifacts.artifacts.len(), 1);
+        assert_eq!(
+            registry
+                .documents
+                .by_path(std::path::Path::new("drawings/map.md"))
+                .unwrap()
+                .kind,
+            DocumentKind::ArtifactWrapper
+        );
+        assert!(
+            registry
+                .edges
+                .iter()
+                .any(|edge| edge.relation == ProjectRelation::Wraps)
+        );
+        assert!(
+            registry
+                .edges
+                .iter()
+                .any(|edge| edge.relation == ProjectRelation::RendersTo)
+        );
+        assert!(
+            registry
+                .edges
+                .iter()
+                .any(|edge| edge.relation == ProjectRelation::LinksTo)
+        );
+
+        let snapshot = ProjectRegistrySnapshot::from_registry(&registry);
+        let json = serde_json::to_string_pretty(&snapshot).unwrap();
+        assert!(!json.contains(tmp.path().to_string_lossy().as_ref()));
+        assert!(json.contains("drawings/map.excalidraw"));
+    }
 
     #[test]
     fn snapshot_omits_runtime_scope_and_sorts_records() {
