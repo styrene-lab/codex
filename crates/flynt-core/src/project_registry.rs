@@ -35,8 +35,8 @@ impl ProjectRegistry {
         let documents = DocumentRegistry::from_store(store, &visual_artifacts)?;
         let diagnostics = collect_registry_diagnostics(&documents, &visual_artifacts);
         let raw_assets = RawAssetRegistry::discover(&project_root, &visual_artifacts);
-        let external_refs = ExternalRefRegistry::discover(&documents);
         let task_refs = TaskRegistryView::from_store(store)?;
+        let external_refs = ExternalRefRegistry::discover(&documents, &task_refs);
         let edges = build_project_edges(&documents, &visual_artifacts, &external_refs, &task_refs);
         Ok(Self {
             scope,
@@ -204,7 +204,7 @@ fn build_project_edges(
     }
 
     for external_ref in &external_refs.refs {
-        for source_doc in &external_ref.sources {
+        for source_doc in &external_ref.document_sources {
             edges.push(ProjectEdge {
                 from: ProjectNodeRef::Document(source_doc.clone()),
                 to: ProjectNodeRef::ExternalRef(external_ref.id.clone()),
@@ -284,6 +284,10 @@ pub struct ProjectRegistrySnapshot {
 
 impl ProjectRegistrySnapshot {
     pub const SCHEMA: &'static str = "flynt-project-registry-snapshot/v1";
+
+    pub fn validate(&self) -> Vec<ProjectRegistryDiagnostic> {
+        validate_snapshot_graph(self)
+    }
 
     pub fn from_registry(registry: &ProjectRegistry) -> Self {
         let mut documents = registry
@@ -441,6 +445,112 @@ fn snapshot_node_is_safe(node: &ProjectNodeRef) -> bool {
     }
 }
 
+fn validate_snapshot_graph(snapshot: &ProjectRegistrySnapshot) -> Vec<ProjectRegistryDiagnostic> {
+    let document_ids = snapshot
+        .documents
+        .iter()
+        .map(|doc| doc.id.clone())
+        .collect::<std::collections::HashSet<_>>();
+    let artifact_ids = snapshot
+        .visual_artifacts
+        .iter()
+        .map(|artifact| VisualArtifactId(artifact.id.clone()))
+        .collect::<std::collections::HashSet<_>>();
+    let raw_asset_ids = snapshot
+        .raw_assets
+        .iter()
+        .map(|asset| asset.id.clone())
+        .collect::<std::collections::HashSet<_>>();
+    let external_ref_ids = snapshot
+        .external_refs
+        .iter()
+        .map(|external_ref| external_ref.id.clone())
+        .collect::<std::collections::HashSet<_>>();
+    let task_ids = snapshot
+        .tasks
+        .iter()
+        .map(|task| task.id.clone())
+        .collect::<std::collections::HashSet<_>>();
+    let board_ids = snapshot
+        .boards
+        .iter()
+        .map(|board| board.id.clone())
+        .collect::<std::collections::HashSet<_>>();
+    let spec_ids = std::collections::HashSet::<String>::new();
+
+    let mut diagnostics = Vec::new();
+    for edge in &snapshot.edges {
+        validate_snapshot_node(
+            edge,
+            &edge.from,
+            &document_ids,
+            &artifact_ids,
+            &raw_asset_ids,
+            &external_ref_ids,
+            &task_ids,
+            &board_ids,
+            &spec_ids,
+            &mut diagnostics,
+        );
+        validate_snapshot_node(
+            edge,
+            &edge.to,
+            &document_ids,
+            &artifact_ids,
+            &raw_asset_ids,
+            &external_ref_ids,
+            &task_ids,
+            &board_ids,
+            &spec_ids,
+            &mut diagnostics,
+        );
+    }
+    diagnostics
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_snapshot_node(
+    edge: &ProjectEdge,
+    node: &ProjectNodeRef,
+    document_ids: &std::collections::HashSet<DocumentId>,
+    artifact_ids: &std::collections::HashSet<VisualArtifactId>,
+    raw_asset_ids: &std::collections::HashSet<RawAssetId>,
+    external_ref_ids: &std::collections::HashSet<ExternalRefId>,
+    task_ids: &std::collections::HashSet<String>,
+    board_ids: &std::collections::HashSet<String>,
+    spec_ids: &std::collections::HashSet<String>,
+    diagnostics: &mut Vec<ProjectRegistryDiagnostic>,
+) {
+    let missing = match node {
+        ProjectNodeRef::Document(id) => !document_ids.contains(id),
+        ProjectNodeRef::VisualArtifact(id) => !artifact_ids.contains(id),
+        ProjectNodeRef::RawAsset(id) => !raw_asset_ids.contains(id),
+        ProjectNodeRef::ExternalRef(id) => !external_ref_ids.contains(id),
+        ProjectNodeRef::Task(id) => !task_ids.contains(id),
+        ProjectNodeRef::Board(id) => !board_ids.contains(id),
+        ProjectNodeRef::Spec(id) => !spec_ids.contains(id),
+        ProjectNodeRef::ProjectPath(path) => {
+            if !is_safe_project_relative_path(path) {
+                diagnostics.push(ProjectRegistryDiagnostic {
+                    severity: RegistryDiagnosticSeverity::Error,
+                    kind: RegistryDiagnosticKind::UnsafePath,
+                    path: Some(path.clone()),
+                    message: "snapshot edge contains unsafe project path".into(),
+                });
+            }
+            false
+        }
+    };
+    if missing {
+        diagnostics.push(ProjectRegistryDiagnostic {
+            severity: RegistryDiagnosticSeverity::Error,
+            kind: RegistryDiagnosticKind::DanglingGraphEndpoint,
+            path: None,
+            message: format!("snapshot edge has missing endpoint {node:?} in edge {edge:?}"),
+        });
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProjectRegistryDiagnostic {
     pub severity: RegistryDiagnosticSeverity,
@@ -462,6 +572,7 @@ pub enum RegistryDiagnosticKind {
     UnsafePath,
     MissingDocumentForWrapper,
     MissingVisualArtifactSource,
+    DanglingGraphEndpoint,
 }
 
 fn collect_registry_diagnostics(
@@ -980,34 +1091,58 @@ pub struct ExternalRefRecord {
     pub target: ExternalTarget,
     pub label: Option<String>,
     pub provider: Option<String>,
-    pub sources: Vec<DocumentId>,
+    pub document_sources: Vec<DocumentId>,
+    pub task_sources: Vec<String>,
 }
 
 impl ExternalRefRegistry {
-    pub fn discover(documents: &DocumentRegistry) -> Self {
+    pub fn discover(documents: &DocumentRegistry, task_refs: &TaskRegistryView) -> Self {
         let mut refs: Vec<ExternalRefRecord> = Vec::new();
         for doc in &documents.documents {
             for url in extract_urls(&doc.content()) {
-                let parsed = parse_ref(&url);
-                let id = ExternalRefId::from_uri(&parsed.url);
-                if let Some(existing) = refs.iter_mut().find(|record| record.id == id) {
-                    if !existing.sources.contains(&doc.id) {
-                        existing.sources.push(doc.id.clone());
-                    }
-                    continue;
-                }
-                refs.push(ExternalRefRecord {
-                    id,
-                    target: ExternalTarget::Uri(parsed.url),
-                    label: Some(parsed.label),
-                    provider: Some(parsed.provider.name().to_string()),
-                    sources: vec![doc.id.clone()],
-                });
+                upsert_external_ref(&mut refs, &url, Some(&doc.id), None);
+            }
+        }
+        for task in &task_refs.tasks {
+            for external_ref in &task.external_refs {
+                upsert_external_ref(&mut refs, external_ref, None, Some(&task.id));
             }
         }
         refs.sort_by(|a, b| a.id.0.cmp(&b.id.0));
         Self { refs }
     }
+}
+
+fn upsert_external_ref(
+    refs: &mut Vec<ExternalRefRecord>,
+    url: &str,
+    document_source: Option<&DocumentId>,
+    task_source: Option<&str>,
+) {
+    let parsed = parse_ref(url);
+    let id = ExternalRefId::from_uri(&parsed.url);
+    if let Some(existing) = refs.iter_mut().find(|record| record.id == id) {
+        if let Some(document_source) = document_source {
+            if !existing.document_sources.contains(document_source) {
+                existing.document_sources.push(document_source.clone());
+            }
+        }
+        if let Some(task_source) = task_source {
+            let task_source = task_source.to_string();
+            if !existing.task_sources.contains(&task_source) {
+                existing.task_sources.push(task_source);
+            }
+        }
+        return;
+    }
+    refs.push(ExternalRefRecord {
+        id,
+        target: ExternalTarget::Uri(parsed.url),
+        label: Some(parsed.label),
+        provider: Some(parsed.provider.name().to_string()),
+        document_sources: document_source.into_iter().cloned().collect(),
+        task_sources: task_source.into_iter().map(str::to_string).collect(),
+    });
 }
 
 fn extract_urls(content: &str) -> Vec<String> {
@@ -1625,6 +1760,27 @@ mod tests {
     }
 
     #[test]
+    fn task_external_refs_are_registered_and_snapshot_validates() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let board = Board::minimalist("Agent Work");
+        let mut task = Task::new(board.id.clone(), "Active", "Fix bug");
+        task.external_refs = vec!["https://github.com/styrene-labs/flynt/issues/456".into()];
+        let store = TestStore {
+            docs: Vec::new(),
+            boards: vec![board],
+            tasks: vec![task],
+        };
+
+        let registry = ProjectRegistry::discover(tmp.path().to_path_buf(), &store).unwrap();
+        assert_eq!(registry.external_refs.refs.len(), 1);
+        assert!(registry.external_refs.refs[0].document_sources.is_empty());
+        assert_eq!(registry.external_refs.refs[0].task_sources.len(), 1);
+
+        let snapshot = ProjectRegistrySnapshot::from_registry(&registry);
+        assert!(snapshot.validate().is_empty());
+    }
+
+    #[test]
     fn task_registry_projects_tasks_boards_and_membership_edges() {
         let tmp = tempfile::TempDir::new().unwrap();
         let board = Board::minimalist("Agent Work");
@@ -1665,6 +1821,8 @@ mod tests {
         let registry = ProjectRegistry::discover(tmp.path().to_path_buf(), &store).unwrap();
         assert_eq!(registry.external_refs.refs.len(), 1);
         let ext = &registry.external_refs.refs[0];
+        assert_eq!(ext.document_sources.len(), 1);
+        assert!(ext.task_sources.is_empty());
         assert_eq!(ext.provider.as_deref(), Some("GitHub"));
         assert!(ext.label.as_deref().unwrap_or_default().contains("#123"));
         assert!(registry.edges.iter().any(|edge| {
@@ -1801,6 +1959,23 @@ mod tests {
         let json = serde_json::to_string_pretty(&snapshot).unwrap();
         assert!(!json.contains("/tmp/not-portable"));
         assert!(!json.contains("project_root"));
+    }
+
+    #[test]
+    fn snapshot_validation_reports_dangling_external_ref_edges() {
+        let mut snapshot = ProjectRegistrySnapshot::from_registry(&ProjectRegistry::default());
+        snapshot.edges.push(ProjectEdge {
+            from: ProjectNodeRef::Task("missing-task".into()),
+            to: ProjectNodeRef::ExternalRef(ExternalRefId::from_uri("https://example.com/missing")),
+            relation: ProjectRelation::References,
+            source: EdgeSource::Generated,
+        });
+        let diagnostics = snapshot.validate();
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.kind == RegistryDiagnosticKind::DanglingGraphEndpoint)
+        );
     }
 
     #[test]
