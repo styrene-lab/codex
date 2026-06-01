@@ -13,6 +13,7 @@ pub struct ProjectRegistry {
     pub documents: DocumentRegistry,
     pub visual_artifacts: VisualArtifactRegistry,
     pub external_refs: ExternalRefRegistry,
+    pub evidence: EvidenceRegistry,
     pub raw_assets: RawAssetRegistry,
     pub task_refs: TaskRegistryView,
     pub spec_refs: SpecRegistryView,
@@ -35,6 +36,7 @@ impl ProjectRegistry {
             documents,
             visual_artifacts,
             external_refs: ExternalRefRegistry::default(),
+            evidence: EvidenceRegistry::discover(&project_root),
             raw_assets: RawAssetRegistry::default(),
             task_refs: TaskRegistryView::default(),
             spec_refs: SpecRegistryView::default(),
@@ -283,6 +285,148 @@ pub enum ArtifactPublication {
     Unlisted,
 }
 
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct EvidenceRegistry {
+    pub sources: Vec<EvidenceSourceRecord>,
+}
+
+impl EvidenceRegistry {
+    pub fn discover(project_root: &std::path::Path) -> Self {
+        let mut sources = Vec::new();
+        if let Some(source) = EvidenceSourceRecord::discover_omegon_evidence_map(project_root) {
+            sources.push(source);
+        }
+        Self { sources }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EvidenceSourceRecord {
+    pub kind: EvidenceSourceKind,
+    pub root_path: PathBuf,
+    pub manifest_path: PathBuf,
+    pub schema: Option<String>,
+    pub streams: Vec<EvidenceStreamRecord>,
+    pub warnings: Vec<String>,
+}
+
+impl EvidenceSourceRecord {
+    pub fn discover_omegon_evidence_map(project_root: &std::path::Path) -> Option<Self> {
+        let root_path = PathBuf::from(".omegon/evidence");
+        let manifest_path = root_path.join("manifest.json");
+        let manifest_abs = project_root.join(&manifest_path);
+        if !manifest_abs.exists() {
+            return None;
+        }
+
+        let mut warnings = Vec::new();
+        let manifest = match std::fs::read_to_string(&manifest_abs)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<OmegonEvidenceManifest>(&raw).ok())
+        {
+            Some(manifest) => manifest,
+            None => {
+                warnings.push("manifest.json could not be parsed".to_string());
+                OmegonEvidenceManifest::default()
+            }
+        };
+
+        let files = manifest.files.unwrap_or_default();
+        let streams = [
+            (EvidenceStreamKind::Records, files.records.unwrap_or_else(|| "records.jsonl".into())),
+            (EvidenceStreamKind::Surfaces, files.surfaces.unwrap_or_else(|| "surfaces.jsonl".into())),
+            (EvidenceStreamKind::Edges, files.edges.unwrap_or_else(|| "edges.jsonl".into())),
+            (EvidenceStreamKind::Artifacts, files.artifacts.unwrap_or_else(|| "artifacts.jsonl".into())),
+        ]
+        .into_iter()
+        .map(|(kind, rel)| EvidenceStreamRecord::from_relative_path(project_root, &root_path, kind, rel))
+        .collect();
+
+        Some(Self {
+            kind: EvidenceSourceKind::OmegonEvidenceMap,
+            root_path,
+            manifest_path,
+            schema: manifest.schema,
+            streams,
+            warnings,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EvidenceSourceKind {
+    OmegonEvidenceMap,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EvidenceStreamRecord {
+    pub kind: EvidenceStreamKind,
+    pub path: PathBuf,
+    pub status: EvidenceStreamStatus,
+    pub record_count: Option<usize>,
+}
+
+impl EvidenceStreamRecord {
+    fn from_relative_path(
+        project_root: &std::path::Path,
+        source_root: &std::path::Path,
+        kind: EvidenceStreamKind,
+        relative_path: String,
+    ) -> Self {
+        let path = source_root.join(relative_path);
+        let abs = project_root.join(&path);
+        if !abs.exists() {
+            return Self {
+                kind,
+                path,
+                status: EvidenceStreamStatus::Missing,
+                record_count: None,
+            };
+        }
+        let record_count = std::fs::read_to_string(&abs)
+            .ok()
+            .map(|raw| raw.lines().filter(|line| !line.trim().is_empty()).count());
+        Self {
+            kind,
+            path,
+            status: EvidenceStreamStatus::Present,
+            record_count,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EvidenceStreamKind {
+    Records,
+    Surfaces,
+    Edges,
+    Artifacts,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EvidenceStreamStatus {
+    Present,
+    Missing,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+struct OmegonEvidenceManifest {
+    schema: Option<String>,
+    files: Option<OmegonEvidenceManifestFiles>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+struct OmegonEvidenceManifestFiles {
+    records: Option<String>,
+    surfaces: Option<String>,
+    edges: Option<String>,
+    artifacts: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct RawAssetRegistry {
     pub assets: Vec<RawAssetRecord>,
@@ -479,12 +623,55 @@ mod tests {
             .contains(&ArtifactSurfaceCapability::Render(RenderFormat::Svg)));
     }
 
+
+
+    #[test]
+    fn evidence_registry_discovers_omegon_manifest_and_stream_counts() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let evidence_dir = tmp.path().join(".omegon/evidence");
+        std::fs::create_dir_all(&evidence_dir).unwrap();
+        std::fs::write(
+            evidence_dir.join("manifest.json"),
+            r#"{"schema":"omegon-evidence-manifest/v1","files":{"records":"records.jsonl","surfaces":"surfaces.jsonl","edges":"edges.jsonl","artifacts":"artifacts.jsonl"}}"#,
+        )
+        .unwrap();
+        std::fs::write(evidence_dir.join("records.jsonl"), "{\"id\":\"a\"}\n{\"id\":\"b\"}\n").unwrap();
+        std::fs::write(evidence_dir.join("surfaces.jsonl"), "{\"id\":\"s\"}\n").unwrap();
+
+        let registry = EvidenceRegistry::discover(tmp.path());
+        assert_eq!(registry.sources.len(), 1);
+        let source = &registry.sources[0];
+        assert_eq!(source.kind, EvidenceSourceKind::OmegonEvidenceMap);
+        assert_eq!(source.schema.as_deref(), Some("omegon-evidence-manifest/v1"));
+        let records = source
+            .streams
+            .iter()
+            .find(|stream| stream.kind == EvidenceStreamKind::Records)
+            .unwrap();
+        assert_eq!(records.status, EvidenceStreamStatus::Present);
+        assert_eq!(records.record_count, Some(2));
+        let edges = source
+            .streams
+            .iter()
+            .find(|stream| stream.kind == EvidenceStreamKind::Edges)
+            .unwrap();
+        assert_eq!(edges.status, EvidenceStreamStatus::Missing);
+    }
+
+    #[test]
+    fn evidence_registry_absent_without_omegon_manifest() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let registry = EvidenceRegistry::discover(tmp.path());
+        assert!(registry.sources.is_empty());
+    }
+
     #[test]
     fn project_registry_serializes_as_plain_json() {
         let registry = ProjectRegistry::default();
         let json = serde_json::to_string_pretty(&registry).unwrap();
         assert!(json.contains("documents"));
         assert!(json.contains("visual_artifacts"));
+        assert!(json.contains("evidence"));
         assert!(json.contains("edges"));
     }
 }
