@@ -28,8 +28,8 @@ impl ProjectRegistry {
             project_id: None,
             sync_identity: None,
         };
-        let documents = DocumentRegistry::from_store(store)?;
         let visual_artifacts = VisualArtifactRegistry::discover(&project_root);
+        let documents = DocumentRegistry::from_store(store, &visual_artifacts)?;
         let edges = build_project_edges(&documents, &visual_artifacts);
         Ok(Self {
             scope,
@@ -46,7 +46,10 @@ impl ProjectRegistry {
 }
 
 impl DocumentRegistry {
-    pub fn from_store(store: &dyn ProjectStore) -> anyhow::Result<Self> {
+    pub fn from_store(
+        store: &dyn ProjectStore,
+        visual_artifacts: &VisualArtifactRegistry,
+    ) -> anyhow::Result<Self> {
         let mut documents = Vec::new();
         for meta in store.list_documents()? {
             if let Some(doc) = store.get_document(&meta.id)? {
@@ -56,7 +59,11 @@ impl DocumentRegistry {
                     .into_iter()
                     .map(|backlink| backlink.id)
                     .collect();
-                documents.push(DocumentRecord::from_document(doc, backlinks));
+                documents.push(DocumentRecord::from_document(
+                    doc,
+                    backlinks,
+                    visual_artifacts,
+                ));
             }
         }
         documents.sort_by(|a, b| a.path.cmp(&b.path));
@@ -69,8 +76,12 @@ impl DocumentRegistry {
 }
 
 impl DocumentRecord {
-    pub fn from_document(doc: Document, backlinks: Vec<DocumentId>) -> Self {
-        let kind = classify_document_kind(&doc);
+    pub fn from_document(
+        doc: Document,
+        backlinks: Vec<DocumentId>,
+        visual_artifacts: &VisualArtifactRegistry,
+    ) -> Self {
+        let kind = classify_document_kind(&doc, visual_artifacts);
         Self {
             id: doc.id,
             path: doc.path,
@@ -115,8 +126,8 @@ impl VisualArtifactRegistry {
     }
 }
 
-fn classify_document_kind(doc: &Document) -> DocumentKind {
-    if doc.frontmatter.tags.iter().any(|tag| tag == "drawing" || tag == "design_board") {
+fn classify_document_kind(doc: &Document, visual_artifacts: &VisualArtifactRegistry) -> DocumentKind {
+    if visual_artifacts.by_wrapper(&doc.path).is_some() {
         return DocumentKind::ArtifactWrapper;
     }
     match doc.frontmatter.kind.as_deref() {
@@ -377,6 +388,15 @@ impl EvidenceStreamRecord {
         relative_path: String,
     ) -> Self {
         let path = source_root.join(relative_path);
+        if !is_safe_project_relative_path(&path) {
+            return Self {
+                kind,
+                path,
+                status: EvidenceStreamStatus::InvalidPath,
+                record_count: None,
+                ids: Vec::new(),
+            };
+        }
         let abs = project_root.join(&path);
         if !abs.exists() {
             return Self {
@@ -433,6 +453,7 @@ pub enum EvidenceStreamKind {
 pub enum EvidenceStreamStatus {
     Present,
     Missing,
+    InvalidPath,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -572,6 +593,17 @@ pub fn normalize_project_path(path: &std::path::Path) -> String {
         .join("/")
 }
 
+pub fn is_safe_project_relative_path(path: &std::path::Path) -> bool {
+    use std::path::Component;
+    !path.is_absolute()
+        && path.components().all(|component| {
+            matches!(
+                component,
+                Component::Normal(_) | Component::CurDir
+            )
+        })
+}
+
 impl From<VisualArtifact> for VisualArtifactRecord {
     fn from(artifact: VisualArtifact) -> Self {
         let id = VisualArtifactId::from_project_relative_source(artifact.kind, &artifact.source_path);
@@ -685,6 +717,20 @@ mod tests {
             .find(|stream| stream.kind == EvidenceStreamKind::Edges)
             .unwrap();
         assert_eq!(edges.status, EvidenceStreamStatus::Missing);
+    }
+
+    #[test]
+    fn evidence_stream_rejects_paths_that_escape_project_root() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let stream = EvidenceStreamRecord::from_relative_path(
+            tmp.path(),
+            std::path::Path::new(".omegon/evidence"),
+            EvidenceStreamKind::Records,
+            "../records.jsonl".to_string(),
+        );
+        assert_eq!(stream.status, EvidenceStreamStatus::InvalidPath);
+        assert_eq!(stream.record_count, None);
+        assert!(stream.ids.is_empty());
     }
 
     #[test]
