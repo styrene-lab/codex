@@ -180,6 +180,136 @@ fn build_project_edges(
     edges
 }
 
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectRegistrySnapshot {
+    pub schema: String,
+    pub generated_by: String,
+    pub documents: Vec<DocumentSnapshot>,
+    pub visual_artifacts: Vec<VisualArtifactSnapshot>,
+    pub evidence_sources: Vec<EvidenceSourceSnapshot>,
+    pub edges: Vec<ProjectEdge>,
+}
+
+impl ProjectRegistrySnapshot {
+    pub const SCHEMA: &'static str = "flynt-project-registry-snapshot/v1";
+
+    pub fn from_registry(registry: &ProjectRegistry) -> Self {
+        let mut documents = registry
+            .documents
+            .documents
+            .iter()
+            .map(DocumentSnapshot::from)
+            .collect::<Vec<_>>();
+        documents.sort_by(|a, b| a.path.cmp(&b.path));
+
+        let mut visual_artifacts = registry
+            .visual_artifacts
+            .artifacts
+            .iter()
+            .map(VisualArtifactSnapshot::from)
+            .collect::<Vec<_>>();
+        visual_artifacts.sort_by(|a, b| a.id.cmp(&b.id));
+
+        let mut evidence_sources = registry
+            .evidence
+            .sources
+            .iter()
+            .map(EvidenceSourceSnapshot::from)
+            .collect::<Vec<_>>();
+        evidence_sources.sort_by(|a, b| a.manifest_path.cmp(&b.manifest_path));
+
+        let mut edges = registry.edges.clone();
+        edges.sort_by_key(stable_edge_key);
+
+        Self {
+            schema: Self::SCHEMA.to_string(),
+            generated_by: "flynt".to_string(),
+            documents,
+            visual_artifacts,
+            evidence_sources,
+            edges,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentSnapshot {
+    pub id: DocumentId,
+    pub path: PathBuf,
+    pub title: String,
+    pub kind: DocumentKind,
+    pub aliases: Vec<String>,
+    pub tags: Vec<String>,
+}
+
+impl From<&DocumentRecord> for DocumentSnapshot {
+    fn from(record: &DocumentRecord) -> Self {
+        Self {
+            id: record.id.clone(),
+            path: record.path.clone(),
+            title: record.title.clone(),
+            kind: record.kind,
+            aliases: record.aliases.clone(),
+            tags: record.tags.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VisualArtifactSnapshot {
+    pub id: String,
+    pub kind: VisualArtifactKind,
+    pub title: String,
+    pub source_path: PathBuf,
+    pub wrapper_path: Option<PathBuf>,
+    pub renders: Vec<RenderArtifact>,
+    pub surfaces: Vec<ArtifactSurfaceCapability>,
+}
+
+impl From<&VisualArtifactRecord> for VisualArtifactSnapshot {
+    fn from(record: &VisualArtifactRecord) -> Self {
+        Self {
+            id: record.id.0.clone(),
+            kind: record.artifact.kind,
+            title: record.artifact.title.clone(),
+            source_path: record.artifact.source_path.clone(),
+            wrapper_path: record.artifact.wrapper_path.clone(),
+            renders: record.artifact.renders.clone(),
+            surfaces: record.surfaces.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EvidenceSourceSnapshot {
+    pub kind: EvidenceSourceKind,
+    pub root_path: PathBuf,
+    pub manifest_path: PathBuf,
+    pub schema: Option<String>,
+    pub streams: Vec<EvidenceStreamRecord>,
+    pub warnings: Vec<String>,
+}
+
+impl From<&EvidenceSourceRecord> for EvidenceSourceSnapshot {
+    fn from(record: &EvidenceSourceRecord) -> Self {
+        let mut streams = record.streams.clone();
+        streams.sort_by_key(|stream| (stream.kind, stream.path.clone()));
+        Self {
+            kind: record.kind,
+            root_path: record.root_path.clone(),
+            manifest_path: record.manifest_path.clone(),
+            schema: record.schema.clone(),
+            streams,
+            warnings: record.warnings.clone(),
+        }
+    }
+}
+
+fn stable_edge_key(edge: &ProjectEdge) -> String {
+    format!("{:?}|{:?}|{:?}", edge.from, edge.relation, edge.to)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct ProjectScope {
     /// Absolute canonical path of the open Flynt project/vault/repo root.
@@ -439,7 +569,7 @@ fn extract_jsonl_ids(raw: &str) -> Vec<String> {
         .collect()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EvidenceStreamKind {
     Records,
@@ -738,6 +868,52 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let registry = EvidenceRegistry::discover(tmp.path());
         assert!(registry.sources.is_empty());
+    }
+
+
+
+    #[test]
+    fn snapshot_omits_runtime_scope_and_sorts_records() {
+        let registry = ProjectRegistry {
+            scope: ProjectScope {
+                project_root: PathBuf::from("/tmp/not-portable"),
+                project_id: Some("local".into()),
+                sync_identity: None,
+            },
+            documents: DocumentRegistry::default(),
+            visual_artifacts: VisualArtifactRegistry {
+                artifacts: vec![
+                    VisualArtifactRecord::from(VisualArtifact {
+                        kind: VisualArtifactKind::D2Diagram,
+                        title: "b".into(),
+                        source_path: PathBuf::from("diagrams/b.d2"),
+                        wrapper_path: None,
+                        renders: Vec::new(),
+                    }),
+                    VisualArtifactRecord::from(VisualArtifact {
+                        kind: VisualArtifactKind::D2Diagram,
+                        title: "a".into(),
+                        source_path: PathBuf::from("diagrams/a.d2"),
+                        wrapper_path: None,
+                        renders: Vec::new(),
+                    }),
+                ],
+            },
+            external_refs: ExternalRefRegistry::default(),
+            evidence: EvidenceRegistry::default(),
+            raw_assets: RawAssetRegistry::default(),
+            task_refs: TaskRegistryView::default(),
+            spec_refs: SpecRegistryView::default(),
+            edges: Vec::new(),
+        };
+
+        let snapshot = ProjectRegistrySnapshot::from_registry(&registry);
+        assert_eq!(snapshot.schema, ProjectRegistrySnapshot::SCHEMA);
+        assert_eq!(snapshot.visual_artifacts[0].id, "d2:diagrams/a.d2");
+        assert_eq!(snapshot.visual_artifacts[1].id, "d2:diagrams/b.d2");
+        let json = serde_json::to_string_pretty(&snapshot).unwrap();
+        assert!(!json.contains("/tmp/not-portable"));
+        assert!(!json.contains("project_root"));
     }
 
     #[test]
