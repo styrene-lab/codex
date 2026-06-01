@@ -14,6 +14,7 @@ pub struct ProjectRegistry {
     pub visual_artifacts: VisualArtifactRegistry,
     pub external_refs: ExternalRefRegistry,
     pub evidence: EvidenceRegistry,
+    pub diagnostics: Vec<ProjectRegistryDiagnostic>,
     pub raw_assets: RawAssetRegistry,
     pub task_refs: TaskRegistryView,
     pub spec_refs: SpecRegistryView,
@@ -29,6 +30,7 @@ impl ProjectRegistry {
         };
         let visual_artifacts = VisualArtifactRegistry::discover(&project_root);
         let documents = DocumentRegistry::from_store(store, &visual_artifacts)?;
+        let diagnostics = collect_registry_diagnostics(&documents, &visual_artifacts);
         let edges = build_project_edges(&documents, &visual_artifacts);
         Ok(Self {
             scope,
@@ -36,6 +38,7 @@ impl ProjectRegistry {
             visual_artifacts,
             external_refs: ExternalRefRegistry::default(),
             evidence: EvidenceRegistry::discover(&project_root),
+            diagnostics,
             raw_assets: RawAssetRegistry::default(),
             task_refs: TaskRegistryView::default(),
             spec_refs: SpecRegistryView::default(),
@@ -229,6 +232,8 @@ impl ProjectRegistrySnapshot {
         let mut edges = registry.edges.clone();
         edges.sort_by_key(stable_edge_key);
 
+        edges.retain(snapshot_edge_is_safe);
+
         Self {
             schema: Self::SCHEMA.to_string(),
             generated_by: "flynt".to_string(),
@@ -315,6 +320,69 @@ impl From<&EvidenceSourceRecord> for EvidenceSourceSnapshot {
 
 fn stable_edge_key(edge: &ProjectEdge) -> String {
     format!("{:?}|{:?}|{:?}", edge.from, edge.relation, edge.to)
+}
+
+fn snapshot_edge_is_safe(edge: &ProjectEdge) -> bool {
+    snapshot_node_is_safe(&edge.from) && snapshot_node_is_safe(&edge.to)
+}
+
+fn snapshot_node_is_safe(node: &ProjectNodeRef) -> bool {
+    match node {
+        ProjectNodeRef::ProjectPath(path) => is_safe_project_relative_path(path),
+        _ => true,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectRegistryDiagnostic {
+    pub severity: RegistryDiagnosticSeverity,
+    pub kind: RegistryDiagnosticKind,
+    pub path: Option<PathBuf>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RegistryDiagnosticSeverity {
+    Warning,
+    Error,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RegistryDiagnosticKind {
+    UnsafePath,
+    MissingDocumentForWrapper,
+    MissingVisualArtifactSource,
+}
+
+fn collect_registry_diagnostics(
+    documents: &DocumentRegistry,
+    visual_artifacts: &VisualArtifactRegistry,
+) -> Vec<ProjectRegistryDiagnostic> {
+    let mut diagnostics = Vec::new();
+    for artifact in &visual_artifacts.artifacts {
+        if !is_safe_project_relative_path(&artifact.artifact.source_path) {
+            diagnostics.push(ProjectRegistryDiagnostic {
+                severity: RegistryDiagnosticSeverity::Error,
+                kind: RegistryDiagnosticKind::UnsafePath,
+                path: Some(artifact.artifact.source_path.clone()),
+                message: "visual artifact source path is not project-relative".into(),
+            });
+        }
+        if let Some(wrapper_path) = &artifact.artifact.wrapper_path {
+            if documents.by_path(wrapper_path).is_none() {
+                diagnostics.push(ProjectRegistryDiagnostic {
+                    severity: RegistryDiagnosticSeverity::Warning,
+                    kind: RegistryDiagnosticKind::MissingDocumentForWrapper,
+                    path: Some(wrapper_path.clone()),
+                    message: "artifact wrapper exists on disk but is not indexed as a document"
+                        .into(),
+                });
+            }
+        }
+    }
+    diagnostics
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -529,8 +597,15 @@ pub struct EvidenceStreamRecord {
     pub kind: EvidenceStreamKind,
     pub path: PathBuf,
     pub status: EvidenceStreamStatus,
-    pub record_count: Option<usize>,
+    pub stats: EvidenceStreamStats,
     pub ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct EvidenceStreamStats {
+    pub line_count: usize,
+    pub parsed_count: usize,
+    pub malformed_count: usize,
 }
 
 impl EvidenceStreamRecord {
@@ -546,7 +621,7 @@ impl EvidenceStreamRecord {
                 kind,
                 path,
                 status: EvidenceStreamStatus::InvalidPath,
-                record_count: None,
+                stats: EvidenceStreamStats::default(),
                 ids: Vec::new(),
             };
         }
@@ -556,42 +631,38 @@ impl EvidenceStreamRecord {
                 kind,
                 path,
                 status: EvidenceStreamStatus::Missing,
-                record_count: None,
+                stats: EvidenceStreamStats::default(),
                 ids: Vec::new(),
             };
         }
-        let raw = std::fs::read_to_string(&abs).ok();
-        let record_count = raw
-            .as_deref()
-            .map(|raw| raw.lines().filter(|line| !line.trim().is_empty()).count());
-        let ids = raw.as_deref().map(extract_jsonl_ids).unwrap_or_default();
+        let raw = std::fs::read_to_string(&abs).unwrap_or_default();
+        let (stats, ids) = inspect_jsonl_stream(&raw);
         Self {
             kind,
             path,
             status: EvidenceStreamStatus::Present,
-            record_count,
+            stats,
             ids,
         }
     }
 }
 
-fn extract_jsonl_ids(raw: &str) -> Vec<String> {
-    raw.lines()
-        .filter_map(|line| {
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                return None;
+fn inspect_jsonl_stream(raw: &str) -> (EvidenceStreamStats, Vec<String>) {
+    let mut stats = EvidenceStreamStats::default();
+    let mut ids = Vec::new();
+    for line in raw.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        stats.line_count += 1;
+        match serde_json::from_str::<serde_json::Value>(line) {
+            Ok(value) => {
+                stats.parsed_count += 1;
+                if let Some(id) = value.get("id").and_then(|id| id.as_str()) {
+                    ids.push(id.to_string());
+                }
             }
-            serde_json::from_str::<serde_json::Value>(trimmed)
-                .ok()
-                .and_then(|value| {
-                    value
-                        .get("id")
-                        .and_then(|id| id.as_str())
-                        .map(str::to_string)
-                })
-        })
-        .collect()
+            Err(_) => stats.malformed_count += 1,
+        }
+    }
+    (stats, ids)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -1043,7 +1114,9 @@ mod tests {
             .find(|stream| stream.kind == EvidenceStreamKind::Records)
             .unwrap();
         assert_eq!(records.status, EvidenceStreamStatus::Present);
-        assert_eq!(records.record_count, Some(2));
+        assert_eq!(records.stats.line_count, 2);
+        assert_eq!(records.stats.parsed_count, 2);
+        assert_eq!(records.stats.malformed_count, 0);
         assert_eq!(records.ids, vec!["a", "b"]);
         let surfaces = source
             .streams
@@ -1069,7 +1142,7 @@ mod tests {
             "../records.jsonl".to_string(),
         );
         assert_eq!(stream.status, EvidenceStreamStatus::InvalidPath);
-        assert_eq!(stream.record_count, None);
+        assert_eq!(stream.stats, EvidenceStreamStats::default());
         assert!(stream.ids.is_empty());
     }
 
@@ -1180,6 +1253,7 @@ mod tests {
             },
             external_refs: ExternalRefRegistry::default(),
             evidence: EvidenceRegistry::default(),
+            diagnostics: Vec::new(),
             raw_assets: RawAssetRegistry::default(),
             task_refs: TaskRegistryView::default(),
             spec_refs: SpecRegistryView::default(),
