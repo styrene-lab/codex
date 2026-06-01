@@ -1,3 +1,4 @@
+use crate::external_ref::parse_ref;
 use crate::models::{Document, DocumentId, Frontmatter, PublicationConfig, WikiLink};
 use crate::store::ProjectStore;
 use crate::visual_artifacts::{
@@ -32,12 +33,13 @@ impl ProjectRegistry {
         let documents = DocumentRegistry::from_store(store, &visual_artifacts)?;
         let diagnostics = collect_registry_diagnostics(&documents, &visual_artifacts);
         let raw_assets = RawAssetRegistry::discover(&project_root, &visual_artifacts);
-        let edges = build_project_edges(&documents, &visual_artifacts);
+        let external_refs = ExternalRefRegistry::discover(&documents);
+        let edges = build_project_edges(&documents, &visual_artifacts, &external_refs);
         Ok(Self {
             scope,
             documents,
             visual_artifacts,
-            external_refs: ExternalRefRegistry::default(),
+            external_refs,
             evidence: EvidenceRegistry::discover(&project_root),
             diagnostics,
             raw_assets,
@@ -114,6 +116,7 @@ impl DocumentRecord {
             kind,
             outgoing: doc.outgoing_links,
             backlinks,
+            raw_content: doc.content,
         }
     }
 }
@@ -172,6 +175,7 @@ fn classify_document_kind(
 fn build_project_edges(
     documents: &DocumentRegistry,
     visual_artifacts: &VisualArtifactRegistry,
+    external_refs: &ExternalRefRegistry,
 ) -> Vec<ProjectEdge> {
     let mut edges = Vec::new();
     for artifact in &visual_artifacts.artifacts {
@@ -191,6 +195,17 @@ fn build_project_edges(
                 to: ProjectNodeRef::ProjectPath(render.path.clone()),
                 relation: ProjectRelation::RendersTo,
                 source: EdgeSource::ArtifactDiscovery,
+            });
+        }
+    }
+
+    for external_ref in &external_refs.refs {
+        for source_doc in &external_ref.sources {
+            edges.push(ProjectEdge {
+                from: ProjectNodeRef::Document(source_doc.clone()),
+                to: ProjectNodeRef::ExternalRef(external_ref.id.clone()),
+                relation: ProjectRelation::References,
+                source: EdgeSource::Generated,
             });
         }
     }
@@ -451,6 +466,14 @@ pub struct DocumentRecord {
     pub kind: DocumentKind,
     pub outgoing: Vec<WikiLink>,
     pub backlinks: Vec<DocumentId>,
+    #[serde(skip)]
+    pub raw_content: String,
+}
+
+impl DocumentRecord {
+    fn content(&self) -> &str {
+        &self.raw_content
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -895,6 +918,55 @@ pub struct ExternalRefRecord {
     pub target: ExternalTarget,
     pub label: Option<String>,
     pub provider: Option<String>,
+    pub sources: Vec<DocumentId>,
+}
+
+impl ExternalRefRegistry {
+    pub fn discover(documents: &DocumentRegistry) -> Self {
+        let mut refs: Vec<ExternalRefRecord> = Vec::new();
+        for doc in &documents.documents {
+            for url in extract_urls(&doc.content()) {
+                let parsed = parse_ref(&url);
+                let id = ExternalRefId::from_uri(&parsed.url);
+                if let Some(existing) = refs.iter_mut().find(|record| record.id == id) {
+                    if !existing.sources.contains(&doc.id) {
+                        existing.sources.push(doc.id.clone());
+                    }
+                    continue;
+                }
+                refs.push(ExternalRefRecord {
+                    id,
+                    target: ExternalTarget::Uri(parsed.url),
+                    label: Some(parsed.label),
+                    provider: Some(parsed.provider.name().to_string()),
+                    sources: vec![doc.id.clone()],
+                });
+            }
+        }
+        refs.sort_by(|a, b| a.id.0.cmp(&b.id.0));
+        Self { refs }
+    }
+}
+
+fn extract_urls(content: &str) -> Vec<String> {
+    content
+        .split_whitespace()
+        .filter_map(|token| {
+            let cleaned = token
+                .trim_matches(|ch: char| {
+                    matches!(
+                        ch,
+                        '<' | '>' | '(' | ')' | '[' | ']' | '"' | '\'' | ',' | ';'
+                    )
+                })
+                .trim_end_matches(|ch: char| matches!(ch, '.' | ',' | ';' | ')' | ']'));
+            if cleaned.starts_with("https://") || cleaned.starts_with("http://") {
+                Some(cleaned.to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -1393,6 +1465,28 @@ mod tests {
         let json = serde_json::to_string_pretty(&snapshot).unwrap();
         assert!(!json.contains(tmp.path().to_string_lossy().as_ref()));
         assert!(json.contains("drawings/map.excalidraw"));
+    }
+
+    #[test]
+    fn external_ref_registry_extracts_document_urls_and_edges() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let note = test_doc(
+            "notes/issue.md",
+            "Issue",
+            "Track https://github.com/styrene-labs/flynt/issues/123.",
+            Frontmatter::default(),
+            Vec::new(),
+        );
+        let store = TestStore::with_docs(vec![note]);
+        let registry = ProjectRegistry::discover(tmp.path().to_path_buf(), &store).unwrap();
+        assert_eq!(registry.external_refs.refs.len(), 1);
+        let ext = &registry.external_refs.refs[0];
+        assert_eq!(ext.provider.as_deref(), Some("GitHub"));
+        assert!(ext.label.as_deref().unwrap_or_default().contains("#123"));
+        assert!(registry.edges.iter().any(|edge| {
+            edge.relation == ProjectRelation::References
+                && matches!(edge.to, ProjectNodeRef::ExternalRef(_))
+        }));
     }
 
     #[test]
