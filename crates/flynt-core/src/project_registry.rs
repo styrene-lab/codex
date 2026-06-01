@@ -75,6 +75,24 @@ impl DocumentRegistry {
     pub fn by_path(&self, path: &std::path::Path) -> Option<&DocumentRecord> {
         self.documents.iter().find(|doc| doc.path == path)
     }
+
+    pub fn resolve_link_target(&self, target: &str) -> Option<&DocumentRecord> {
+        let target = target.split('#').next().unwrap_or(target).trim();
+        if target.is_empty() {
+            return None;
+        }
+        let normalized = normalize_slug(target);
+        self.documents.iter().find(|doc| {
+            normalize_slug(&doc.title) == normalized
+                || normalize_slug(
+                    doc.path
+                        .file_stem()
+                        .and_then(|stem| stem.to_str())
+                        .unwrap_or(""),
+                ) == normalized
+                || normalize_slug(doc.path.to_string_lossy().trim_end_matches(".md")) == normalized
+        })
+    }
 }
 
 impl DocumentRecord {
@@ -178,10 +196,22 @@ fn build_project_edges(
 
     for doc in &documents.documents {
         for link in &doc.outgoing {
+            let (to, relation) =
+                if let Some(target_doc) = documents.resolve_link_target(&link.target) {
+                    (
+                        ProjectNodeRef::Document(target_doc.id.clone()),
+                        ProjectRelation::LinksTo,
+                    )
+                } else {
+                    (
+                        ProjectNodeRef::ProjectPath(PathBuf::from(&link.target)),
+                        ProjectRelation::UnresolvedReference,
+                    )
+                };
             edges.push(ProjectEdge {
                 from: ProjectNodeRef::Document(doc.id.clone()),
-                to: ProjectNodeRef::ProjectPath(PathBuf::from(&link.target)),
-                relation: ProjectRelation::LinksTo,
+                to,
+                relation,
                 source: EdgeSource::MarkdownWikilink {
                     path: doc.path.clone(),
                 },
@@ -799,6 +829,7 @@ pub enum ProjectRelation {
     BelongsTo,
     Implements,
     References,
+    UnresolvedReference,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -817,6 +848,20 @@ pub fn normalize_project_path(path: &std::path::Path) -> String {
         .map(|component| component.as_os_str().to_string_lossy())
         .collect::<Vec<_>>()
         .join("/")
+}
+
+fn normalize_slug(value: &str) -> String {
+    value
+        .trim()
+        .trim_end_matches(".md")
+        .chars()
+        .flat_map(char::to_lowercase)
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
 }
 
 pub fn is_safe_project_relative_path(path: &std::path::Path) -> bool {
@@ -1222,6 +1267,28 @@ mod tests {
         let json = serde_json::to_string_pretty(&snapshot).unwrap();
         assert!(!json.contains(tmp.path().to_string_lossy().as_ref()));
         assert!(json.contains("drawings/map.excalidraw"));
+    }
+
+    #[test]
+    fn unresolved_wikilinks_remain_visible_as_unresolved_edges() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let note = test_doc(
+            "notes/architecture.md",
+            "Architecture",
+            "See [[missing thing]]",
+            Frontmatter::default(),
+            vec![WikiLink {
+                target: "missing thing".into(),
+                display: None,
+                anchor: None,
+            }],
+        );
+        let store = TestStore::with_docs(vec![note]);
+        let registry = ProjectRegistry::discover(tmp.path().to_path_buf(), &store).unwrap();
+        assert!(registry.edges.iter().any(|edge| {
+            edge.relation == ProjectRelation::UnresolvedReference
+                && matches!(&edge.to, ProjectNodeRef::ProjectPath(path) if path == std::path::Path::new("missing thing"))
+        }));
     }
 
     #[test]
