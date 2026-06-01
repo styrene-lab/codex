@@ -8,7 +8,7 @@ use crate::visual_artifacts::{
     discover_design_board_artifacts, discover_excalidraw_artifacts,
 };
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProjectRegistry {
@@ -317,6 +317,40 @@ impl ProjectRegistrySnapshot {
         let mut diagnostics = validate_snapshot_paths(self);
         diagnostics.extend(validate_snapshot_graph(self));
         diagnostics
+    }
+
+    pub fn snapshot_path(project_root: &Path) -> PathBuf {
+        project_root.join(".flynt/registry/project-registry.snapshot.json")
+    }
+
+    pub fn persist_to_project(&self, project_root: &Path) -> anyhow::Result<()> {
+        let diagnostics = self.validate();
+        if diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.severity == RegistryDiagnosticSeverity::Error)
+        {
+            anyhow::bail!("refusing to persist invalid project registry snapshot");
+        }
+
+        let path = Self::snapshot_path(project_root);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let tmp_path = path.with_extension("snapshot.json.tmp");
+        let json = serde_json::to_string_pretty(self)?;
+        std::fs::write(&tmp_path, json)?;
+        std::fs::rename(&tmp_path, &path)?;
+        Ok(())
+    }
+
+    pub fn load_from_project(project_root: &Path) -> anyhow::Result<Option<Self>> {
+        let path = Self::snapshot_path(project_root);
+        if !path.exists() {
+            return Ok(None);
+        }
+        let raw = std::fs::read_to_string(path)?;
+        let snapshot: Self = serde_json::from_str(&raw)?;
+        Ok(Some(snapshot))
     }
 
     pub fn from_registry(registry: &ProjectRegistry) -> Self {
@@ -2268,6 +2302,48 @@ mod tests {
         let json = serde_json::to_string_pretty(&snapshot).unwrap();
         assert!(!json.contains("/tmp/not-portable"));
         assert!(!json.contains("project_root"));
+    }
+
+    #[test]
+    fn snapshot_persistence_writes_and_loads_generated_json() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let registry = ProjectRegistry::default();
+        let snapshot = ProjectRegistrySnapshot::from_registry(&registry);
+        snapshot.persist_to_project(tmp.path()).unwrap();
+
+        let path = ProjectRegistrySnapshot::snapshot_path(tmp.path());
+        assert_eq!(
+            path,
+            tmp.path()
+                .join(".flynt/registry/project-registry.snapshot.json")
+        );
+        assert!(path.exists());
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(raw.contains(ProjectRegistrySnapshot::SCHEMA));
+        assert!(!raw.contains(tmp.path().to_string_lossy().as_ref()));
+
+        let loaded = ProjectRegistrySnapshot::load_from_project(tmp.path())
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.schema, ProjectRegistrySnapshot::SCHEMA);
+        assert!(loaded.validate().is_empty());
+    }
+
+    #[test]
+    fn snapshot_persistence_refuses_invalid_snapshot() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut snapshot = ProjectRegistrySnapshot::from_registry(&ProjectRegistry::default());
+        snapshot.documents.push(DocumentSnapshot {
+            id: DocumentId::new(),
+            path: PathBuf::from("/tmp/leak.md"),
+            title: "Leak".into(),
+            kind: DocumentKind::Note,
+            aliases: Vec::new(),
+            tags: Vec::new(),
+        });
+
+        assert!(snapshot.persist_to_project(tmp.path()).is_err());
+        assert!(!ProjectRegistrySnapshot::snapshot_path(tmp.path()).exists());
     }
 
     #[test]
