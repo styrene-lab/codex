@@ -366,6 +366,7 @@ pub struct EvidenceStreamRecord {
     pub path: PathBuf,
     pub status: EvidenceStreamStatus,
     pub record_count: Option<usize>,
+    pub ids: Vec<String>,
 }
 
 impl EvidenceStreamRecord {
@@ -383,18 +384,39 @@ impl EvidenceStreamRecord {
                 path,
                 status: EvidenceStreamStatus::Missing,
                 record_count: None,
+                ids: Vec::new(),
             };
         }
-        let record_count = std::fs::read_to_string(&abs)
-            .ok()
+        let raw = std::fs::read_to_string(&abs).ok();
+        let record_count = raw
+            .as_deref()
             .map(|raw| raw.lines().filter(|line| !line.trim().is_empty()).count());
+        let ids = raw
+            .as_deref()
+            .map(extract_jsonl_ids)
+            .unwrap_or_default();
         Self {
             kind,
             path,
             status: EvidenceStreamStatus::Present,
             record_count,
+            ids,
         }
     }
+}
+
+fn extract_jsonl_ids(raw: &str) -> Vec<String> {
+    raw.lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            serde_json::from_str::<serde_json::Value>(trimmed)
+                .ok()
+                .and_then(|value| value.get("id").and_then(|id| id.as_str()).map(str::to_string))
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -650,6 +672,13 @@ mod tests {
             .unwrap();
         assert_eq!(records.status, EvidenceStreamStatus::Present);
         assert_eq!(records.record_count, Some(2));
+        assert_eq!(records.ids, vec!["a", "b"]);
+        let surfaces = source
+            .streams
+            .iter()
+            .find(|stream| stream.kind == EvidenceStreamKind::Surfaces)
+            .unwrap();
+        assert_eq!(surfaces.ids, vec!["s"]);
         let edges = source
             .streams
             .iter()
