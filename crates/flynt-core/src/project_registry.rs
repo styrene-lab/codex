@@ -37,7 +37,14 @@ impl ProjectRegistry {
         let raw_assets = RawAssetRegistry::discover(&project_root, &visual_artifacts);
         let task_refs = TaskRegistryView::from_store(store)?;
         let external_refs = ExternalRefRegistry::discover(&documents, &task_refs);
-        let edges = build_project_edges(&documents, &visual_artifacts, &external_refs, &task_refs);
+        let spec_refs = SpecRegistryView::discover(&project_root);
+        let edges = build_project_edges(
+            &documents,
+            &visual_artifacts,
+            &external_refs,
+            &task_refs,
+            &spec_refs,
+        );
         Ok(Self {
             scope,
             documents,
@@ -47,7 +54,7 @@ impl ProjectRegistry {
             diagnostics,
             raw_assets,
             task_refs,
-            spec_refs: SpecRegistryView::default(),
+            spec_refs,
             edges,
         })
     }
@@ -180,6 +187,7 @@ fn build_project_edges(
     visual_artifacts: &VisualArtifactRegistry,
     external_refs: &ExternalRefRegistry,
     task_refs: &TaskRegistryView,
+    spec_refs: &SpecRegistryView,
 ) -> Vec<ProjectEdge> {
     let mut edges = Vec::new();
     for artifact in &visual_artifacts.artifacts {
@@ -214,7 +222,26 @@ fn build_project_edges(
         }
     }
 
+    for spec in &spec_refs.changes {
+        for path in spec.project_paths() {
+            edges.push(ProjectEdge {
+                from: ProjectNodeRef::Spec(spec.name.clone()),
+                to: ProjectNodeRef::ProjectPath(path),
+                relation: ProjectRelation::References,
+                source: EdgeSource::SpecLifecycle,
+            });
+        }
+    }
+
     for task in &task_refs.tasks {
+        if let Some(change) = &task.openspec_change {
+            edges.push(ProjectEdge {
+                from: ProjectNodeRef::Task(task.id.clone()),
+                to: ProjectNodeRef::Spec(change.clone()),
+                relation: ProjectRelation::Implements,
+                source: EdgeSource::SpecLifecycle,
+            });
+        }
         edges.push(ProjectEdge {
             from: ProjectNodeRef::Task(task.id.clone()),
             to: ProjectNodeRef::Board(task.board_id.clone()),
@@ -278,6 +305,7 @@ pub struct ProjectRegistrySnapshot {
     pub external_refs: Vec<ExternalRefRecord>,
     pub tasks: Vec<TaskRecord>,
     pub boards: Vec<BoardRecord>,
+    pub specs: Vec<SpecChangeRecord>,
     pub diagnostics: Vec<ProjectRegistryDiagnostic>,
     pub edges: Vec<ProjectEdge>,
 }
@@ -326,6 +354,9 @@ impl ProjectRegistrySnapshot {
         let mut boards = registry.task_refs.boards.clone();
         boards.sort_by(|a, b| a.id.cmp(&b.id));
 
+        let mut specs = registry.spec_refs.changes.clone();
+        specs.sort_by(|a, b| a.name.cmp(&b.name));
+
         let mut diagnostics = registry.diagnostics.clone();
         diagnostics.sort_by_key(stable_diagnostic_key);
 
@@ -344,6 +375,7 @@ impl ProjectRegistrySnapshot {
             external_refs,
             tasks,
             boards,
+            specs,
             diagnostics,
             edges,
         }
@@ -476,7 +508,11 @@ fn validate_snapshot_graph(snapshot: &ProjectRegistrySnapshot) -> Vec<ProjectReg
         .iter()
         .map(|board| board.id.clone())
         .collect::<std::collections::HashSet<_>>();
-    let spec_ids = std::collections::HashSet::<String>::new();
+    let spec_ids = snapshot
+        .specs
+        .iter()
+        .map(|spec| spec.name.clone())
+        .collect::<std::collections::HashSet<_>>();
 
     let mut diagnostics = Vec::new();
     for edge in &snapshot.edges {
@@ -1217,6 +1253,7 @@ pub struct TaskRecord {
     pub document_refs: Vec<DocumentId>,
     pub external_refs: Vec<String>,
     pub tags: Vec<String>,
+    pub openspec_change: Option<String>,
     pub evidence: TaskEvidenceSummary,
 }
 
@@ -1231,6 +1268,7 @@ impl From<Task> for TaskRecord {
             document_refs: task.document_refs,
             external_refs: task.external_refs,
             tags: task.tags,
+            openspec_change: task.openspec_change,
             evidence: TaskEvidenceSummary::default(),
         }
     }
@@ -1276,7 +1314,105 @@ pub enum TaskEvidenceState {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct SpecRegistryView {
-    pub spec_ids: Vec<String>,
+    pub changes: Vec<SpecChangeRecord>,
+}
+
+impl SpecRegistryView {
+    pub fn discover(project_root: &std::path::Path) -> Self {
+        let changes_root = project_root.join("openspec/changes");
+        let mut changes = Vec::new();
+        let Ok(entries) = std::fs::read_dir(&changes_root) else {
+            return Self { changes };
+        };
+        for entry in entries.flatten() {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if !file_type.is_dir() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            let path = PathBuf::from("openspec/changes").join(&name);
+            if !is_safe_project_relative_path(&path) {
+                continue;
+            }
+            changes.push(SpecChangeRecord::from_change_dir(project_root, name, path));
+        }
+        changes.sort_by(|a, b| a.name.cmp(&b.name));
+        Self { changes }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpecChangeRecord {
+    pub name: String,
+    pub path: PathBuf,
+    pub proposal_path: Option<PathBuf>,
+    pub design_path: Option<PathBuf>,
+    pub tasks_path: Option<PathBuf>,
+    pub spec_paths: Vec<PathBuf>,
+}
+
+impl SpecChangeRecord {
+    fn from_change_dir(project_root: &std::path::Path, name: String, path: PathBuf) -> Self {
+        let proposal_path = existing_relative_file(project_root, path.join("proposal.md"));
+        let design_path = existing_relative_file(project_root, path.join("design.md"));
+        let tasks_path = existing_relative_file(project_root, path.join("tasks.md"));
+        let mut spec_paths = Vec::new();
+        collect_spec_files(project_root, &path.join("specs"), &mut spec_paths);
+        spec_paths.sort();
+        Self {
+            name,
+            path,
+            proposal_path,
+            design_path,
+            tasks_path,
+            spec_paths,
+        }
+    }
+
+    fn project_paths(&self) -> Vec<PathBuf> {
+        let mut paths = vec![self.path.clone()];
+        paths.extend(self.proposal_path.clone());
+        paths.extend(self.design_path.clone());
+        paths.extend(self.tasks_path.clone());
+        paths.extend(self.spec_paths.clone());
+        paths
+    }
+}
+
+fn existing_relative_file(project_root: &std::path::Path, relative: PathBuf) -> Option<PathBuf> {
+    if !is_safe_project_relative_path(&relative) {
+        return None;
+    }
+    project_root.join(&relative).is_file().then_some(relative)
+}
+
+fn collect_spec_files(
+    project_root: &std::path::Path,
+    relative_dir: &std::path::Path,
+    out: &mut Vec<PathBuf>,
+) {
+    if !is_safe_project_relative_path(relative_dir) {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(project_root.join(relative_dir)) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = relative_dir.join(entry.file_name());
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_dir() {
+            collect_spec_files(project_root, &path, out);
+        } else if file_type.is_file()
+            && path.extension().and_then(|ext| ext.to_str()) == Some("md")
+            && is_safe_project_relative_path(&path)
+        {
+            out.push(path);
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1760,6 +1896,59 @@ mod tests {
     }
 
     #[test]
+    fn spec_registry_discovers_openspec_changes_and_task_edges() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let change = tmp.path().join("openspec/changes/add-registry/specs/core");
+        std::fs::create_dir_all(&change).unwrap();
+        std::fs::write(
+            tmp.path().join("openspec/changes/add-registry/proposal.md"),
+            "proposal",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.path().join("openspec/changes/add-registry/design.md"),
+            "design",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.path().join("openspec/changes/add-registry/tasks.md"),
+            "tasks",
+        )
+        .unwrap();
+        std::fs::write(change.join("registry.md"), "spec").unwrap();
+
+        let board = Board::minimalist("Spec Work");
+        let mut task = Task::new(board.id.clone(), "Active", "Implement registry");
+        task.openspec_change = Some("add-registry".into());
+        let store = TestStore {
+            docs: Vec::new(),
+            boards: vec![board],
+            tasks: vec![task],
+        };
+
+        let registry = ProjectRegistry::discover(tmp.path().to_path_buf(), &store).unwrap();
+        assert_eq!(registry.spec_refs.changes.len(), 1);
+        let spec = &registry.spec_refs.changes[0];
+        assert_eq!(spec.name, "add-registry");
+        assert_eq!(
+            spec.spec_paths,
+            vec![PathBuf::from(
+                "openspec/changes/add-registry/specs/core/registry.md"
+            )]
+        );
+        assert!(
+            registry
+                .edges
+                .iter()
+                .any(|edge| edge.relation == ProjectRelation::Implements
+                    && matches!(edge.to, ProjectNodeRef::Spec(ref name) if name == "add-registry"))
+        );
+        let snapshot = ProjectRegistrySnapshot::from_registry(&registry);
+        assert_eq!(snapshot.specs.len(), 1);
+        assert!(snapshot.validate().is_empty());
+    }
+
+    #[test]
     fn task_external_refs_are_registered_and_snapshot_validates() {
         let tmp = tempfile::TempDir::new().unwrap();
         let board = Board::minimalist("Agent Work");
@@ -2000,5 +2189,6 @@ mod tests {
         assert!(snapshot_json.contains("tasks"));
         assert!(snapshot_json.contains("boards"));
         assert!(snapshot_json.contains("diagnostics"));
+        assert!(snapshot_json.contains("specs"));
     }
 }
