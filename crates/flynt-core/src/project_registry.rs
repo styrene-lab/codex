@@ -274,6 +274,11 @@ pub struct ProjectRegistrySnapshot {
     pub documents: Vec<DocumentSnapshot>,
     pub visual_artifacts: Vec<VisualArtifactSnapshot>,
     pub evidence_sources: Vec<EvidenceSourceSnapshot>,
+    pub raw_assets: Vec<RawAssetRecord>,
+    pub external_refs: Vec<ExternalRefRecord>,
+    pub tasks: Vec<TaskRecord>,
+    pub boards: Vec<BoardRecord>,
+    pub diagnostics: Vec<ProjectRegistryDiagnostic>,
     pub edges: Vec<ProjectEdge>,
 }
 
@@ -305,6 +310,21 @@ impl ProjectRegistrySnapshot {
             .collect::<Vec<_>>();
         evidence_sources.sort_by(|a, b| a.manifest_path.cmp(&b.manifest_path));
 
+        let mut raw_assets = registry.raw_assets.assets.clone();
+        raw_assets.sort_by(|a, b| a.id.cmp(&b.id));
+
+        let mut external_refs = registry.external_refs.refs.clone();
+        external_refs.sort_by(|a, b| a.id.cmp(&b.id));
+
+        let mut tasks = registry.task_refs.tasks.clone();
+        tasks.sort_by(|a, b| a.id.cmp(&b.id));
+
+        let mut boards = registry.task_refs.boards.clone();
+        boards.sort_by(|a, b| a.id.cmp(&b.id));
+
+        let mut diagnostics = registry.diagnostics.clone();
+        diagnostics.sort_by_key(stable_diagnostic_key);
+
         let mut edges = registry.edges.clone();
         edges.sort_by_key(stable_edge_key);
 
@@ -316,6 +336,11 @@ impl ProjectRegistrySnapshot {
             documents,
             visual_artifacts,
             evidence_sources,
+            raw_assets,
+            external_refs,
+            tasks,
+            boards,
+            diagnostics,
             edges,
         }
     }
@@ -396,6 +421,13 @@ impl From<&EvidenceSourceRecord> for EvidenceSourceSnapshot {
 
 fn stable_edge_key(edge: &ProjectEdge) -> String {
     format!("{:?}|{:?}|{:?}", edge.from, edge.relation, edge.to)
+}
+
+fn stable_diagnostic_key(diagnostic: &ProjectRegistryDiagnostic) -> String {
+    format!(
+        "{:?}|{:?}|{:?}|{}",
+        diagnostic.severity, diagnostic.kind, diagnostic.path, diagnostic.message
+    )
 }
 
 fn snapshot_edge_is_safe(edge: &ProjectEdge) -> bool {
@@ -1779,6 +1811,19 @@ mod tests {
         assert!(json.contains("visual_artifacts"));
         assert!(json.contains("evidence"));
         assert!(json.contains("raw_assets"));
+        assert!(json.contains("external_refs"));
+        assert!(json.contains("task_refs"));
+        assert!(json.contains("diagnostics"));
         assert!(json.contains("edges"));
+
+        let snapshot_json =
+            serde_json::to_string_pretty(&ProjectRegistrySnapshot::from_registry(&registry))
+                .unwrap();
+        assert!(snapshot_json.contains("evidence_sources"));
+        assert!(snapshot_json.contains("raw_assets"));
+        assert!(snapshot_json.contains("external_refs"));
+        assert!(snapshot_json.contains("tasks"));
+        assert!(snapshot_json.contains("boards"));
+        assert!(snapshot_json.contains("diagnostics"));
     }
 }
