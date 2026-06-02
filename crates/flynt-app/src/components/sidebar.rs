@@ -51,6 +51,7 @@ pub fn Sidebar(mut active_route: Signal<Route>) -> Element {
     // artifacts.
     let mut docs: Signal<Option<Vec<DocumentMeta>>> = use_signal(|| None);
     let mut projection: Signal<Option<SidebarProjection>> = use_signal(|| None);
+    let mut projection_error: Signal<Option<String>> = use_signal(|| None);
     use_effect(move || {
         let _ = refresh();
         let project = ctx.project();
@@ -64,10 +65,18 @@ pub fn Sidebar(mut active_route: Signal<Route>) -> Element {
         list.sort_by(|a, b| a.path.cmp(&b.path));
         *docs.write() = Some(list);
 
-        let next_projection = ProjectRegistry::discover(ctx.project_root(), project.store.as_ref())
-            .map(|registry| SidebarProjection::from_registry(&registry))
-            .unwrap_or_default();
-        *projection.write() = Some(next_projection);
+        match ProjectRegistry::discover(ctx.project_root(), project.store.as_ref()) {
+            Ok(registry) => {
+                projection_error.set(None);
+                projection.set(Some(SidebarProjection::from_registry(&registry)));
+            }
+            Err(err) => {
+                let message = err.to_string();
+                tracing::warn!(%message, "sidebar projection registry discovery failed");
+                projection_error.set(Some(message));
+                projection.set(Some(SidebarProjection::default()));
+            }
+        }
     });
 
     let mut creating = use_signal(|| false);
@@ -114,12 +123,18 @@ pub fn Sidebar(mut active_route: Signal<Route>) -> Element {
                     }
                     match (projection.read().as_ref(), docs.read().as_ref()) {
                         (None, _) => rsx! { span { class: "tree-item muted", "Loading…" } },
-                        (Some(projection), Some(docs)) if projection.text_files.is_empty() && docs.is_empty() => rsx! {
+                        (Some(projection), Some(_docs)) if projection_is_empty(projection) => rsx! {
                             div { class: "tree-empty",
                                 "Empty project — press + to create a file"
                             }
+                            if let Some(error) = projection_error.read().clone() {
+                                div { class: "tree-empty", "Sidebar registry error: {error}" }
+                            }
                         },
                         (Some(projection), Some(docs)) => rsx! {
+                            if let Some(error) = projection_error.read().clone() {
+                                div { class: "tree-empty", "Sidebar registry error: {error}" }
+                            }
                             DualLaneTree { projection: projection.clone(), docs: docs.clone() }
                         },
                         _ => rsx! { span { class: "tree-item muted", "Loading…" } },
@@ -326,6 +341,14 @@ fn open_bookmark_target(
 
 // ── File tree builder ─────────────────────────────────────────────────────────
 
+fn projection_is_empty(projection: &SidebarProjection) -> bool {
+    projection.text_files.is_empty()
+        && projection.artifacts.boards.is_empty()
+        && projection.artifacts.drawings.is_empty()
+        && projection.artifacts.diagrams.is_empty()
+        && projection.artifacts.flows.is_empty()
+}
+
 #[component]
 fn DualLaneTree(projection: SidebarProjection, docs: Vec<DocumentMeta>) -> Element {
     let doc_by_id: BTreeMap<_, _> = docs
@@ -343,10 +366,21 @@ fn DualLaneTree(projection: SidebarProjection, docs: Vec<DocumentMeta>) -> Eleme
         }
         section { class: "sidebar-lane sidebar-lane-artifacts",
             div { class: "file-tree-section-title", "Artifacts" }
-            ArtifactGroup { label: "Boards", items: projection.artifacts.boards.clone() }
-            ArtifactGroup { label: "Drawings", items: projection.artifacts.drawings.clone() }
-            ArtifactGroup { label: "Diagrams", items: projection.artifacts.diagrams.clone() }
-            ArtifactGroup { label: "Flows", items: projection.artifacts.flows.clone() }
+            if !projection.artifacts.boards.is_empty() {
+                ArtifactGroup { label: "Boards", items: projection.artifacts.boards.clone() }
+            }
+            if !projection.artifacts.drawings.is_empty() {
+                ArtifactGroup { label: "Drawings", items: projection.artifacts.drawings.clone() }
+            }
+            if !projection.artifacts.diagrams.is_empty() {
+                ArtifactGroup { label: "Diagrams", items: projection.artifacts.diagrams.clone() }
+            }
+            if !projection.artifacts.flows.is_empty() {
+                ArtifactGroup { label: "Flows", items: projection.artifacts.flows.clone() }
+            }
+            if projection.artifacts.boards.is_empty() && projection.artifacts.drawings.is_empty() && projection.artifacts.diagrams.is_empty() && projection.artifacts.flows.is_empty() {
+                div { class: "tree-empty", "No artifacts" }
+            }
         }
     }
 }
@@ -438,15 +472,7 @@ fn ArtifactNavFile(item: ArtifactNavItem) -> Element {
         flynt_core::sidebar_projection::ArtifactNavKind::Flow => VisualArtifactKind::Flow,
     };
     let consumes = Vec::new();
-    render_virtual_artifact_file(
-        &item.title,
-        &item.source_path,
-        item.wrapper_path.as_deref(),
-        kind,
-        &item.render_paths,
-        &consumes,
-        1,
-    )
+    render_virtual_artifact_file(&item, kind, &consumes, 1)
 }
 
 /// Recursive tree node — folders contain sub-folders and files.
@@ -509,11 +535,8 @@ fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix
 }
 
 fn render_virtual_artifact_file(
-    title: &str,
-    path: &std::path::Path,
-    _wrapper_path: Option<&std::path::Path>,
+    item: &ArtifactNavItem,
     kind: VisualArtifactKind,
-    renders: &[RenderArtifact],
     consumes: &[VisualArtifactRef],
     depth: u32,
 ) -> Element {
@@ -521,15 +544,23 @@ fn render_virtual_artifact_file(
     let mut tab_state = use_context::<Signal<TabState>>();
     let mut active_route = use_context::<Signal<Route>>();
     let mut ctx_menu = use_signal(|| None::<(f64, f64)>);
-    let title = title.to_string();
-    let path = path.to_path_buf();
+    let title = item.title.clone();
+    let path = item.source_path.clone();
+    let wrapper_path = item.wrapper_path.clone();
+    let render_paths = item.render_paths.clone();
     let primary_format = primary_render_format(kind);
     let secondary_format = secondary_render_format(kind);
-    let primary_status = render_status_for(renders, primary_format);
-    let secondary_status = render_status_for(renders, secondary_format);
+    let primary_status = render_status_for(&render_paths, primary_format);
+    let secondary_status = render_status_for(&render_paths, secondary_format);
     let artifact_title = visual_artifact_title(kind, &path, consumes);
     let click_path = path.clone();
     let menu_path = path.clone();
+    let menu_wrapper_path = wrapper_path.clone();
+    let menu_render_paths = render_paths.clone();
+    let has_wrapper = wrapper_path.is_some();
+    let has_outputs = render_paths
+        .iter()
+        .any(|render| render.status != RenderStatus::Missing);
     let d2_count = consumed_count(consumes, VisualArtifactKind::D2Diagram);
     let drawing_count = consumed_count(consumes, VisualArtifactKind::ExcalidrawDrawing);
     let indent = depth as f32 * 12.0;
@@ -561,22 +592,74 @@ fn render_virtual_artifact_file(
         if let Some((x, y)) = *ctx_menu.read() {
             crate::components::ContextMenu {
                 x, y,
-                items: vec![
-                    crate::components::ContextMenuItem::new("open", "Open"),
-                    crate::components::ContextMenuItem::new("edit", "Edit"),
-                    crate::components::ContextMenuItem::new("reveal-source", "Reveal Source"),
-                ],
+                items: artifact_context_menu_items(has_wrapper, has_outputs),
                 on_close: move |_| *ctx_menu.write() = None,
                 on_select: move |action: String| {
                     *ctx_menu.write() = None;
                     match action.as_str() {
                         "open" => open_artifact_action(&ctx, &mut tab_state, &mut active_route, kind, &menu_path, ArtifactActionRequest::open),
                         "edit" => open_artifact_action(&ctx, &mut tab_state, &mut active_route, kind, &menu_path, ArtifactActionRequest::edit),
-                        "reveal-source" => open_artifact_action(&ctx, &mut tab_state, &mut active_route, kind, &menu_path, ArtifactActionRequest::reveal_source),
+                        "reveal-source" => reveal_project_path(&ctx, &menu_path),
+                        "reveal-wrapper" => {
+                            if let Some(path) = &menu_wrapper_path {
+                                reveal_project_path(&ctx, path);
+                            }
+                        }
+                        "reveal-outputs" => reveal_render_outputs(&ctx, &menu_render_paths),
                         _ => {}
                     }
                 }
             }
+        }
+    }
+}
+
+fn artifact_context_menu_items(
+    has_wrapper: bool,
+    has_outputs: bool,
+) -> Vec<crate::components::ContextMenuItem> {
+    let mut items = vec![
+        crate::components::ContextMenuItem::new("open", "Open"),
+        crate::components::ContextMenuItem::new("edit", "Edit"),
+        crate::components::ContextMenuItem::new("reveal-source", "Reveal Source").sep(),
+    ];
+    if has_wrapper {
+        items.push(crate::components::ContextMenuItem::new(
+            "reveal-wrapper",
+            "Reveal Wrapper",
+        ));
+    }
+    if has_outputs {
+        items.push(crate::components::ContextMenuItem::new(
+            "reveal-outputs",
+            "Reveal Generated Outputs",
+        ));
+    }
+    items
+}
+
+fn reveal_render_outputs(ctx: &AppContext, renders: &[RenderArtifact]) {
+    for render in renders
+        .iter()
+        .filter(|render| render.status != RenderStatus::Missing)
+    {
+        reveal_project_path(ctx, &render.path);
+    }
+}
+
+fn reveal_project_path(ctx: &AppContext, relative_path: &std::path::Path) {
+    let abs = ctx.project().root.join(relative_path);
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .arg("-R")
+            .arg(&abs)
+            .spawn();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(dir) = abs.parent() {
+            let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
         }
     }
 }
