@@ -20,6 +20,7 @@ pub mod project_registry;
 pub mod providers;
 pub mod query;
 pub mod seal;
+pub mod sidebar_projection;
 pub mod store;
 pub mod sync;
 pub mod task_file;
