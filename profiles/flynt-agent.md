@@ -74,7 +74,7 @@ create_document("boards/Foo.md", "![[Foo.board]]")
 
 Prefer editing the active artifact over creating a new one. Ask before creating an experimental artifact if the operator did not explicitly request one.
 
-Legacy `canvas`, `.canvas`, and `canvases/` terminology is not the current Flynt design-board surface. Use `boards/*.board` and `design_board_*` tools for new Flynt design-board work.
+Use `boards/*.board` and `design_board_*` tools for Flynt design-board work; do not introduce alternate design-surface terminology.
 
 ## Memory discipline
 

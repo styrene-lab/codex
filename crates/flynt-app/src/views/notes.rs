@@ -3079,7 +3079,9 @@ pub fn NotesView() -> Element {
     ) {
         is_drawing.set(true);
         return match surface {
-            crate::visual_artifact_surface::VisualArtifactSurface::ExcalidrawPreview { source_path } => {
+            crate::visual_artifact_surface::VisualArtifactSurface::ExcalidrawPreview {
+                source_path,
+            } => {
                 let html = crate::excalidraw_preview::render_excalidraw_preview_html(
                     &ctx.project_root(),
                     &source_path,
@@ -3114,20 +3116,24 @@ pub fn NotesView() -> Element {
                     }
                 }
             }
-            crate::visual_artifact_surface::VisualArtifactSurface::ExcalidrawEditor { source_path } => rsx! {
+            crate::visual_artifact_surface::VisualArtifactSurface::ExcalidrawEditor {
+                source_path,
+            } => rsx! {
                 crate::components::TabBar {}
                 div {
                     style: "display:flex;flex-direction:column;flex:1;overflow:hidden;padding:0;min-height:0;height:100%;",
                     crate::views::ExcalidrawView { key: "{source_path.display()}", path: source_path }
                 }
             },
-            crate::visual_artifact_surface::VisualArtifactSurface::DesignBoard { source_path } => rsx! {
-                crate::components::TabBar {}
-                div {
-                    style: "display:flex;flex-direction:column;flex:1;overflow:hidden;padding:0;min-height:0;height:100%;",
-                    crate::views::DesignBoardView { path: source_path }
+            crate::visual_artifact_surface::VisualArtifactSurface::DesignBoard { source_path } => {
+                rsx! {
+                    crate::components::TabBar {}
+                    div {
+                        style: "display:flex;flex-direction:column;flex:1;overflow:hidden;padding:0;min-height:0;height:100%;",
+                        crate::views::DesignBoardView { key: "{source_path.display()}", path: source_path }
+                    }
                 }
-            },
+            }
         };
     }
 

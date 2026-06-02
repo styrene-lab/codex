@@ -1598,7 +1598,7 @@ fn flynt_surface_guide() -> Value {
             "Never call read on a directory; read is for known file paths only.",
             "After one shell failure in Flynt ACP, stop retrying shell discovery and switch to graph/document tools.",
             "Do not create wrapper markdown manually for drawings or design boards; use the dedicated create tools.",
-            "Legacy canvas/.canvas/canvases terminology is not the app's current design-board surface. Use boards/*.board and design_board_* tools for Flynt design boards."
+            "Use boards/*.board and design_board_* tools for Flynt design boards; do not introduce alternate design-surface terminology."
         ],
         "discovery_policy": {
             "preferred_order": ["get_ui_state", "flynt_surface_guide", "get_graph_filtered", "list_documents", "search_documents", "get_document", "bash_when_needed"],
@@ -1669,7 +1669,7 @@ fn flynt_surface_guide() -> Value {
                 "tools": ["design_board_create", "design_board_active", "design_board_get", "design_board_set_cells", "design_board_apply_theme", "design_board_list_primitives"],
                 "use_for": "Flynt design boards made of grid-positioned HTML/CSS/component cells; use only when the operator specifically wants this artifact type",
                 "rules": [
-                    "This is not Excalidraw and not a legacy .canvas surface.",
+                    "This is not Excalidraw; it is Flynt's native board surface.",
                     "The GUI can create/open boards and the agent can patch cells, but the design-board UX is still experimental.",
                     "Read design_board_list_primitives before authoring cells.",
                     "Use design_board_active before editing the design board the operator has open.",
@@ -1686,14 +1686,6 @@ fn flynt_surface_guide() -> Value {
                     "Schema is v1 and last-writer-wins; avoid concurrent agent/editor writes.",
                     "Prefer get_ui_state or an existing .flow file before creating a new graph unless the user asked for one."
                 ]
-            },
-            {
-                "kind": "legacy_canvas",
-                "maturity": "avoid_direct",
-                "paths": ["canvases/<name>.canvas", "canvases/<name>.md"],
-                "tools": [],
-                "use_for": "legacy/older terminology only; do not choose this for new Flynt design work",
-                "rules": ["Use design-board / boards/*.board instead of canvas/.canvas unless a project-specific legacy artifact already exists and the operator asks to edit it."]
             }
         ]
     })
@@ -1958,10 +1950,7 @@ impl FlyntExtension {
                         variant.as_deref(),
                     )
                     .map_err(|e| {
-                        omegon_extension::Error::invalid_params(format!(
-                            "cell '{}': {e}",
-                            cell.id
-                        ))
+                        omegon_extension::Error::invalid_params(format!("cell '{}': {e}", cell.id))
                     })?;
                 }
                 let id = cell.id.clone();
@@ -2366,21 +2355,43 @@ mod tests {
         assert_eq!(init["extension_info"]["version"], env!("CARGO_PKG_VERSION"));
         assert_eq!(init["extension_info"]["sdk_version"], EXTENSION_SDK_VERSION);
         assert_eq!(init["extension_info"]["sdk_repo"], "omegon-extension-sdk");
-        assert_eq!(init["extension_info"]["runtime_min_version"], RUNTIME_MIN_VERSION);
+        assert_eq!(
+            init["extension_info"]["runtime_min_version"],
+            RUNTIME_MIN_VERSION
+        );
         assert_eq!(init["extension_info"]["scope"], "project");
         assert_eq!(
             init["extension_info"]["project_root"].as_str().unwrap(),
             tmp.path().to_string_lossy()
         );
-        assert_eq!(init["extension_info"]["recommended_profile"], REQUIRED_PROFILE);
+        assert_eq!(
+            init["extension_info"]["recommended_profile"],
+            REQUIRED_PROFILE
+        );
         assert_eq!(init["extension_info"]["required_profile"], REQUIRED_PROFILE);
-        assert_eq!(init["extension_info"]["surface_guide_version"], SURFACE_GUIDE_VERSION);
-        assert_eq!(init["extension_info"]["capability_contract_version"], CAPABILITY_CONTRACT_VERSION);
+        assert_eq!(
+            init["extension_info"]["surface_guide_version"],
+            SURFACE_GUIDE_VERSION
+        );
+        assert_eq!(
+            init["extension_info"]["capability_contract_version"],
+            CAPABILITY_CONTRACT_VERSION
+        );
         assert_eq!(init["policy"]["memory_scope"], "project");
         assert_eq!(init["policy"]["cross_pollination"], "forbidden");
-        assert_eq!(init["policy"]["requires_ui_state_for_open_surface_claims"], true);
-        assert_eq!(init["policy"]["requires_surface_guide_for_artifact_selection"], true);
-        assert!(init["tools"].as_array().is_some_and(|tools| !tools.is_empty()));
+        assert_eq!(
+            init["policy"]["requires_ui_state_for_open_surface_claims"],
+            true
+        );
+        assert_eq!(
+            init["policy"]["requires_surface_guide_for_artifact_selection"],
+            true
+        );
+        assert!(
+            init["tools"]
+                .as_array()
+                .is_some_and(|tools| !tools.is_empty())
+        );
     }
 
     #[tokio::test]
@@ -3253,11 +3264,13 @@ mod tests {
         assert_eq!(out["themes"][0]["vars"]["--primary"], "#fff");
         // Cell-authoring guidance surfaces alongside primitives + themes.
         assert_eq!(out["cell_authoring_guidance"].as_array().unwrap().len(), 1);
-        assert!(out["components"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|component| component["name"] == "Panel"));
+        assert!(
+            out["components"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|component| component["name"] == "Panel")
+        );
     }
 
     #[tokio::test]
@@ -3800,7 +3813,7 @@ mod tests {
         assert!(after["design_node_id"].is_null());
     }
     #[tokio::test]
-    async fn surface_guide_includes_maturity_and_legacy_canvas_caveat() {
+    async fn surface_guide_includes_design_board_without_alternate_surface_caveat() {
         let (_tmp, ext) = test_extension();
         let guide = ext
             .handle_rpc("execute_flynt_surface_guide", json!({}))
@@ -3812,7 +3825,8 @@ mod tests {
         assert!(body.contains("boards/<name>.board"));
         assert!(body.contains("maturity_legend"));
         assert_eq!(guide["version"], SURFACE_GUIDE_VERSION);
-        assert!(body.contains("legacy_canvas"));
+        assert!(!body.contains("legacy_canvas"));
+        assert!(!body.contains(".canvas"));
         assert!(body.contains("discovery_policy"));
         assert!(body.contains("get_graph_filtered"));
         assert!(body.contains("After one failed shell discovery command"));
@@ -3823,13 +3837,6 @@ mod tests {
             .find(|surface| surface["kind"] == "design-board")
             .expect("design-board surface should be present");
         assert_eq!(design_board["maturity"], "experimental");
-
-        let legacy_canvas = surfaces
-            .iter()
-            .find(|surface| surface["kind"] == "legacy_canvas")
-            .expect("legacy canvas caveat should be explicit");
-        assert_eq!(legacy_canvas["maturity"], "avoid_direct");
-        assert_eq!(legacy_canvas["tools"].as_array().unwrap().len(), 0);
     }
 
     #[tokio::test]
@@ -3853,5 +3860,4 @@ mod tests {
         assert!(create_description.contains("operator specifically wants"));
         assert!(!create_description.contains("when the user asks to design something fresh"));
     }
-
 }
