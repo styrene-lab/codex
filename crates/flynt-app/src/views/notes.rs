@@ -3127,10 +3127,14 @@ pub fn NotesView() -> Element {
             },
             crate::visual_artifact_surface::VisualArtifactSurface::DesignBoard { source_path } => {
                 rsx! {
-                    crate::components::TabBar {}
                     div {
-                        style: "display:flex;flex-direction:column;flex:1;overflow:hidden;padding:0;min-height:0;height:100%;",
-                        crate::views::DesignBoardView { key: "{source_path.display()}", path: source_path }
+                        key: "design-board-{source_path.display()}",
+                        style: "display:flex;flex-direction:column;flex:1;overflow:hidden;min-height:0;height:100%;",
+                        crate::components::TabBar {}
+                        div {
+                            style: "display:flex;flex-direction:column;flex:1;overflow:hidden;padding:0;min-height:0;",
+                            crate::views::DesignBoardView { path: source_path }
+                        }
                     }
                 }
             }
