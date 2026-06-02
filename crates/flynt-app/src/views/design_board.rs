@@ -641,12 +641,12 @@ pub fn DesignBoardView(path: PathBuf) -> Element {
     }
 
     let path_load = path.clone();
-    let parsed = use_memo(move || {
+    let parsed = {
         let _ = refresh();
         let project = ctx.project();
         let abs = project.root.join(&path_load);
         DesignBoard::load(&abs).map_err(|e| e.to_string())
-    });
+    };
 
     tracing::info!("DesignBoardView render: path={}", path.display());
     let active_focus = use_signal(|| Option::<crate::design_focus::DesignFocusEvent>::None);
@@ -675,8 +675,7 @@ pub fn DesignBoardView(path: PathBuf) -> Element {
             });
         });
     }
-    let parsed_ref = parsed.read();
-    let design_board = match &*parsed_ref {
+    let design_board = match &parsed {
         Ok(c) => {
             tracing::info!(
                 "DesignBoardView parsed: {} cells, theme={}",
