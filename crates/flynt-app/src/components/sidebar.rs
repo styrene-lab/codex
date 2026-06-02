@@ -598,7 +598,6 @@ fn render_virtual_artifact_file(
                     *ctx_menu.write() = None;
                     match action.as_str() {
                         "open" => open_artifact_action(&ctx, &mut tab_state, &mut active_route, kind, &menu_path, ArtifactActionRequest::open),
-                        "edit" => open_artifact_action(&ctx, &mut tab_state, &mut active_route, kind, &menu_path, ArtifactActionRequest::edit),
                         "reveal-source" => reveal_project_path(&ctx, &menu_path),
                         "reveal-wrapper" => {
                             if let Some(path) = &menu_wrapper_path {
@@ -620,7 +619,6 @@ fn artifact_context_menu_items(
 ) -> Vec<crate::components::ContextMenuItem> {
     let mut items = vec![
         crate::components::ContextMenuItem::new("open", "Open"),
-        crate::components::ContextMenuItem::new("edit", "Edit"),
         crate::components::ContextMenuItem::new("reveal-source", "Reveal Source").sep(),
     ];
     if has_wrapper {
@@ -639,9 +637,9 @@ fn artifact_context_menu_items(
 }
 
 fn reveal_render_outputs(ctx: &AppContext, renders: &[RenderArtifact]) {
-    for render in renders
+    if let Some(render) = renders
         .iter()
-        .filter(|render| render.status != RenderStatus::Missing)
+        .find(|render| render.status != RenderStatus::Missing)
     {
         reveal_project_path(ctx, &render.path);
     }
@@ -1166,4 +1164,27 @@ pub fn initial_note_id_for_project(project_root: &PathBuf) -> Option<String> {
         .into_iter()
         .next()
         .map(|doc| doc.id.0.to_string())
+}
+
+#[cfg(test)]
+mod sidebar_tests {
+    use super::*;
+
+    #[test]
+    fn artifact_context_menu_gates_reveal_actions() {
+        let source_only = artifact_context_menu_items(false, false)
+            .into_iter()
+            .map(|item| item.id)
+            .collect::<Vec<_>>();
+        assert_eq!(source_only, vec!["open", "reveal-source"]);
+
+        let full = artifact_context_menu_items(true, true)
+            .into_iter()
+            .map(|item| item.id)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            full,
+            vec!["open", "reveal-source", "reveal-wrapper", "reveal-outputs"]
+        );
+    }
 }
