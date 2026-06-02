@@ -16,8 +16,8 @@ use std::{
     path::{Path, PathBuf},
     process::Stdio,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
@@ -583,15 +583,21 @@ impl OmegonRuntimeContext {
         Ok(())
     }
 
-    pub fn load_deployment_manifest(&self) -> flynt_core::omegon_deployment::OmegonDeploymentManifest {
+    pub fn load_deployment_manifest(
+        &self,
+    ) -> flynt_core::omegon_deployment::OmegonDeploymentManifest {
         std::fs::read_to_string(&self.deployment_path)
             .ok()
-            .and_then(|content| flynt_core::omegon_deployment::OmegonDeploymentManifest::from_toml(&content).ok())
+            .and_then(|content| {
+                flynt_core::omegon_deployment::OmegonDeploymentManifest::from_toml(&content).ok()
+            })
             .map(flynt_core::omegon_deployment::merge_with_default_required_activation)
             .unwrap_or_default()
     }
 
-    pub fn ensure_deployment_manifest(&self) -> anyhow::Result<flynt_core::omegon_deployment::OmegonDeploymentManifest> {
+    pub fn ensure_deployment_manifest(
+        &self,
+    ) -> anyhow::Result<flynt_core::omegon_deployment::OmegonDeploymentManifest> {
         let manifest = if self.deployment_path.exists() {
             self.load_deployment_manifest()
         } else {
@@ -966,10 +972,9 @@ fn run_project_watcher(
                                         rel.display()
                                     ),
                                 },
-                                Err(e) => warn!(
-                                    "Deleted path outside project root {}: {e}",
-                                    p.display()
-                                ),
+                                Err(e) => {
+                                    warn!("Deleted path outside project root {}: {e}", p.display())
+                                }
                             }
                         }
                         None
@@ -1110,6 +1115,47 @@ fn publication_output_path(project: &Project) -> PathBuf {
     project.root.join(target)
 }
 
+pub(crate) fn refresh_project_registry_snapshot(
+    project_root: &Path,
+    project: &Project,
+) -> Option<flynt_core::project_registry::ProjectRegistrySnapshot> {
+    let registry = match flynt_core::project_registry::ProjectRegistry::discover(
+        project_root.to_path_buf(),
+        &*project.store,
+    ) {
+        Ok(registry) => registry,
+        Err(error) => {
+            warn!("Project registry discovery failed: {error}");
+            return None;
+        }
+    };
+    let snapshot = flynt_core::project_registry::ProjectRegistrySnapshot::from_registry(&registry);
+    let diagnostics = snapshot.validate();
+    if !diagnostics.is_empty() {
+        warn!(
+            "Project registry snapshot validation produced {} diagnostic(s)",
+            diagnostics.len()
+        );
+        for diagnostic in diagnostics.iter().take(10) {
+            warn!("Project registry diagnostic: {:?}", diagnostic);
+        }
+    }
+    match snapshot.persist_to_project(project_root) {
+        Ok(()) => {
+            info!(
+                "Project registry snapshot refreshed at {}",
+                flynt_core::project_registry::ProjectRegistrySnapshot::snapshot_path(project_root)
+                    .display()
+            );
+            Some(snapshot)
+        }
+        Err(error) => {
+            warn!("Project registry snapshot refresh failed: {error}");
+            None
+        }
+    }
+}
+
 pub(crate) fn runtime_state_for_project_root(project_root: PathBuf) -> RuntimeState {
     if let Err(e) = std::fs::create_dir_all(&project_root) {
         tracing::error!(
@@ -1147,6 +1193,8 @@ pub(crate) fn runtime_state_for_project_root(project_root: PathBuf) -> RuntimeSt
         }
         Err(e) => warn!("Reindex failed: {e}"),
     }
+
+    refresh_project_registry_snapshot(&project_root, &project);
 
     let (tx, _rx) = broadcast::channel::<ProjectChangeEvent>(256);
     let watcher_handle = Arc::new(ProjectWatcherHandle::spawn(
