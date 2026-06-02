@@ -530,6 +530,75 @@ fn execute_command(
                 }
             });
         }
+        "project-registry-refresh" => {
+            let project_root = ctx.project_root();
+            let project = ctx.project();
+            spawn(async move {
+                match tokio::task::spawn_blocking(move || {
+                    crate::bootstrap::refresh_project_registry_snapshot(&project_root, &project)
+                })
+                .await
+                {
+                    Ok(Some(snapshot)) => tracing::info!(
+                        "Project Registry: refreshed snapshot (documents={}, artifacts={}, tasks={}, specs={}, edges={})",
+                        snapshot.source_summary.document_count,
+                        snapshot.source_summary.visual_artifact_count,
+                        snapshot.source_summary.task_count,
+                        snapshot.source_summary.spec_count,
+                        snapshot.source_summary.edge_count
+                    ),
+                    Ok(None) => tracing::warn!("Project Registry: refresh failed"),
+                    Err(error) => tracing::warn!("Project Registry: refresh task failed: {error}"),
+                }
+            });
+        }
+        "project-registry-dump-log" => {
+            let project_root = ctx.project_root();
+            spawn(async move {
+                match tokio::task::spawn_blocking(move || {
+                    let path = flynt_core::project_registry::ProjectRegistrySnapshot::snapshot_path(
+                        &project_root,
+                    );
+                    let snapshot =
+                        flynt_core::project_registry::ProjectRegistrySnapshot::load_from_project(
+                            &project_root,
+                        )?
+                        .ok_or_else(|| {
+                            anyhow::anyhow!("snapshot does not exist at {}", path.display())
+                        })?;
+                    Ok::<_, anyhow::Error>((path, snapshot))
+                })
+                .await
+                {
+                    Ok(Ok((path, snapshot))) => {
+                        let diagnostics = snapshot.validate();
+                        tracing::info!(
+                            "Project Registry snapshot: path={}, schema={}, documents={}, artifacts={}, raw_assets={}, external_refs={}, tasks={}, boards={}, specs={}, diagnostics={}, validation_diagnostics={}, edges={}",
+                            path.display(),
+                            snapshot.schema,
+                            snapshot.source_summary.document_count,
+                            snapshot.source_summary.visual_artifact_count,
+                            snapshot.source_summary.raw_asset_count,
+                            snapshot.source_summary.external_ref_count,
+                            snapshot.source_summary.task_count,
+                            snapshot.source_summary.board_count,
+                            snapshot.source_summary.spec_count,
+                            snapshot.source_summary.diagnostic_count,
+                            diagnostics.len(),
+                            snapshot.source_summary.edge_count
+                        );
+                        for diagnostic in diagnostics.iter().take(10) {
+                            tracing::warn!(
+                                "Project Registry validation diagnostic: {:?}",
+                                diagnostic
+                            );
+                        }
+                    }
+                    Ok(Err(error)) => tracing::warn!("Project Registry: dump failed: {error}"),
+                    Err(error) => tracing::warn!("Project Registry: dump task failed: {error}"),
+                }
+            });
+        }
         other if other.starts_with("open:") => {
             if let Some(uuid_str) = other.strip_prefix("open:") {
                 if let Ok(uuid) = uuid_str.parse::<uuid::Uuid>() {
@@ -704,6 +773,16 @@ pub fn CommandPalette(mut open: Signal<bool>, mode: Signal<PaletteMode>) -> Elem
                 id: "convert-to-task".into(),
                 label: "Convert to Task".into(),
                 category: "Action".into(),
+            },
+            Cmd {
+                id: "project-registry-refresh".into(),
+                label: "Project Registry: Refresh Snapshot".into(),
+                category: "Diagnostics".into(),
+            },
+            Cmd {
+                id: "project-registry-dump-log".into(),
+                label: "Project Registry: Dump Snapshot Summary to Log".into(),
+                category: "Diagnostics".into(),
             },
         ];
         let templates = flynt_core::templates::list_templates(&ctx.project().root);
