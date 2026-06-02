@@ -6,11 +6,12 @@ use crate::{
 use dioxus::prelude::*;
 use flynt_core::{
     models::{Bookmark, BookmarkTarget, Document, DocumentMeta},
+    project_registry::ProjectRegistry,
+    sidebar_projection::{ArtifactNavItem, SidebarProjection, TextFileNavItem},
     store::ProjectStore,
     visual_artifacts::{
         ArtifactActionRequest, RenderArtifact, RenderFormat, RenderStatus, VisualArtifactKind,
-        VisualArtifactRef, discover_d2_artifacts, discover_design_board_artifacts,
-        discover_design_board_consumed_artifacts, discover_excalidraw_artifacts,
+        VisualArtifactRef,
     },
 };
 use rfd::FileDialog;
@@ -44,9 +45,12 @@ pub fn Sidebar(mut active_route: Signal<Route>) -> Element {
         });
     });
 
-    // Document list — synchronous SQLite read (~2ms for 1500 docs).
-    // No spawn_blocking overhead. Debounced watcher prevents cascade.
+    // Sidebar projection — live registry-derived state, not the persisted
+    // Project Registry snapshot. This keeps the sidebar aligned with the
+    // dual-lane product model: filesystem-like text files plus semantic
+    // artifacts.
     let mut docs: Signal<Option<Vec<DocumentMeta>>> = use_signal(|| None);
+    let mut projection: Signal<Option<SidebarProjection>> = use_signal(|| None);
     use_effect(move || {
         let _ = refresh();
         let project = ctx.project();
@@ -59,6 +63,11 @@ pub fn Sidebar(mut active_route: Signal<Route>) -> Element {
         });
         list.sort_by(|a, b| a.path.cmp(&b.path));
         *docs.write() = Some(list);
+
+        let next_projection = ProjectRegistry::discover(ctx.project_root(), project.store.as_ref())
+            .map(|registry| SidebarProjection::from_registry(&registry))
+            .unwrap_or_default();
+        *projection.write() = Some(next_projection);
     });
 
     let mut creating = use_signal(|| false);
@@ -103,14 +112,17 @@ pub fn Sidebar(mut active_route: Signal<Route>) -> Element {
                             active_route,
                         }
                     }
-                    match docs.read().as_ref() {
-                        None => rsx! { span { class: "tree-item muted", "Loading…" } },
-                        Some(list) if list.is_empty() => rsx! {
+                    match (projection.read().as_ref(), docs.read().as_ref()) {
+                        (None, _) => rsx! { span { class: "tree-item muted", "Loading…" } },
+                        (Some(projection), Some(docs)) if projection.text_files.is_empty() && docs.is_empty() => rsx! {
                             div { class: "tree-empty",
-                                "Empty project — press + to create a note"
+                                "Empty project — press + to create a file"
                             }
                         },
-                        Some(list) => rsx! { { build_tree(list) } },
+                        (Some(projection), Some(docs)) => rsx! {
+                            DualLaneTree { projection: projection.clone(), docs: docs.clone() }
+                        },
+                        _ => rsx! { span { class: "tree-item muted", "Loading…" } },
                     }
                 }
 
@@ -314,6 +326,129 @@ fn open_bookmark_target(
 
 // ── File tree builder ─────────────────────────────────────────────────────────
 
+#[component]
+fn DualLaneTree(projection: SidebarProjection, docs: Vec<DocumentMeta>) -> Element {
+    let doc_by_id: BTreeMap<_, _> = docs
+        .into_iter()
+        .map(|doc| (doc.id.0.to_string(), doc))
+        .collect();
+    rsx! {
+        section { class: "sidebar-lane sidebar-lane-notes",
+            div { class: "file-tree-section-title", "Notes / Text Files" }
+            if projection.text_files.is_empty() {
+                div { class: "tree-empty", "No text files" }
+            } else {
+                { build_text_file_tree(&projection.text_files, &doc_by_id) }
+            }
+        }
+        section { class: "sidebar-lane sidebar-lane-artifacts",
+            div { class: "file-tree-section-title", "Artifacts" }
+            ArtifactGroup { label: "Boards", items: projection.artifacts.boards.clone() }
+            ArtifactGroup { label: "Drawings", items: projection.artifacts.drawings.clone() }
+            ArtifactGroup { label: "Diagrams", items: projection.artifacts.diagrams.clone() }
+            ArtifactGroup { label: "Flows", items: projection.artifacts.flows.clone() }
+        }
+    }
+}
+
+fn build_text_file_tree(
+    items: &[TextFileNavItem],
+    doc_by_id: &BTreeMap<String, DocumentMeta>,
+) -> Element {
+    let mut root: BTreeMap<String, TreeNode> = BTreeMap::new();
+    for item in items {
+        let Some(id) = &item.id else {
+            continue;
+        };
+        let Some(doc) = doc_by_id.get(&id.0.to_string()) else {
+            continue;
+        };
+        insert_document_tree_node(&mut root, doc);
+    }
+    rsx! { { render_tree_level(&root, 0, "") } }
+}
+
+fn insert_document_tree_node(root: &mut BTreeMap<String, TreeNode>, doc: &DocumentMeta) {
+    let components: Vec<_> = doc
+        .path
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        .collect();
+    if components.len() <= 1 {
+        let filename = components
+            .last()
+            .cloned()
+            .unwrap_or_else(|| doc.title.clone());
+        root.entry(format!("~{filename}"))
+            .or_insert(TreeNode::File(doc.clone()));
+        return;
+    }
+    let mut current = root;
+    for part in &components[..components.len() - 1] {
+        let entry = current
+            .entry(part.clone())
+            .or_insert_with(|| TreeNode::Folder {
+                name: part.clone(),
+                children: BTreeMap::new(),
+                default_open: false,
+            });
+        current = match entry {
+            TreeNode::Folder { children, .. } => children,
+            _ => return,
+        };
+    }
+    let filename = components
+        .last()
+        .cloned()
+        .unwrap_or_else(|| doc.title.clone());
+    current
+        .entry(format!("~{filename}"))
+        .or_insert(TreeNode::File(doc.clone()));
+}
+
+#[component]
+fn ArtifactGroup(label: &'static str, items: Vec<ArtifactNavItem>) -> Element {
+    let mut open = use_signal(|| true);
+    let count = items.len();
+    rsx! {
+        button {
+            class: "tree-item tree-folder",
+            style: "padding-left: 8px;",
+            onclick: move |_| { let v = *open.read(); *open.write() = !v; },
+            span { class: "tree-chevron", if *open.read() { "\u{25BE}" } else { "\u{25B8}" } }
+            span { class: "tree-name", "{label}" }
+            span { class: "tree-count", "{count}" }
+        }
+        if *open.read() {
+            for item in items {
+                ArtifactNavFile { key: "{item.source_path.display()}", item: item.clone() }
+            }
+        }
+    }
+}
+
+#[component]
+fn ArtifactNavFile(item: ArtifactNavItem) -> Element {
+    let kind = match item.kind {
+        flynt_core::sidebar_projection::ArtifactNavKind::Board => VisualArtifactKind::DesignBoard,
+        flynt_core::sidebar_projection::ArtifactNavKind::Drawing => {
+            VisualArtifactKind::ExcalidrawDrawing
+        }
+        flynt_core::sidebar_projection::ArtifactNavKind::Diagram => VisualArtifactKind::D2Diagram,
+        flynt_core::sidebar_projection::ArtifactNavKind::Flow => VisualArtifactKind::Flow,
+    };
+    let consumes = Vec::new();
+    render_virtual_artifact_file(
+        &item.title,
+        &item.source_path,
+        item.wrapper_path.as_deref(),
+        kind,
+        &item.render_paths,
+        &consumes,
+        1,
+    )
+}
+
 /// Recursive tree node — folders contain sub-folders and files.
 #[derive(Clone, PartialEq)]
 enum TreeNode {
@@ -322,21 +457,13 @@ enum TreeNode {
         children: BTreeMap<String, TreeNode>,
         default_open: bool,
     },
-    VirtualFile {
-        title: String,
-        path: std::path::PathBuf,
-        wrapper_path: Option<std::path::PathBuf>,
-        kind: VisualArtifactKind,
-        renders: Vec<RenderArtifact>,
-        consumes: Vec<VisualArtifactRef>,
-    },
     File(DocumentMeta),
 }
 
 impl TreeNode {
     fn file_count(&self) -> usize {
         match self {
-            Self::File(_) | Self::VirtualFile { .. } => 1,
+            Self::File(_) => 1,
             Self::Folder { children, .. } => children.values().map(|c| c.file_count()).sum(),
         }
     }
@@ -344,147 +471,11 @@ impl TreeNode {
     fn contains_document_id(&self, id: &str) -> bool {
         match self {
             Self::File(meta) => meta.id.0.to_string() == id,
-            Self::VirtualFile { .. } => false,
             Self::Folder { children, .. } => children
                 .values()
                 .any(|child| child.contains_document_id(id)),
         }
     }
-}
-
-/// Build a fully nested tree from flat document list using all path components.
-fn build_tree(docs: &[DocumentMeta]) -> Element {
-    let ctx = use_context::<AppContext>();
-    let visual_artifacts = discover_project_visual_artifacts(&ctx.project_root());
-    let mut root: BTreeMap<String, TreeNode> = BTreeMap::new();
-    for doc in docs {
-        if visual_artifacts
-            .iter()
-            .any(|artifact| artifact.wrapper_path.as_ref() == Some(&doc.path))
-        {
-            continue;
-        }
-        let components: Vec<_> = doc
-            .path
-            .components()
-            .map(|c| c.as_os_str().to_string_lossy().into_owned())
-            .collect();
-
-        if components.len() <= 1 {
-            // Root-level file — use filename for unique identity, prefixed to sort after folders
-            let filename = components
-                .last()
-                .cloned()
-                .unwrap_or_else(|| doc.title.clone());
-            root.entry(format!("~{filename}"))
-                .or_insert(TreeNode::File(doc.clone()));
-        } else {
-            // Walk/create nested folder path
-            let folder_parts = &components[..components.len() - 1];
-            let mut current = &mut root;
-
-            for part in folder_parts {
-                let entry = current
-                    .entry(part.clone())
-                    .or_insert_with(|| TreeNode::Folder {
-                        name: part.clone(),
-                        children: BTreeMap::new(),
-                        default_open: false,
-                    });
-                current = match entry {
-                    TreeNode::Folder { children, .. } => children,
-                    _ => unreachable!(),
-                };
-            }
-            let filename = components
-                .last()
-                .cloned()
-                .unwrap_or_else(|| doc.title.clone());
-            current
-                .entry(format!("~{filename}"))
-                .or_insert(TreeNode::File(doc.clone()));
-        }
-    }
-    add_visual_artifact_files(&ctx.project_root(), visual_artifacts, &mut root);
-
-    rsx! { { render_tree_level(&root, 0, "") } }
-}
-
-fn discover_project_visual_artifacts(
-    project_root: &std::path::Path,
-) -> Vec<flynt_core::visual_artifacts::VisualArtifact> {
-    let mut artifacts = Vec::new();
-    artifacts.extend(discover_d2_artifacts(project_root));
-    artifacts.extend(discover_excalidraw_artifacts(project_root));
-    artifacts.extend(discover_design_board_artifacts(project_root));
-    artifacts
-}
-
-fn add_visual_artifact_files(
-    project_root: &std::path::Path,
-    artifacts: Vec<flynt_core::visual_artifacts::VisualArtifact>,
-    root: &mut BTreeMap<String, TreeNode>,
-) {
-    for artifact in artifacts {
-        let consumes = if artifact.kind == VisualArtifactKind::DesignBoard {
-            discover_design_board_consumed_artifacts(project_root, &artifact.source_path)
-        } else {
-            Vec::new()
-        };
-        add_visual_artifact_file(
-            artifact.title,
-            artifact.source_path,
-            artifact.wrapper_path,
-            artifact.kind,
-            artifact.renders,
-            consumes,
-            root,
-        );
-    }
-}
-
-fn add_visual_artifact_file(
-    title: String,
-    path: std::path::PathBuf,
-    wrapper_path: Option<std::path::PathBuf>,
-    kind: VisualArtifactKind,
-    renders: Vec<RenderArtifact>,
-    consumes: Vec<VisualArtifactRef>,
-    root: &mut BTreeMap<String, TreeNode>,
-) {
-    let parts: Vec<_> = path
-        .components()
-        .map(|c| c.as_os_str().to_string_lossy().into_owned())
-        .collect();
-    if parts.is_empty() {
-        return;
-    }
-
-    let mut current = root;
-    for part in &parts[..parts.len() - 1] {
-        current = match current
-            .entry(part.clone())
-            .or_insert_with(|| TreeNode::Folder {
-                name: part.clone(),
-                children: BTreeMap::new(),
-                default_open: true,
-            }) {
-            TreeNode::Folder { children, .. } => children,
-            _ => return,
-        };
-    }
-
-    let file = parts.last().cloned().unwrap_or_else(|| title.clone());
-    current
-        .entry(format!("~{file}"))
-        .or_insert_with(|| TreeNode::VirtualFile {
-            title,
-            path,
-            wrapper_path,
-            kind,
-            renders,
-            consumes,
-        });
 }
 
 /// Recursively render a tree level using keyed components for stable hook identity.
@@ -506,11 +497,6 @@ fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix
                         }
                     }
                 },
-                TreeNode::VirtualFile { title, path, wrapper_path, kind, renders, consumes } => {
-                    rsx! {
-                        VirtualArtifactFile { key: "{path.display()}", title: title.clone(), path: path.clone(), wrapper_path: wrapper_path.clone(), kind: *kind, renders: renders.clone(), consumes: consumes.clone(), depth }
-                    }
-                },
                 TreeNode::File(doc) => {
                     let doc_key = doc.id.0.to_string();
                     rsx! {
@@ -520,27 +506,6 @@ fn render_tree_level(nodes: &BTreeMap<String, TreeNode>, depth: u32, path_prefix
             }
         }
     }
-}
-
-#[component]
-fn VirtualArtifactFile(
-    title: String,
-    path: std::path::PathBuf,
-    wrapper_path: Option<std::path::PathBuf>,
-    kind: VisualArtifactKind,
-    renders: Vec<RenderArtifact>,
-    consumes: Vec<VisualArtifactRef>,
-    depth: u32,
-) -> Element {
-    render_virtual_artifact_file(
-        &title,
-        &path,
-        wrapper_path.as_deref(),
-        kind,
-        &renders,
-        &consumes,
-        depth,
-    )
 }
 
 fn render_virtual_artifact_file(
