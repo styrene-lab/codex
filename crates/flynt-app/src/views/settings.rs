@@ -1,6 +1,6 @@
 use crate::omegon_deployment_diagnostics::{
-    classify_loaded_deployment, DeploymentDiagnostic, DeploymentManifestSource,
-    LoadedDeploymentManifest,
+    DeploymentDiagnostic, DeploymentManifestSource, LoadedDeploymentManifest,
+    classify_loaded_deployment,
 };
 use crate::self_update::UpdateChannel;
 use crate::{
@@ -156,6 +156,7 @@ pub fn SettingsView() -> Element {
     let daemon_config = use_signal(|| ctx.omegon().load_operator_settings().agent_daemon.clone());
 
     let mut save_msg = use_signal(|| Option::<(&'static str, &'static str)>::None);
+    let registry_msg = use_signal(|| Option::<(&'static str, String)>::None);
     let mut import_theme_msg = use_signal(|| Option::<(&'static str, String)>::None);
     let mut theme_url = use_signal(String::new);
     let publish_msg = use_signal(|| Option::<(&'static str, String)>::None);
@@ -795,6 +796,68 @@ pub fn SettingsView() -> Element {
                     SettingsRow { label: "Managed scopes",
                         IndexingScopesEditor { scopes: indexing_scopes }
                     }
+                    SettingsRow { label: "Project registry",
+                        div { class: "settings-inline-actions",
+                            button {
+                                class: "btn btn-sm",
+                                onclick: move |_| {
+                                    let project_root = ctx.project_root();
+                                    let project = ctx.project();
+                                    let mut msg = registry_msg;
+                                    spawn(async move {
+                                        match tokio::task::spawn_blocking(move || {
+                                            crate::project_registry_commands::refresh_snapshot_for_project(project_root, project)
+                                        }).await {
+                                            Ok(Ok(snapshot)) => {
+                                                *msg.write() = Some(("ok", format!(
+                                                    "Snapshot refreshed: {} docs, {} artifacts, {} tasks, {} specs, {} edges.",
+                                                    snapshot.source_summary.document_count,
+                                                    snapshot.source_summary.visual_artifact_count,
+                                                    snapshot.source_summary.task_count,
+                                                    snapshot.source_summary.spec_count,
+                                                    snapshot.source_summary.edge_count,
+                                                )));
+                                            }
+                                            Ok(Err(error)) => *msg.write() = Some(("err", format!("Refresh failed: {error}"))),
+                                            Err(error) => *msg.write() = Some(("err", format!("Refresh task failed: {error}"))),
+                                        }
+                                    });
+                                },
+                                "Refresh snapshot"
+                            }
+                            button {
+                                class: "btn btn-sm btn-ghost",
+                                onclick: move |_| {
+                                    let project_root = ctx.project_root();
+                                    let mut msg = registry_msg;
+                                    spawn(async move {
+                                        match tokio::task::spawn_blocking(move || {
+                                            crate::project_registry_commands::snapshot_summary(&project_root)
+                                        }).await {
+                                            Ok(Ok(summary)) => {
+                                                crate::project_registry_commands::log_snapshot_summary(&summary);
+                                                *msg.write() = Some(("ok", format!(
+                                                    "Logged snapshot summary: {} docs, {} artifacts, {} tasks, {} specs, {} validation diagnostics.",
+                                                    summary.document_count,
+                                                    summary.visual_artifact_count,
+                                                    summary.task_count,
+                                                    summary.spec_count,
+                                                    summary.validation_diagnostic_count,
+                                                )));
+                                            }
+                                            Ok(Err(error)) => *msg.write() = Some(("err", format!("Dump failed: {error}"))),
+                                            Err(error) => *msg.write() = Some(("err", format!("Dump task failed: {error}"))),
+                                        }
+                                    });
+                                },
+                                "Dump summary to log"
+                            }
+                        }
+                        span { class: "settings-hint muted", ".flynt/registry/project-registry.snapshot.json — generated, portable, safe to delete/rebuild." }
+                        if let Some((kind, msg)) = registry_msg.read().as_ref() {
+                            div { class: "settings-status {kind}", "{msg}" }
+                        }
+                    }
                 }
 
                 SettingsSection { heading: "Visualization",
@@ -1305,13 +1368,19 @@ fn ThemeCard(entry: UiTheme, active: bool, on_select: EventHandler<String>) -> E
 
 fn load_deployment_for_settings(omegon: &OmegonRuntimeContext) -> LoadedDeploymentManifest {
     match std::fs::read_to_string(&omegon.deployment_path) {
-        Ok(content) => match flynt_core::omegon_deployment::OmegonDeploymentManifest::from_toml(&content) {
-            Ok(manifest) => LoadedDeploymentManifest::loaded(flynt_core::omegon_deployment::merge_with_default_required_activation(manifest)),
-            Err(error) => LoadedDeploymentManifest {
-                manifest: flynt_core::omegon_deployment::OmegonDeploymentManifest::default(),
-                source: DeploymentManifestSource::Invalid { error: error.to_string() },
-            },
-        },
+        Ok(content) => {
+            match flynt_core::omegon_deployment::OmegonDeploymentManifest::from_toml(&content) {
+                Ok(manifest) => LoadedDeploymentManifest::loaded(
+                    flynt_core::omegon_deployment::merge_with_default_required_activation(manifest),
+                ),
+                Err(error) => LoadedDeploymentManifest {
+                    manifest: flynt_core::omegon_deployment::OmegonDeploymentManifest::default(),
+                    source: DeploymentManifestSource::Invalid {
+                        error: error.to_string(),
+                    },
+                },
+            }
+        }
         Err(_) => LoadedDeploymentManifest {
             manifest: flynt_core::omegon_deployment::OmegonDeploymentManifest::default(),
             source: DeploymentManifestSource::MissingDefault,
@@ -1355,13 +1424,24 @@ fn ArmorySkillsDiagnosticCard(
     on_install: EventHandler<()>,
 ) -> Element {
     let missing = report.missing_required_skills();
-    let status = if missing.is_empty() { "Ready" } else { "Warning" };
+    let status = if missing.is_empty() {
+        "Ready"
+    } else {
+        "Warning"
+    };
     let summary = if missing.is_empty() {
         "All required Flynt skills resolve from project overrides, user Armory, or bundled fallbacks.".to_string()
     } else {
-        format!("{} required Flynt skill(s) are not installed.", missing.len())
+        format!(
+            "{} required Flynt skill(s) are not installed.",
+            missing.len()
+        )
     };
-    let class = if missing.is_empty() { "deployment-diagnostic ok" } else { "deployment-diagnostic warning" };
+    let class = if missing.is_empty() {
+        "deployment-diagnostic ok"
+    } else {
+        "deployment-diagnostic warning"
+    };
 
     rsx! {
         div { class: "settings-row",
@@ -1440,13 +1520,22 @@ fn CliProbeDiagnosticCard(probe: Option<crate::omegon_cli_probe::OmegonCliProbeR
             };
             let summary = match probe.status {
                 crate::omegon_cli_probe::OmegonCliProbeStatus::Compatible => {
-                    format!("Omegon CLI contract v{} is compatible.", probe.expected_contract_version)
+                    format!(
+                        "Omegon CLI contract v{} is compatible.",
+                        probe.expected_contract_version
+                    )
                 }
                 crate::omegon_cli_probe::OmegonCliProbeStatus::Unknown => {
-                    format!("Omegon CLI contract v{} could not be fully verified.", probe.expected_contract_version)
+                    format!(
+                        "Omegon CLI contract v{} could not be fully verified.",
+                        probe.expected_contract_version
+                    )
                 }
                 crate::omegon_cli_probe::OmegonCliProbeStatus::Incompatible => {
-                    format!("Omegon CLI contract v{} is incompatible.", probe.expected_contract_version)
+                    format!(
+                        "Omegon CLI contract v{} is incompatible.",
+                        probe.expected_contract_version
+                    )
                 }
             };
             let mut details = vec![format!("Binary: {}", probe.binary.display())];

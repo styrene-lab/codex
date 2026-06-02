@@ -1646,3 +1646,24 @@
   min-width: 180px;
   max-width: 260px;
 }
+
+.settings-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.settings-status {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-xs);
+  color: var(--muted-foreground);
+}
+
+.settings-status.ok {
+  color: var(--success);
+}
+
+.settings-status.err {
+  color: var(--danger);
+}

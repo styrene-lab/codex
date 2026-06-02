@@ -17,6 +17,7 @@ pub mod omegon_cli_contract;
 pub mod omegon_cli_probe;
 pub mod omegon_deployment_diagnostics;
 pub mod omegon_setup;
+pub mod project_registry_commands;
 pub mod push_pipeline;
 pub mod self_update;
 pub mod state;
