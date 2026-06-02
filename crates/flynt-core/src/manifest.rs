@@ -289,7 +289,7 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let dir = tmp.path();
 
-        let mut manifest = ProjectManifest {
+        let manifest = ProjectManifest {
             identity: ManifestIdentity::default(),
             projects: vec![ManifestProject {
                 name: "Test".into(),

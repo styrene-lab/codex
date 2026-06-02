@@ -596,7 +596,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn task_list() {
         let html = r#"<ul><li><input type="checkbox" checked disabled> Done</li><li><input type="checkbox" disabled> Todo</li></ul>"#;
         let result = html_to_markdown(html);

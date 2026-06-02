@@ -1391,14 +1391,6 @@ mod tests {
 
     #[test]
     fn semver_sort_orders_correctly() {
-        let mut versions = vec![
-            &"v0.9.0".to_string(),
-            &"v0.17.0".to_string(),
-            &"v0.16.1".to_string(),
-            &"v1.0.0".to_string(),
-            &"v0.17.0-rc.1".to_string(),
-        ];
-        // Borrow checker: need owned strings
         let owned: Vec<String> = vec![
             "v0.9.0".into(),
             "v0.17.0".into(),
