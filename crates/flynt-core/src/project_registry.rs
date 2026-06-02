@@ -317,6 +317,7 @@ impl ProjectRegistrySnapshot {
     pub fn validate(&self) -> Vec<ProjectRegistryDiagnostic> {
         let mut diagnostics = validate_snapshot_paths(self);
         diagnostics.extend(validate_snapshot_unique_nodes(self));
+        diagnostics.extend(validate_snapshot_record_integrity(self));
         diagnostics.extend(validate_snapshot_graph(self));
         diagnostics
     }
@@ -734,6 +735,76 @@ fn push_duplicate_diagnostics(
     }
 }
 
+fn validate_snapshot_record_integrity(
+    snapshot: &ProjectRegistrySnapshot,
+) -> Vec<ProjectRegistryDiagnostic> {
+    let document_ids = snapshot
+        .documents
+        .iter()
+        .map(|doc| doc.id.clone())
+        .collect::<std::collections::HashSet<_>>();
+    let external_ref_ids = snapshot
+        .external_refs
+        .iter()
+        .map(|external_ref| external_ref.id.clone())
+        .collect::<std::collections::HashSet<_>>();
+    let board_ids = snapshot
+        .boards
+        .iter()
+        .map(|board| board.id.clone())
+        .collect::<std::collections::HashSet<_>>();
+    let spec_ids = snapshot
+        .specs
+        .iter()
+        .map(|spec| spec.name.clone())
+        .collect::<std::collections::HashSet<_>>();
+
+    let mut diagnostics = Vec::new();
+    for task in &snapshot.tasks {
+        if !board_ids.contains(&task.board_id) {
+            diagnostics.push(invalid_record_reference(format!(
+                "task {} references missing board {}",
+                task.id, task.board_id
+            )));
+        }
+        for document_id in &task.document_refs {
+            if !document_ids.contains(document_id) {
+                diagnostics.push(invalid_record_reference(format!(
+                    "task {} references missing document {:?}",
+                    task.id, document_id
+                )));
+            }
+        }
+        for external_ref in &task.external_refs {
+            let id = ExternalRefId::from_uri(external_ref);
+            if !external_ref_ids.contains(&id) {
+                diagnostics.push(invalid_record_reference(format!(
+                    "task {} references missing external ref {}",
+                    task.id, external_ref
+                )));
+            }
+        }
+        if let Some(change) = &task.openspec_change {
+            if !spec_ids.contains(change) {
+                diagnostics.push(invalid_record_reference(format!(
+                    "task {} references missing openspec change {}",
+                    task.id, change
+                )));
+            }
+        }
+    }
+    diagnostics
+}
+
+fn invalid_record_reference(message: String) -> ProjectRegistryDiagnostic {
+    ProjectRegistryDiagnostic {
+        severity: RegistryDiagnosticSeverity::Error,
+        kind: RegistryDiagnosticKind::InvalidRecordReference,
+        path: None,
+        message,
+    }
+}
+
 fn validate_snapshot_graph(snapshot: &ProjectRegistrySnapshot) -> Vec<ProjectRegistryDiagnostic> {
     let document_ids = snapshot
         .documents
@@ -867,6 +938,7 @@ pub enum RegistryDiagnosticKind {
     MissingVisualArtifactSource,
     DanglingGraphEndpoint,
     DuplicateNodeId,
+    InvalidRecordReference,
 }
 
 fn collect_registry_diagnostics(
@@ -2563,6 +2635,30 @@ mod tests {
                 .count()
                 >= 4
         );
+    }
+
+    #[test]
+    fn snapshot_validation_reports_invalid_task_record_references() {
+        let mut snapshot = ProjectRegistrySnapshot::from_registry(&ProjectRegistry::default());
+        snapshot.tasks.push(TaskRecord {
+            id: "task-1".into(),
+            title: "Broken".into(),
+            status: TaskStatus::Todo,
+            board_id: "missing-board".into(),
+            column: "Active".into(),
+            document_refs: vec![DocumentId::new()],
+            external_refs: vec!["https://example.com/missing".into()],
+            tags: Vec::new(),
+            openspec_change: Some("missing-spec".into()),
+            evidence: TaskEvidenceSummary::default(),
+        });
+
+        let diagnostics = snapshot.validate();
+        let invalid_count = diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.kind == RegistryDiagnosticKind::InvalidRecordReference)
+            .count();
+        assert_eq!(invalid_count, 4);
     }
 
     #[test]
