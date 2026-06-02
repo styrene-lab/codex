@@ -1194,7 +1194,13 @@ pub(crate) fn runtime_state_for_project_root(project_root: PathBuf) -> RuntimeSt
         Err(e) => warn!("Reindex failed: {e}"),
     }
 
-    refresh_project_registry_snapshot(&project_root, &project);
+    {
+        let project_root_for_registry = project_root.clone();
+        let project_for_registry = Arc::clone(&project);
+        std::thread::spawn(move || {
+            refresh_project_registry_snapshot(&project_root_for_registry, &project_for_registry);
+        });
+    }
 
     let (tx, _rx) = broadcast::channel::<ProjectChangeEvent>(256);
     let watcher_handle = Arc::new(ProjectWatcherHandle::spawn(

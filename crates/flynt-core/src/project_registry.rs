@@ -316,6 +316,7 @@ impl ProjectRegistrySnapshot {
 
     pub fn validate(&self) -> Vec<ProjectRegistryDiagnostic> {
         let mut diagnostics = validate_snapshot_paths(self);
+        diagnostics.extend(validate_snapshot_unique_nodes(self));
         diagnostics.extend(validate_snapshot_graph(self));
         diagnostics
     }
@@ -666,6 +667,73 @@ fn snapshot_node_is_safe(node: &ProjectNodeRef) -> bool {
     }
 }
 
+fn validate_snapshot_unique_nodes(
+    snapshot: &ProjectRegistrySnapshot,
+) -> Vec<ProjectRegistryDiagnostic> {
+    let mut diagnostics = Vec::new();
+    push_duplicate_diagnostics(
+        &mut diagnostics,
+        snapshot.documents.iter().map(|doc| doc.id.0.to_string()),
+        "document",
+    );
+    push_duplicate_diagnostics(
+        &mut diagnostics,
+        snapshot
+            .visual_artifacts
+            .iter()
+            .map(|artifact| artifact.id.clone()),
+        "visual_artifact",
+    );
+    push_duplicate_diagnostics(
+        &mut diagnostics,
+        snapshot.raw_assets.iter().map(|asset| asset.id.0.clone()),
+        "raw_asset",
+    );
+    push_duplicate_diagnostics(
+        &mut diagnostics,
+        snapshot
+            .external_refs
+            .iter()
+            .map(|external_ref| external_ref.id.0.clone()),
+        "external_ref",
+    );
+    push_duplicate_diagnostics(
+        &mut diagnostics,
+        snapshot.tasks.iter().map(|task| task.id.clone()),
+        "task",
+    );
+    push_duplicate_diagnostics(
+        &mut diagnostics,
+        snapshot.boards.iter().map(|board| board.id.clone()),
+        "board",
+    );
+    push_duplicate_diagnostics(
+        &mut diagnostics,
+        snapshot.specs.iter().map(|spec| spec.name.clone()),
+        "spec",
+    );
+    diagnostics
+}
+
+fn push_duplicate_diagnostics(
+    diagnostics: &mut Vec<ProjectRegistryDiagnostic>,
+    ids: impl Iterator<Item = String>,
+    node_kind: &str,
+) {
+    let mut seen = std::collections::HashSet::new();
+    let mut reported = std::collections::HashSet::new();
+    for id in ids {
+        if !seen.insert(id.clone()) && reported.insert(id.clone()) {
+            diagnostics.push(ProjectRegistryDiagnostic {
+                severity: RegistryDiagnosticSeverity::Error,
+                kind: RegistryDiagnosticKind::DuplicateNodeId,
+                path: None,
+                message: format!("duplicate {node_kind} node id: {id}"),
+            });
+        }
+    }
+}
+
 fn validate_snapshot_graph(snapshot: &ProjectRegistrySnapshot) -> Vec<ProjectRegistryDiagnostic> {
     let document_ids = snapshot
         .documents
@@ -798,6 +866,7 @@ pub enum RegistryDiagnosticKind {
     MissingDocumentForWrapper,
     MissingVisualArtifactSource,
     DanglingGraphEndpoint,
+    DuplicateNodeId,
 }
 
 fn collect_registry_diagnostics(
@@ -2493,6 +2562,42 @@ mod tests {
                 .filter(|diagnostic| diagnostic.kind == RegistryDiagnosticKind::UnsafePath)
                 .count()
                 >= 4
+        );
+    }
+
+    #[test]
+    fn snapshot_validation_reports_duplicate_node_ids() {
+        let mut snapshot = ProjectRegistrySnapshot::from_registry(&ProjectRegistry::default());
+        let id = DocumentId::new();
+        let document = DocumentSnapshot {
+            id: id.clone(),
+            path: PathBuf::from("a.md"),
+            title: "A".into(),
+            kind: DocumentKind::Note,
+            aliases: Vec::new(),
+            tags: Vec::new(),
+        };
+        snapshot.documents.push(document.clone());
+        snapshot.documents.push(DocumentSnapshot {
+            path: PathBuf::from("b.md"),
+            ..document
+        });
+        snapshot.boards.push(BoardRecord {
+            id: "board-1".into(),
+            name: "A".into(),
+            columns: Vec::new(),
+        });
+        snapshot.boards.push(BoardRecord {
+            id: "board-1".into(),
+            name: "B".into(),
+            columns: Vec::new(),
+        });
+
+        let diagnostics = snapshot.validate();
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.kind == RegistryDiagnosticKind::DuplicateNodeId)
         );
     }
 
