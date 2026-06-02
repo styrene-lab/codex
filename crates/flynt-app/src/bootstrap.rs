@@ -672,6 +672,52 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
+    fn refresh_project_registry_snapshot_writes_recreates_and_loads_portable_snapshot() {
+        let tmp = TempDir::new().unwrap();
+        let project_root = tmp.path().join("project");
+        std::fs::create_dir_all(project_root.join("drawings")).unwrap();
+        std::fs::write(
+            project_root.join("notes.md"),
+            "# Notes\n\nSee [[drawings/map]].",
+        )
+        .unwrap();
+        std::fs::write(project_root.join("drawings/map.excalidraw"), "{}").unwrap();
+        std::fs::write(project_root.join("drawings/map.md"), "![[map.excalidraw]]").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        std::fs::write(project_root.join("drawings/map.svg"), "<svg/>").unwrap();
+
+        let project =
+            std::sync::Arc::new(flynt_store::project::Project::open(&project_root).unwrap());
+        project.reindex().unwrap();
+
+        let snapshot = super::refresh_project_registry_snapshot(&project_root, &project).unwrap();
+        assert_eq!(
+            snapshot.schema,
+            flynt_core::project_registry::ProjectRegistrySnapshot::SCHEMA
+        );
+        assert!(snapshot.validate().is_empty());
+
+        let path =
+            flynt_core::project_registry::ProjectRegistrySnapshot::snapshot_path(&project_root);
+        assert!(path.exists());
+        let json = std::fs::read_to_string(&path).unwrap();
+        assert!(!json.contains(project_root.to_string_lossy().as_ref()));
+        assert!(json.contains("flynt-project-registry-snapshot/v1"));
+        assert!(json.contains("drawings/map.excalidraw"));
+
+        let loaded =
+            flynt_core::project_registry::ProjectRegistrySnapshot::load_from_project(&project_root)
+                .unwrap()
+                .unwrap();
+        assert!(loaded.validate().is_empty());
+
+        std::fs::remove_file(&path).unwrap();
+        assert!(!path.exists());
+        super::refresh_project_registry_snapshot(&project_root, &project).unwrap();
+        assert!(path.exists());
+    }
+
+    #[test]
     fn derives_runtime_paths_from_local_runtime_config() {
         let tmp = TempDir::new().unwrap();
         let project_root = tmp.path().join("project");
