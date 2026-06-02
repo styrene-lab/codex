@@ -10,7 +10,7 @@ use crate::visual_artifacts::{
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Default)]
 pub struct ProjectRegistry {
     pub scope: ProjectScope,
     pub documents: DocumentRegistry,
@@ -298,6 +298,7 @@ fn build_project_edges(
 pub struct ProjectRegistrySnapshot {
     pub schema: String,
     pub generated_by: String,
+    pub source_summary: ProjectRegistrySourceSummary,
     pub documents: Vec<DocumentSnapshot>,
     pub visual_artifacts: Vec<VisualArtifactSnapshot>,
     pub evidence_sources: Vec<EvidenceSourceSnapshot>,
@@ -336,7 +337,7 @@ impl ProjectRegistrySnapshot {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let tmp_path = path.with_extension("snapshot.json.tmp");
+        let tmp_path = path.with_file_name("project-registry.snapshot.json.tmp");
         let json = serde_json::to_string_pretty(self)?;
         std::fs::write(&tmp_path, json)?;
         std::fs::rename(&tmp_path, &path)?;
@@ -350,6 +351,12 @@ impl ProjectRegistrySnapshot {
         }
         let raw = std::fs::read_to_string(path)?;
         let snapshot: Self = serde_json::from_str(&raw)?;
+        if snapshot.schema != Self::SCHEMA {
+            anyhow::bail!(
+                "unsupported project registry snapshot schema: {}",
+                snapshot.schema
+            );
+        }
         Ok(Some(snapshot))
     }
 
@@ -401,9 +408,23 @@ impl ProjectRegistrySnapshot {
 
         edges.retain(snapshot_edge_is_safe);
 
+        let source_summary = ProjectRegistrySourceSummary {
+            document_count: documents.len(),
+            visual_artifact_count: visual_artifacts.len(),
+            evidence_source_count: evidence_sources.len(),
+            raw_asset_count: raw_assets.len(),
+            external_ref_count: external_refs.len(),
+            task_count: tasks.len(),
+            board_count: boards.len(),
+            spec_count: specs.len(),
+            diagnostic_count: diagnostics.len(),
+            edge_count: edges.len(),
+        };
+
         Self {
             schema: Self::SCHEMA.to_string(),
             generated_by: "flynt".to_string(),
+            source_summary,
             documents,
             visual_artifacts,
             evidence_sources,
@@ -416,6 +437,20 @@ impl ProjectRegistrySnapshot {
             edges,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ProjectRegistrySourceSummary {
+    pub document_count: usize,
+    pub visual_artifact_count: usize,
+    pub evidence_source_count: usize,
+    pub raw_asset_count: usize,
+    pub external_ref_count: usize,
+    pub task_count: usize,
+    pub board_count: usize,
+    pub spec_count: usize,
+    pub diagnostic_count: usize,
+    pub edge_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1179,12 +1214,20 @@ fn should_skip_registry_dir(project_root: &std::path::Path, path: &std::path::Pa
     let Ok(rel) = path.strip_prefix(project_root) else {
         return true;
     };
-    matches!(
-        rel.components()
-            .next()
-            .and_then(|component| component.as_os_str().to_str()),
-        Some(".git") | Some("target") | Some("node_modules") | Some(".venv")
-    )
+    let mut components = rel.components();
+    let Some(first) = components
+        .next()
+        .and_then(|component| component.as_os_str().to_str())
+    else {
+        return false;
+    };
+    if matches!(
+        first,
+        ".git" | ".flynt" | ".flynt-local" | ".omegon" | "target" | "node_modules" | ".venv"
+    ) {
+        return true;
+    }
+    first.starts_with('.')
 }
 
 fn is_visual_artifact_source(
@@ -2175,6 +2218,50 @@ mod tests {
     }
 
     #[test]
+    fn raw_asset_registry_skips_generated_and_hidden_runtime_dirs() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join(".flynt/registry")).unwrap();
+        std::fs::create_dir_all(tmp.path().join(".omegon/evidence")).unwrap();
+        std::fs::create_dir_all(tmp.path().join(".hidden")).unwrap();
+        std::fs::create_dir_all(tmp.path().join("assets")).unwrap();
+        std::fs::write(
+            tmp.path()
+                .join(".flynt/registry/project-registry.snapshot.json"),
+            "{}",
+        )
+        .unwrap();
+        std::fs::write(tmp.path().join(".omegon/evidence/records.jsonl"), "{}").unwrap();
+        std::fs::write(tmp.path().join(".hidden/secret.json"), "{}").unwrap();
+        std::fs::write(tmp.path().join("assets/public.json"), "{}").unwrap();
+
+        let assets = RawAssetRegistry::discover(tmp.path(), &VisualArtifactRegistry::default());
+        assert!(
+            assets
+                .assets
+                .iter()
+                .any(|asset| asset.path == PathBuf::from("assets/public.json"))
+        );
+        assert!(
+            !assets
+                .assets
+                .iter()
+                .any(|asset| asset.path.starts_with(".flynt"))
+        );
+        assert!(
+            !assets
+                .assets
+                .iter()
+                .any(|asset| asset.path.starts_with(".omegon"))
+        );
+        assert!(
+            !assets
+                .assets
+                .iter()
+                .any(|asset| asset.path.starts_with(".hidden"))
+        );
+    }
+
+    #[test]
     fn raw_asset_registry_discovers_open_assets_and_marks_render_sidecars() {
         let tmp = tempfile::TempDir::new().unwrap();
         std::fs::create_dir_all(tmp.path().join("drawings")).unwrap();
@@ -2305,6 +2392,24 @@ mod tests {
     }
 
     #[test]
+    fn snapshot_load_rejects_schema_mismatch_and_uses_stable_temp_name() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = ProjectRegistrySnapshot::snapshot_path(tmp.path());
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, r#"{"schema":"old","generated_by":"flynt","source_summary":{},"documents":[],"visual_artifacts":[],"evidence_sources":[],"raw_assets":[],"external_refs":[],"tasks":[],"boards":[],"specs":[],"diagnostics":[],"edges":[]}"#).unwrap();
+        assert!(ProjectRegistrySnapshot::load_from_project(tmp.path()).is_err());
+
+        let snapshot = ProjectRegistrySnapshot::from_registry(&ProjectRegistry::default());
+        snapshot.persist_to_project(tmp.path()).unwrap();
+        assert!(!path.with_extension("snapshot.json.tmp").exists());
+        assert!(
+            !path
+                .with_file_name("project-registry.snapshot.json.tmp")
+                .exists()
+        );
+    }
+
+    #[test]
     fn snapshot_persistence_writes_and_loads_generated_json() {
         let tmp = tempfile::TempDir::new().unwrap();
         let registry = ProjectRegistry::default();
@@ -2424,6 +2529,7 @@ mod tests {
         let snapshot_json =
             serde_json::to_string_pretty(&ProjectRegistrySnapshot::from_registry(&registry))
                 .unwrap();
+        assert!(snapshot_json.contains("source_summary"));
         assert!(snapshot_json.contains("evidence_sources"));
         assert!(snapshot_json.contains("raw_assets"));
         assert!(snapshot_json.contains("external_refs"));
