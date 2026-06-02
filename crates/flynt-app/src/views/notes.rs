@@ -2860,10 +2860,20 @@ pub fn NotesView() -> Element {
         }
         // Resolve the path from doc_data — we need the relative path
         // to save to. If doc_data isn't loaded yet, skip.
-        let (disk_body, path) = match &*doc_data.peek() {
-            Some((_, p, _, b, _)) => (b.clone(), p.clone()),
+        let (disk_body, path, frontmatter) = match &*doc_data.peek() {
+            Some((_, p, _, b, fm)) => (b.clone(), p.clone(), fm.clone()),
             None => return,
         };
+        if crate::visual_artifact_surface::resolve_wrapper_surface(
+            &autosave_ctx.project_root(),
+            &path,
+            &disk_body,
+            &frontmatter,
+        )
+        .is_some()
+        {
+            return;
+        }
         if body == disk_body {
             return;
         } // no diff vs. disk
@@ -2938,8 +2948,24 @@ pub fn NotesView() -> Element {
                     "save" | "autosave" => {
                         let content = data.to_string();
                         // peek — do NOT subscribe reactively
-                        if let Some(Some((p, _, _, _, _))) = &*rendered.peek() {
+                        if let Some(Some((p, _, disk_body, _, _))) = &*rendered.peek() {
                             let path = p.clone();
+                            let frontmatter = doc_data
+                                .peek()
+                                .as_ref()
+                                .map(|(_, _, _, _, fm)| fm.clone())
+                                .unwrap_or_default();
+                            if crate::visual_artifact_surface::resolve_wrapper_surface(
+                                &c.project_root(),
+                                &path,
+                                disk_body,
+                                &frontmatter,
+                            )
+                            .is_some()
+                            {
+                                *save_err.write() = Some("Visual artifact wrappers are protected; use the artifact editor/source command instead.".into());
+                                continue;
+                            }
                             let project = c.project();
                             match tokio::task::spawn_blocking(move || {
                                 project.save_document_content(&path, &content)
