@@ -70,6 +70,7 @@ interface FlyntEditorCompatApi {
   keymapRegistry(keymap: { of(bindings: Array<{ key: string; run(view: LegacyEditorView): boolean }>): unknown }): { save: unknown; formatting: unknown; all: unknown[] };
   baseExtensions(modules: EditorCompatModules, localExtensions?: unknown[]): unknown[];
   mountEditor(modules: EditorCompatModules, container: HTMLElement, content: string, cursorPos?: number, localExtensions?: unknown[], theme?: unknown): FlyntEditorApi;
+  contextMenuExtension(EditorView: { domEventHandlers(handlers: Record<string, unknown>): unknown }): unknown;
   commandRegistry(): EditorCommandRegistry;
   dispatchEditorCommand(id: string, payload?: { text?: string }): BridgeResult;
 }
@@ -195,6 +196,81 @@ function baseExtensions(modules: EditorCompatModules, localExtensions: unknown[]
   ];
 }
 
+
+
+function contextMenuExtension(EditorView: { domEventHandlers(handlers: Record<string, unknown>): unknown }): unknown {
+  return EditorView.domEventHandlers({
+    contextmenu(event: MouseEvent) {
+      event.preventDefault();
+      document.getElementById("flynt-ctx-menu")?.remove();
+      document.querySelector(".ctx-menu-overlay")?.remove();
+
+      const view = currentView();
+      if (!view) return true;
+      const sel = view.state.selection.main;
+      const hasSelection = sel.anchor !== sel.head;
+
+      const menu = document.createElement("div");
+      menu.id = "flynt-ctx-menu";
+      menu.className = "ctx-menu";
+      menu.style.cssText = `left:${event.clientX}px;top:${event.clientY}px;position:fixed;z-index:1000;`;
+
+      const items = [
+        ...(hasSelection ? [
+          { id: "bold", label: "Bold", key: "⌘B" },
+          { id: "italic", label: "Italic", key: "⌘I" },
+          { id: "code", label: "Inline Code", key: "" },
+          { id: "strike", label: "Strikethrough", key: "" },
+          { id: "link", label: "Link", key: "⌘K" },
+          { id: "wikilink", label: "Wikilink", key: "" },
+          { id: "sep" },
+        ] : []),
+        { id: "h1", label: "Heading 1", key: "" },
+        { id: "h2", label: "Heading 2", key: "" },
+        { id: "h3", label: "Heading 3", key: "" },
+        { id: "sep" },
+        { id: "bullet", label: "Bullet List", key: "" },
+        { id: "task", label: "Task List", key: "" },
+        { id: "quote", label: "Blockquote", key: "" },
+        { id: "codeblock", label: "Code Block", key: "" },
+        { id: "table", label: "Table", key: "" },
+        { id: "hr", label: "Horizontal Rule", key: "" },
+      ];
+
+      const overlay = document.createElement("div");
+      overlay.className = "ctx-menu-overlay";
+      overlay.onclick = () => { menu.remove(); overlay.remove(); };
+
+      for (const item of items) {
+        if (item.id === "sep") {
+          const sep = document.createElement("div");
+          sep.className = "ctx-menu-sep";
+          menu.appendChild(sep);
+          continue;
+        }
+        const btn = document.createElement("button");
+        btn.className = "ctx-menu-item";
+        const label = item.label ?? "";
+        btn.innerHTML = item.key ? `<span>${label}</span><span class="ctx-menu-key">${item.key}</span>` : label;
+        btn.onclick = () => {
+          menu.remove();
+          overlay.remove();
+          dispatchEditorCommand(item.id);
+        };
+        menu.appendChild(btn);
+      }
+
+      document.body.appendChild(overlay);
+      document.body.appendChild(menu);
+      requestAnimationFrame(() => {
+        const r = menu.getBoundingClientRect();
+        if (r.right > window.innerWidth) menu.style.left = Math.max(8, window.innerWidth - r.width - 8) + "px";
+        if (r.bottom > window.innerHeight) menu.style.top = Math.max(8, window.innerHeight - r.height - 8) + "px";
+      });
+      return true;
+    },
+  });
+}
 
 function mountEditor(
   modules: EditorCompatModules,
@@ -414,6 +490,6 @@ function install(initialContent = ""): FlyntEditorApi {
   return api;
 }
 
-window.FlyntEditorCompat = { install, attachView, changeHandlerExtension, keymapRegistry, baseExtensions, mountEditor, commandRegistry, dispatchEditorCommand };
+window.FlyntEditorCompat = { install, attachView, changeHandlerExtension, keymapRegistry, baseExtensions, mountEditor, contextMenuExtension, commandRegistry, dispatchEditorCommand };
 
 export {};

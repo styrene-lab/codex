@@ -1434,6 +1434,7 @@ fn cm6_init_js(content: &str) -> String {
                 livePreview,
                 blockRenderPlugin,
                 frontmatterPlugin,
+                window.FlyntEditorCompat.contextMenuExtension(EditorView),
                 // Click wikilink to navigate; uses document text at click position
                 EditorView.domEventHandlers({{
                 click(event, view) {{
@@ -1512,77 +1513,6 @@ fn cm6_init_js(content: &str) -> String {
                     window._flyntCmPreviewTarget = null;
                     window._flyntNotify('preview-clear', '');
                 }},
-                contextmenu(event) {{
-                    event.preventDefault();
-                    // Remove old menu
-                    const old = document.getElementById('flynt-ctx-menu');
-                    if (old) old.remove();
-
-                    const view = window._flyntCM;
-                    if (!view) return true;
-
-                    const sel = view.state.selection.main;
-                    const hasSelection = sel.from !== sel.to;
-
-                    const menu = document.createElement('div');
-                    menu.id = 'flynt-ctx-menu';
-                    menu.className = 'ctx-menu';
-                    menu.style.cssText = `left:${{event.clientX}}px;top:${{event.clientY}}px;position:fixed;z-index:1000;`;
-
-                    const items = [
-                        ...(hasSelection ? [
-                            {{ id: 'bold',      label: 'Bold',           key: '\u{{2318}}B' }},
-                            {{ id: 'italic',    label: 'Italic',         key: '\u{{2318}}I' }},
-                            {{ id: 'code',      label: 'Inline Code',    key: '' }},
-                            {{ id: 'strike',    label: 'Strikethrough',  key: '' }},
-                            {{ id: 'link',      label: 'Link',           key: '\u{{2318}}K' }},
-                            {{ id: 'wikilink',  label: 'Wikilink',       key: '' }},
-                            {{ id: 'sep' }},
-                        ] : []),
-                        {{ id: 'h1',        label: 'Heading 1',      key: '' }},
-                        {{ id: 'h2',        label: 'Heading 2',      key: '' }},
-                        {{ id: 'h3',        label: 'Heading 3',      key: '' }},
-                        {{ id: 'sep' }},
-                        {{ id: 'bullet',    label: 'Bullet List',    key: '' }},
-                        {{ id: 'task',      label: 'Task List',      key: '' }},
-                        {{ id: 'quote',     label: 'Blockquote',     key: '' }},
-                        {{ id: 'codeblock', label: 'Code Block',     key: '' }},
-                        {{ id: 'table',     label: 'Table',          key: '' }},
-                        {{ id: 'hr',        label: 'Horizontal Rule', key: '' }},
-                    ];
-
-                    items.forEach(it => {{
-                        if (it.id === 'sep') {{
-                            const sep = document.createElement('div');
-                            sep.className = 'ctx-menu-sep';
-                            menu.appendChild(sep);
-                            return;
-                        }}
-                        const btn = document.createElement('button');
-                        btn.className = 'ctx-menu-item';
-                        btn.innerHTML = it.key ? `<span>${{it.label}}</span><span class="ctx-menu-key">${{it.key}}</span>` : it.label;
-                        btn.onclick = () => {{
-                            menu.remove();
-                            overlay.remove();
-                            _flyntCtxAction(it.id, view);
-                        }};
-                        menu.appendChild(btn);
-                    }});
-
-                    const overlay = document.createElement('div');
-                    overlay.className = 'ctx-menu-overlay';
-                    overlay.onclick = () => {{ menu.remove(); overlay.remove(); }};
-                    document.body.appendChild(overlay);
-                    document.body.appendChild(menu);
-
-                    // Clamp to viewport
-                    requestAnimationFrame(() => {{
-                        const r = menu.getBoundingClientRect();
-                        if (r.right > window.innerWidth) menu.style.left = Math.max(8, window.innerWidth - r.width - 8) + 'px';
-                        if (r.bottom > window.innerHeight) menu.style.top = Math.max(8, window.innerHeight - r.height - 8) + 'px';
-                    }});
-                    return true;
-                }}
             }}),
             ];
 
