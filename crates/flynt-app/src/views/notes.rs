@@ -734,12 +734,14 @@ pub(crate) fn cm6_fast_swap_js(content: &str) -> String {
         r#"
 (function() {{
     const container = document.getElementById('flynt-cm-editor');
-    const cm = window._flyntCM;
-    if (!container || !cm || !cm.dom || !container.contains(cm.dom)) return false;
-    const next = {escaped};
-    cm.dispatch({{ changes: {{ from: 0, to: cm.state.doc.length, insert: next }} }});
-    cm.scrollDOM.scrollTop = 0;
-    return true;
+    if (!container || !window.FlyntEditor) return false;
+    const result = window.FlyntEditor.setDocument({{ content: {escaped} }}, {{ force: true }});
+    if (result && result.ok) {{
+        const state = window.FlyntEditor.getEditorState && window.FlyntEditor.getEditorState();
+        if (state) window.FlyntEditor.restoreEditorState({{ ...state, scrollTop: 0, scrollLeft: 0 }});
+        return true;
+    }}
+    return false;
 }})();
 "#
     )
@@ -772,10 +774,14 @@ fn cm6_init_js(content: &str) -> String {
         if (stillAttached) {{
             console.time('cm6-swap');
             const newContent = {escaped};
-            cm.dispatch({{
-                changes: {{ from: 0, to: cm.state.doc.length, insert: newContent }}
-            }});
-            cm.scrollDOM.scrollTop = 0;
+            if (window.FlyntEditor) {{
+                window.FlyntEditor.setDocument({{ content: newContent }}, {{ force: true }});
+                const state = window.FlyntEditor.getEditorState && window.FlyntEditor.getEditorState();
+                if (state) window.FlyntEditor.restoreEditorState({{ ...state, scrollTop: 0, scrollLeft: 0 }});
+            }} else {{
+                cm.dispatch({{ changes: {{ from: 0, to: cm.state.doc.length, insert: newContent }} }});
+                cm.scrollDOM.scrollTop = 0;
+            }}
             console.timeEnd('cm6-swap');
             console.timeEnd('cm6-total');
             return;
