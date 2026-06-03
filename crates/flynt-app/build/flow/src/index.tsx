@@ -243,64 +243,78 @@ function uuid(): string {
 
 // ── Custom node renderer ────────────────────────────────────────────────────
 
-function FlyntNode({ data }: { data: NodePayload }) {
+// ── Kind → accent color mapping ─────────────────────────────────────────────
+// Alpharius semantic palette: each node kind gets a distinct accent
+// border-top so the operator can scan the canvas at a glance.
+
+const KIND_ACCENT: Record<string, string> = {
+  input:    "#1ab878", // start — hydra emerald
+  output:   "#b89020", // end — tarnished brass
+  process:  "#2ab4c8", // primary — ceramite teal
+  decision: "#c83030", // decision — blood red
+  branch:   "#c86418", // warning — hot metal
+  merge:    "#6060c0", // AI/merge — indigo
+  note:     "#607888", // muted — annotation grey
+};
+
+function FlyntNode({ data, selected }: { data: NodePayload; selected?: boolean }) {
   const { kind, payload, sockets } = data;
   const definition = NODE_DEFINITION_BY_KIND.get(kind);
+  const accent = KIND_ACCENT[kind] ?? "#2ab4c8";
   const title =
     (typeof payload.title === "string" && payload.title) ||
     (typeof payload.name === "string" && payload.name) ||
     (typeof payload.skill === "string" && payload.skill) ||
     definition?.label || kind;
 
-  // Group sockets by direction so input handles render on the left,
-  // output handles on the right. Note nodes (no sockets) get nothing —
-  // the FlowEndpoint.socket="" fallback handles connection lookup.
   const inputs = sockets.filter((s) => s.direction === "input");
   const outputs = sockets.filter((s) => s.direction === "output");
+  const socketRows = Math.max(inputs.length, outputs.length);
 
   return (
-    <div
-      style={{
-        padding: "8px 12px",
-        background: "#0e1622",
-        border: "1px solid #1a3448",
-        borderRadius: 6,
-        color: "#e2e8f0",
-        fontSize: 12,
-        minWidth: 150,
-        position: "relative",
-        boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
-      }}
-    >
-      <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5 }}>
+    <div className="flynt-node" data-selected={selected ? "" : undefined} style={{ borderTopColor: accent }}>
+      {/* Header */}
+      <div className="flynt-node-kind" style={{ color: accent }}>
         {definition?.label || kind}
       </div>
-      <div style={{ fontWeight: 500, marginTop: 2 }}>{title}</div>
+      <div className="flynt-node-title">{title}</div>
+
+      {/* Note body */}
       {kind === "note" && typeof payload.body === "string" && payload.body && (
-        <div style={{ marginTop: 6, color: "#94a3b8", fontSize: 11, lineHeight: 1.35, whiteSpace: "pre-wrap" }}>{payload.body}</div>
+        <div className="flynt-node-body">{payload.body}</div>
       )}
-      {inputs.map((s, i) => (
-        <React.Fragment key={`in-${s.name}`}>
-          <Handle
-            type="target"
-            position={Position.Left}
-            id={s.name}
-            style={{ top: 30 + i * 18 }}
-          />
-          <div className="flynt-flow-socket-label input" style={{ top: 23 + i * 18 }}>{s.name}</div>
-        </React.Fragment>
-      ))}
-      {outputs.map((s, i) => (
-        <React.Fragment key={`out-${s.name}`}>
-          <Handle
-            type="source"
-            position={Position.Right}
-            id={s.name}
-            style={{ top: 30 + i * 18 }}
-          />
-          <div className="flynt-flow-socket-label output" style={{ top: 23 + i * 18 }}>{s.name}</div>
-        </React.Fragment>
-      ))}
+
+      {/* Sockets — rendered as rows so handles align naturally */}
+      {socketRows > 0 && (
+        <div className="flynt-node-sockets">
+          {Array.from({ length: socketRows }, (_, i) => {
+            const inp = inputs[i];
+            const out = outputs[i];
+            return (
+              <div key={i} className="flynt-node-socket-row">
+                <div className="flynt-node-socket-cell left">
+                  {inp && (
+                    <>
+                      <Handle type="target" position={Position.Left} id={inp.name}
+                        className="flynt-handle" />
+                      <span className="flynt-socket-name">{inp.name}</span>
+                    </>
+                  )}
+                </div>
+                <div className="flynt-node-socket-cell right">
+                  {out && (
+                    <>
+                      <span className="flynt-socket-name">{out.name}</span>
+                      <Handle type="source" position={Position.Right} id={out.name}
+                        className="flynt-handle" />
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -577,11 +591,17 @@ function FlowCanvas({
           nodesConnectable={!readOnly}
           edgesFocusable={!readOnly}
           elementsSelectable
-          defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+          fitView
+          fitViewOptions={{ padding: 0.25, maxZoom: 1 }}
           nodeOrigin={[0, 0]}
-          minZoom={0.2}
-          maxZoom={2}
+          minZoom={0.15}
+          maxZoom={2.5}
+          proOptions={{ hideAttribution: true }}
           deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]}
+          defaultEdgeOptions={{
+            style: { stroke: "#1a3448", strokeWidth: 2 },
+            type: "smoothstep",
+          }}
           style={{ width: "100%", height: "100%", background: "#020617" }}
         >
           <Background gap={20} color="#1e293b" />
@@ -675,9 +695,30 @@ function injectStyles() {
 .flynt-flow-empty h2 { margin: 0 0 8px; color: #6ecad8; font-size: 24px; }
 .flynt-flow-empty p { margin: 0 0 16px; color: #607888; line-height: 1.45; }
 .flynt-flow-empty button { border: 1px solid #2ab4c8; border-radius: 8px; padding: 8px 12px; color: #06080e; background: #2ab4c8; font-weight: 700; cursor: pointer; }
-.flynt-flow-socket-label { position: absolute; color: #607888; font-size: 9px; line-height: 1; pointer-events: none; }
-.flynt-flow-socket-label.input { left: 8px; }
-.flynt-flow-socket-label.output { right: 8px; }
+.flynt-flow-socket-label { position: absolute; color: #607888; font-size: 9px; line-height: 1; pointer-events: none; font-weight: 500; letter-spacing: 0.3px; }
+.flynt-flow-socket-label.input { left: 12px; }
+.flynt-flow-socket-label.output { right: 12px; text-align: right; }
+.flynt-node { background: #0e1622; border: 1px solid #1a3448; border-top: 2px solid #2ab4c8; border-radius: 8px; min-width: 160px; box-shadow: 0 2px 8px rgba(0,0,0,0.4); transition: border-color 0.15s, box-shadow 0.15s; }
+.flynt-node[data-selected] { border-color: #2ab4c8; box-shadow: 0 0 12px rgba(42,180,200,0.2), 0 2px 8px rgba(0,0,0,0.5); }
+.flynt-node-kind { padding: 8px 12px 0; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+.flynt-node-title { padding: 2px 12px 8px; font-size: 13px; font-weight: 600; color: #e2e8f0; }
+.flynt-node-body { padding: 0 12px 8px; color: #94a3b8; font-size: 11px; line-height: 1.4; white-space: pre-wrap; }
+.flynt-node-sockets { border-top: 1px solid #1a3448; padding: 6px 0; }
+.flynt-node-socket-row { display: flex; justify-content: space-between; align-items: center; min-height: 22px; padding: 0 12px; position: relative; }
+.flynt-node-socket-cell { display: flex; align-items: center; gap: 6px; }
+.flynt-node-socket-cell.right { margin-left: auto; }
+.flynt-socket-name { font-size: 10px; color: #607888; font-weight: 500; }
+.flynt-node[data-selected] .flynt-socket-name { color: #94a3b8; }
+.flynt-handle { width: 9px !important; height: 9px !important; background: #0e1622 !important; border: 2px solid #2ab4c8 !important; }
+.flynt-handle:hover { background: #2ab4c8 !important; }
+.react-flow__edge-path { transition: stroke 0.15s; }
+.react-flow__edge.selected .react-flow__edge-path { stroke: #2ab4c8 !important; stroke-width: 2.5px !important; }
+.react-flow__controls { background: #0e1622 !important; border: 1px solid #1a3448 !important; border-radius: 8px !important; overflow: hidden !important; }
+.react-flow__controls-button { background: transparent !important; border-bottom: 1px solid #1a3448 !important; color: #607888 !important; fill: #607888 !important; }
+.react-flow__controls-button:hover { background: #131e2e !important; color: #c4d8e4 !important; fill: #c4d8e4 !important; }
+.react-flow__controls-button:last-child { border-bottom: none !important; }
+.react-flow__controls-button svg { fill: inherit; }
+.react-flow__attribution { display: none !important; }
 .flynt-flow-inspector { position: absolute; bottom: 12px; right: 12px; z-index: 8; width: 240px; padding: 10px; border: 1px solid #1a3448; border-radius: 10px; background: rgba(14, 22, 34, 0.94); box-shadow: 0 12px 28px rgba(0,0,0,0.35); color: #c4d8e4; }
 .flynt-flow-inspector-title { color: #6ecad8; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
 .flynt-flow-inspector label { display: grid; gap: 4px; color: #607888; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 8px; }
