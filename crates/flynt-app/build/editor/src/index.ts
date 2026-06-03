@@ -63,6 +63,7 @@ interface FlyntEditorApi {
 
 interface FlyntEditorCompatApi {
   install(initialContent?: string): FlyntEditorApi;
+  attachView(view: LegacyEditorView, initialContent?: string): FlyntEditorApi;
 }
 
 declare global {
@@ -79,6 +80,11 @@ declare global {
 
 function currentView(): LegacyEditorView | null {
   return window._flyntCM ?? null;
+}
+
+function attachView(view: LegacyEditorView, initialContent = ""): FlyntEditorApi {
+  window._flyntCM = view;
+  return install(initialContent);
 }
 
 function install(initialContent = ""): FlyntEditorApi {
@@ -206,6 +212,6 @@ function install(initialContent = ""): FlyntEditorApi {
   return api;
 }
 
-window.FlyntEditorCompat = { install };
+window.FlyntEditorCompat = { install, attachView };
 
 export {};

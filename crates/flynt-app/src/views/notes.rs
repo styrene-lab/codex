@@ -1680,7 +1680,10 @@ fn cm6_init_js(content: &str) -> String {
     }});
 
     function installFlyntEditorBridge(initialContent) {{
-        if (window.FlyntEditorCompat && typeof window.FlyntEditorCompat.install === function) {{
+        if (window.FlyntEditorCompat && typeof window.FlyntEditorCompat.attachView === 'function') {{
+            return window.FlyntEditorCompat.attachView(window._flyntCM, initialContent);
+        }}
+        if (window.FlyntEditorCompat && typeof window.FlyntEditorCompat.install === 'function') {{
             return window.FlyntEditorCompat.install(initialContent);
         }}
         window._flyntEditorSavedContent = initialContent;
