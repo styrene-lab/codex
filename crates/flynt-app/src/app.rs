@@ -818,13 +818,13 @@ pub fn App() -> Element {
                                 }
                             }
                         },
-                        Route::Notes    => rsx! { NotesView {} },
+                        Route::Notes | Route::Lenses | Route::Graph => rsx! {
+                            ProjectView { active_route }
+                        },
                         Route::Design   => rsx! { DesignView {} },
 
                         Route::Search   => rsx! { SearchView { search_query } },
-                        Route::Lenses   => rsx! { LensesView {} },
                         Route::Kanban   => rsx! { KanbanView {} },
-                        Route::Graph    => rsx! { GraphView {} },
                         Route::TerminalLab => rsx! { TerminalLabView {} },
                     }
                 }
@@ -1147,15 +1147,66 @@ impl ExistingProjectSetup {
 }
 
 #[component]
+fn ProjectView(mut active_route: Signal<Route>) -> Element {
+    rsx! {
+        div { class: "project-view-shell",
+            div { class: "project-subnav", aria_label: "Project views",
+                ProjectSubnavButton {
+                    active: *active_route.read() == Route::Notes,
+                    label: "Write",
+                    title: "Write — edit notes and text files",
+                    onclick: move |_| *active_route.write() = Route::Notes,
+                }
+                ProjectSubnavButton {
+                    active: *active_route.read() == Route::Lenses,
+                    label: "Lenses",
+                    title: "Lenses — query saved project views",
+                    onclick: move |_| *active_route.write() = Route::Lenses,
+                }
+                ProjectSubnavButton {
+                    active: *active_route.read() == Route::Graph,
+                    label: "Graph",
+                    title: "Graph — explore project links",
+                    onclick: move |_| *active_route.write() = Route::Graph,
+                }
+            }
+            match *active_route.read() {
+                Route::Notes => rsx! { NotesView {} },
+                Route::Lenses => rsx! { LensesView {} },
+                Route::Graph => rsx! { GraphView {} },
+                _ => rsx! { NotesView {} },
+            }
+        }
+    }
+}
+
+#[component]
+fn ProjectSubnavButton(
+    active: bool,
+    label: &'static str,
+    title: &'static str,
+    onclick: EventHandler<MouseEvent>,
+) -> Element {
+    rsx! {
+        button {
+            class: if active { "project-subnav-btn active" } else { "project-subnav-btn" },
+            title,
+            onclick: move |event| onclick.call(event),
+            "{label}"
+        }
+    }
+}
+
+#[component]
 fn WorkspaceFooter(mut active_route: Signal<Route>) -> Element {
     let mut settings_open = use_context::<Signal<SettingsOpen>>();
     rsx! {
         footer { class: "workspace-footer",
             nav { class: "workspace-footer-nav", aria_label: "Workspace modes",
                 WorkspaceFooterButton {
-                    active: *active_route.read() == Route::Notes,
-                    label: "Write",
-                    title: "Write — edit notes and text files",
+                    active: matches!(*active_route.read(), Route::Notes | Route::Lenses | Route::Graph),
+                    label: "Project",
+                    title: "Project — write, query, and explore project knowledge",
                     icon: crate::icons::ICON_SCROLL,
                     onclick: move |_| *active_route.write() = Route::Notes,
                 }
@@ -1173,29 +1224,15 @@ fn WorkspaceFooter(mut active_route: Signal<Route>) -> Element {
                     icon: crate::icons::ICON_BOARD,
                     onclick: move |_| *active_route.write() = Route::Kanban,
                 }
-                WorkspaceFooterButton {
-                    active: *active_route.read() == Route::Lenses,
-                    label: "Lenses",
-                    title: "Lenses — query saved project views",
-                    icon: crate::icons::ICON_LENS,
-                    onclick: move |_| *active_route.write() = Route::Lenses,
-                }
-                WorkspaceFooterButton {
-                    active: *active_route.read() == Route::Graph,
-                    label: "Graph",
-                    title: "Graph — explore project links",
-                    icon: crate::icons::ICON_GRAPH,
-                    onclick: move |_| *active_route.write() = Route::Graph,
-                }
-                button {
-                    class: if *active_route.read() == Route::TerminalLab { "workspace-footer-btn active" } else { "workspace-footer-btn" },
-                    title: "Terminal — run shell sessions",
-                    onclick: move |_| *active_route.write() = Route::TerminalLab,
-                    span { class: "workspace-footer-icon", "⌁" }
-                    span { class: "workspace-footer-label", "Term" }
-                }
             }
             div { class: "workspace-footer-spacer" }
+            button {
+                class: if *active_route.read() == Route::TerminalLab { "workspace-footer-btn active" } else { "workspace-footer-btn" },
+                title: "Terminal — run shell sessions",
+                onclick: move |_| *active_route.write() = Route::TerminalLab,
+                span { class: "workspace-footer-icon", "⌁" }
+                span { class: "workspace-footer-label", "Terminal" }
+            }
             button {
                 class: if settings_open.read().0 { "workspace-footer-btn active" } else { "workspace-footer-btn" },
                 title: "Settings — configure Flynt",
