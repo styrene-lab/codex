@@ -577,6 +577,11 @@ pub fn App() -> Element {
         document::Script {
             src: asset!("/assets/vendor/codemirror.bundle.js"),
         }
+        // Editor bridge — compatibility adapter over the current CM6 setup.
+        // Built from crates/flynt-app/build/editor/.
+        document::Script {
+            src: asset!("/assets/vendor/editor_bridge.bundle.js"),
+        }
         // Excalidraw — loaded eagerly so it's available when drawings open
         document::Script {
             src: asset!("/assets/vendor/excalidraw.bundle.js"),

@@ -1674,102 +1674,21 @@ fn cm6_init_js(content: &str) -> String {
     }});
 
     function installFlyntEditorBridge(initialContent) {{
+        if (window.FlyntEditorCompat && typeof window.FlyntEditorCompat.install === function) {{
+            return window.FlyntEditorCompat.install(initialContent);
+        }}
         window._flyntEditorSavedContent = initialContent;
         window._flyntEditorDirty = false;
         window.FlyntEditor = {{
-            mount: function() {{ return {{ ok: true, compatibility: true }}; }},
-            unmount: function() {{
-                if (window._flyntCM) {{
-                    try {{ window._flyntCM.destroy(); }} catch(e) {{}}
-                    window._flyntCM = null;
-                }}
-            }},
-            setDocument: function(doc, options) {{
-                const cm = window._flyntCM;
-                if (!cm) return {{ ok: false, reason: 'not-mounted' }};
-                const opts = options || {{}};
-                const content = String((doc && doc.content) || '');
-                const current = cm.state.doc.toString();
-                const dirty = window.FlyntEditor.isDirty();
-                if (dirty && !opts.force && content !== current) {{
-                    return {{ ok: false, reason: 'unsaved-divergence' }};
-                }}
-                const selection = cm.state.selection;
-                const scrollTop = cm.scrollDOM.scrollTop;
-                const scrollLeft = cm.scrollDOM.scrollLeft;
-                cm.dispatch({{ changes: {{ from: 0, to: cm.state.doc.length, insert: content }} }});
-                if (opts.preserveSelection) cm.dispatch({{ selection }});
-                if (opts.preserveScroll) {{ cm.scrollDOM.scrollTop = scrollTop; cm.scrollDOM.scrollLeft = scrollLeft; }}
-                window._flyntEditorSavedContent = content;
-                window._flyntEditorDirty = false;
-                return {{ ok: true }};
-            }},
-            getDocument: function() {{
-                const cm = window._flyntCM;
-                const content = cm ? cm.state.doc.toString() : '';
-                return {{ content, dirty: window.FlyntEditor.isDirty() }};
-            }},
+            getDocument: function() {{ const cm = window._flyntCM; const content = cm ? cm.state.doc.toString() : ; return {{ content, dirty: false }}; }},
             focus: function() {{ if (window._flyntCM) window._flyntCM.focus(); }},
-            getSelection: function() {{
-                const cm = window._flyntCM;
-                if (!cm) return null;
-                const main = cm.state.selection.main;
-                return {{ anchor: main.anchor, head: main.head, ranges: cm.state.selection.ranges.map(r => ({{ anchor: r.anchor, head: r.head }})) }};
-            }},
-            replaceSelection: function(text) {{
-                const cm = window._flyntCM;
-                if (!cm) return {{ ok: false, reason: 'not-mounted' }};
-                cm.dispatch(cm.state.replaceSelection(String(text || '')));
-                cm.focus();
-                return {{ ok: true }};
-            }},
-            saveNow: function() {{
-                const cm = window._flyntCM;
-                if (!cm) return {{ ok: false, reason: 'not-mounted' }};
-                const content = cm.state.doc.toString();
-                window._flyntNotify('save', content);
-                return {{ ok: true }};
-            }},
-            markSaved: function(revision, content) {{
-                const cm = window._flyntCM;
-                window._flyntEditorSavedContent = content !== undefined ? String(content) : (cm ? cm.state.doc.toString() : '');
-                window._flyntEditorDirty = false;
-                return {{ ok: true, revision }};
-            }},
-            isDirty: function() {{
-                const cm = window._flyntCM;
-                if (!cm) return false;
-                return window._flyntEditorDirty || cm.state.doc.toString() !== window._flyntEditorSavedContent;
-            }},
-            getEditorState: function() {{
-                const cm = window._flyntCM;
-                if (!cm) return {{ scrollTop: 0, scrollLeft: 0, dirty: false }};
-                const main = cm.state.selection.main;
-                return {{
-                    selection: {{ anchor: main.anchor, head: main.head }},
-                    scrollTop: cm.scrollDOM.scrollTop,
-                    scrollLeft: cm.scrollDOM.scrollLeft,
-                    dirty: window.FlyntEditor.isDirty(),
-                }};
-            }},
-            restoreEditorState: function(state) {{
-                const cm = window._flyntCM;
-                if (!cm || !state) return {{ ok: false, reason: 'not-mounted' }};
-                if (state.selection) cm.dispatch({{ selection: {{ anchor: state.selection.anchor, head: state.selection.head }} }});
-                if (typeof state.scrollTop === 'number') cm.scrollDOM.scrollTop = state.scrollTop;
-                if (typeof state.scrollLeft === 'number') cm.scrollDOM.scrollLeft = state.scrollLeft;
-                return {{ ok: true }};
-            }},
-            revealLine: function(lineNumber) {{
-                const cm = window._flyntCM;
-                if (!cm) return {{ ok: false, reason: 'not-mounted' }};
-                const line = cm.state.doc.line(Math.max(1, Number(lineNumber) || 1));
-                cm.dispatch({{ selection: {{ anchor: line.from }}, effects: CM.EditorView.scrollIntoView(line.from, {{ y: 'start', yMargin: 24 }}) }});
-                cm.focus();
-                return {{ ok: true }};
-            }},
-            reconfigure: function() {{ return {{ ok: false, reason: 'compatibility-wrapper' }}; }},
+            replaceSelection: function(text) {{ const cm = window._flyntCM; if (!cm) return {{ ok: false, reason: not-mounted }}; cm.dispatch(cm.state.replaceSelection(String(text || ))); cm.focus(); return {{ ok: true }}; }},
+            revealLine: function(lineNumber) {{ const cm = window._flyntCM; if (!cm) return {{ ok: false, reason: not-mounted }}; const line = cm.state.doc.line(Math.max(1, Number(lineNumber) || 1)); cm.dispatch({{ selection: {{ anchor: line.from }}, effects: CM.EditorView.scrollIntoView(line.from, {{ y: start, yMargin: 24 }}) }}); cm.focus(); return {{ ok: true }}; }},
+            saveNow: function() {{ const cm = window._flyntCM; if (!cm) return {{ ok: false, reason: not-mounted }}; window._flyntNotify(save, cm.state.doc.toString()); return {{ ok: true }}; }},
+            markSaved: function() {{ window._flyntEditorDirty = false; return {{ ok: true }}; }},
+            isDirty: function() {{ return !!window._flyntEditorDirty; }},
         }};
+        return window.FlyntEditor;
     }}
 
     window._flyntCM = new EditorView({{ state, parent: container }});
