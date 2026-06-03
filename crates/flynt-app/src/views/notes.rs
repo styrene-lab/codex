@@ -1400,22 +1400,15 @@ fn cm6_init_js(content: &str) -> String {
         }} }},
     ]);
 
-    let saveTimer = null;
-    let editTimer = null;
-    const changeHandler = EditorView.updateListener.of((update) => {{
-        if (update.docChanged) {{
-            window._flyntEditorDirty = true;
-            clearTimeout(saveTimer);
-            clearTimeout(editTimer);
-            // Defer toString() into the timeout — avoid blocking on large pastes
-            editTimer = setTimeout(() => {{
+    const changeHandler = window.FlyntEditorCompat && window.FlyntEditorCompat.changeHandlerExtension
+        ? window.FlyntEditorCompat.changeHandlerExtension(EditorView)
+        : EditorView.updateListener.of((update) => {{
+            if (update.docChanged) {{
+                window._flyntEditorDirty = true;
                 if (window._flyntCM) window._flyntNotify('edit', window._flyntCM.state.doc.toString());
-            }}, 300);
-            saveTimer = setTimeout(() => {{
                 if (window._flyntCM) window._flyntNotify('autosave', window._flyntCM.state.doc.toString());
-            }}, 1500);
-        }}
-    }});
+            }}
+        }});
 
     const saveKeymap = keymap.of([{{
         key: 'Mod-s',

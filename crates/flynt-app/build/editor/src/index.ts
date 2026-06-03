@@ -64,6 +64,7 @@ interface FlyntEditorApi {
 interface FlyntEditorCompatApi {
   install(initialContent?: string): FlyntEditorApi;
   attachView(view: LegacyEditorView, initialContent?: string): FlyntEditorApi;
+  changeHandlerExtension(EditorView: { updateListener: { of(callback: (update: { docChanged?: boolean }) => void): unknown } }): unknown;
 }
 
 declare global {
@@ -80,6 +81,29 @@ declare global {
 
 function currentView(): LegacyEditorView | null {
   return window._flyntCM ?? null;
+}
+
+function changeHandlerExtension(EditorView: { updateListener: { of(callback: (update: { docChanged?: boolean }) => void): unknown } }): unknown {
+  let saveTimer: ReturnType<typeof setTimeout> | null = null;
+  let editTimer: ReturnType<typeof setTimeout> | null = null;
+  return EditorView.updateListener.of((update) => {
+    if (!update.docChanged) return;
+    window._flyntEditorDirty = true;
+    if (saveTimer) clearTimeout(saveTimer);
+    if (editTimer) clearTimeout(editTimer);
+
+    // Defer stringification so large paste operations don't block the
+    // synchronous CM6 update path.
+    editTimer = setTimeout(() => {
+      const cm = currentView();
+      if (cm) window._flyntNotify?.("edit", cm.state.doc.toString());
+    }, 300);
+
+    saveTimer = setTimeout(() => {
+      const cm = currentView();
+      if (cm) window._flyntNotify?.("autosave", cm.state.doc.toString());
+    }, 1500);
+  });
 }
 
 function attachView(view: LegacyEditorView, initialContent = ""): FlyntEditorApi {
@@ -212,6 +236,6 @@ function install(initialContent = ""): FlyntEditorApi {
   return api;
 }
 
-window.FlyntEditorCompat = { install, attachView };
+window.FlyntEditorCompat = { install, attachView, changeHandlerExtension };
 
 export {};
