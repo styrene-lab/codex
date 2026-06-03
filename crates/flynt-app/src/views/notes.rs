@@ -1430,34 +1430,7 @@ fn cm6_init_js(content: &str) -> String {
         // Skip any blank lines after frontmatter
         while (cursorPos < docText.length && docText[cursorPos] === '\n') cursorPos++;
     }}
-    const state = EditorState.create({{
-        doc: docText,
-        selection: {{ anchor: cursorPos }},
-        extensions: [
-            flyntTheme,
-            ...window.FlyntEditorCompat.baseExtensions({{
-                EditorView,
-                syntaxHighlighting,
-                flyntHighlight,
-                defaultHighlightStyle,
-                oneDark,
-                highlightActiveLine,
-                highlightSpecialChars,
-                highlightSelectionMatches,
-                drawSelection,
-                bracketMatching,
-                closeBrackets,
-                searchKeymap,
-                defaultKeymap,
-                history,
-                historyKeymap,
-                indentWithTab,
-                markdown,
-                markdownLanguage,
-                GFM,
-                languages,
-                keymap,
-            }}, [
+    const flyntLocalExtensions = [
                 livePreview,
                 blockRenderPlugin,
                 frontmatterPlugin,
@@ -1611,60 +1584,34 @@ fn cm6_init_js(content: &str) -> String {
                     return true;
                 }}
             }}),
-            ]),
-        ],
-    }});
+            ];
 
-    function installFlyntEditorBridge(initialContent) {{
-        if (window.FlyntEditorCompat && typeof window.FlyntEditorCompat.attachView === 'function') {{
-            return window.FlyntEditorCompat.attachView(window._flyntCM, initialContent);
-        }}
-        if (window.FlyntEditorCompat && typeof window.FlyntEditorCompat.install === 'function') {{
-            return window.FlyntEditorCompat.install(initialContent);
-        }}
-        window._flyntEditorSavedContent = initialContent;
-        window._flyntEditorDirty = false;
-        window.FlyntEditor = {{
-            getDocument: function() {{
-                const cm = window._flyntCM;
-                const content = cm ? cm.state.doc.toString() : '';
-                return {{ content, dirty: false }};
-            }},
-            focus: function() {{ if (window._flyntCM) window._flyntCM.focus(); }},
-            replaceSelection: function(text) {{
-                const cm = window._flyntCM;
-                if (!cm) return {{ ok: false, reason: 'not-mounted' }};
-                cm.dispatch(cm.state.replaceSelection(String(text || '')));
-                cm.focus();
-                return {{ ok: true }};
-            }},
-            executeCommand: function(id, payload) {{
-                if (id === 'insert-text') return this.replaceSelection(payload && payload.text);
-                return {{ ok: false, reason: 'bridge-bundle-unavailable' }};
-            }},
-            revealLine: function(lineNumber) {{
-                const cm = window._flyntCM;
-                if (!cm) return {{ ok: false, reason: 'not-mounted' }};
-                const line = cm.state.doc.line(Math.max(1, Number(lineNumber) || 1));
-                cm.dispatch({{ selection: {{ anchor: line.from }}, effects: CM.EditorView.scrollIntoView(line.from, {{ y: 'start', yMargin: 24 }}) }});
-                cm.focus();
-                return {{ ok: true }};
-            }},
-            saveNow: function() {{
-                const cm = window._flyntCM;
-                if (!cm) return {{ ok: false, reason: 'not-mounted' }};
-                window._flyntNotify('save', cm.state.doc.toString());
-                return {{ ok: true }};
-            }},
-            markSaved: function() {{ window._flyntEditorDirty = false; return {{ ok: true }}; }},
-            isDirty: function() {{ return !!window._flyntEditorDirty; }},
-        }};
-        return window.FlyntEditor;
-    }}
+    window.FlyntEditorCompat.mountEditor({{
+        EditorState,
+        EditorView,
+        syntaxHighlighting,
+        flyntHighlight,
+        defaultHighlightStyle,
+        oneDark,
+        highlightActiveLine,
+        highlightSpecialChars,
+        highlightSelectionMatches,
+        drawSelection,
+        bracketMatching,
+        closeBrackets,
+        searchKeymap,
+        defaultKeymap,
+        history,
+        historyKeymap,
+        indentWithTab,
+        markdown,
+        markdownLanguage,
+        GFM,
+        languages,
+        keymap,
+    }}, container, docText, cursorPos, flyntLocalExtensions, flyntTheme);
 
-    window._flyntCM = new EditorView({{ state, parent: container }});
-    installFlyntEditorBridge({escaped});
-    window._flyntCM.focus();
+    if (window.FlyntEditor) window.FlyntEditor.focus();
     console.timeEnd('cm6-init');
     console.timeEnd('cm6-total');
     }} // end _initCM

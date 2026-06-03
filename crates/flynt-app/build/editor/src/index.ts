@@ -69,6 +69,7 @@ interface FlyntEditorCompatApi {
   changeHandlerExtension(EditorView: { updateListener: { of(callback: (update: { docChanged?: boolean }) => void): unknown } }): unknown;
   keymapRegistry(keymap: { of(bindings: Array<{ key: string; run(view: LegacyEditorView): boolean }>): unknown }): { save: unknown; formatting: unknown; all: unknown[] };
   baseExtensions(modules: EditorCompatModules, localExtensions?: unknown[]): unknown[];
+  mountEditor(modules: EditorCompatModules, container: HTMLElement, content: string, cursorPos?: number, localExtensions?: unknown[], theme?: unknown): FlyntEditorApi;
   commandRegistry(): EditorCommandRegistry;
   dispatchEditorCommand(id: string, payload?: { text?: string }): BridgeResult;
 }
@@ -138,6 +139,7 @@ interface EditorCommandRegistry {
 }
 
 interface EditorCompatModules {
+  EditorState?: { create(config: { doc: string; selection?: { anchor: number }; extensions: unknown[] }): unknown };
   EditorView: { lineWrapping: unknown; updateListener: { of(callback: (update: { docChanged?: boolean }) => void): unknown } };
   syntaxHighlighting(style: unknown, config?: unknown): unknown;
   flyntHighlight: unknown;
@@ -191,6 +193,31 @@ function baseExtensions(modules: EditorCompatModules, localExtensions: unknown[]
     ...localExtensions,
     modules.EditorView.lineWrapping,
   ];
+}
+
+
+function mountEditor(
+  modules: EditorCompatModules,
+  container: HTMLElement,
+  content: string,
+  cursorPos = content.length,
+  localExtensions: unknown[] = [],
+  theme?: unknown,
+): FlyntEditorApi {
+  if (!modules.EditorState) {
+    throw new Error("FlyntEditorCompat.mountEditor requires EditorState");
+  }
+  const extensions = [
+    ...(theme ? [theme] : []),
+    ...baseExtensions(modules, localExtensions),
+  ];
+  const state = modules.EditorState.create({
+    doc: content,
+    selection: { anchor: cursorPos },
+    extensions,
+  });
+  const view = new (modules.EditorView as unknown as { new(config: { state: unknown; parent: HTMLElement }): LegacyEditorView })({ state, parent: container });
+  return attachView(view, content);
 }
 
 function activeText(view: LegacyEditorView): { from: number; to: number; text: string; line: { from: number; to: number; text: string } } {
@@ -387,6 +414,6 @@ function install(initialContent = ""): FlyntEditorApi {
   return api;
 }
 
-window.FlyntEditorCompat = { install, attachView, changeHandlerExtension, keymapRegistry, baseExtensions, commandRegistry, dispatchEditorCommand };
+window.FlyntEditorCompat = { install, attachView, changeHandlerExtension, keymapRegistry, baseExtensions, mountEditor, commandRegistry, dispatchEditorCommand };
 
 export {};
