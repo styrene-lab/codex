@@ -33,6 +33,7 @@ import {
   applyEdgeChanges,
   applyNodeChanges,
   addEdge,
+  useReactFlow,
 } from "@xyflow/react";
 import reactFlowCss from "@xyflow/react/dist/style.css";
 
@@ -351,6 +352,11 @@ function FlowCanvas({
   const [selectedNodeId, setSelectedNodeId] = React.useState<string | null>(null);
   const addNodeCountRef = React.useRef(flow.nodes.length);
 
+  // Fab popover + context menu state
+  const [fabOpen, setFabOpen] = React.useState(false);
+  const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number; flowPos: { x: number; y: number } } | null>(null);
+  const reactFlowInstance = useReactFlow();
+
   // Keep a ref to the current state so the debounced emitter doesn't
   // capture stale closures. React's setState batching makes "read latest
   // after change" tricky without this.
@@ -496,15 +502,14 @@ function FlowCanvas({
     };
   }, []);
 
-  const addNode = React.useCallback((definition: FlowNodeDefinition) => {
+  const addNode = React.useCallback((definition: FlowNodeDefinition, position?: { x: number; y: number }) => {
     const nodeId = uuid();
-    const index = addNodeCountRef.current;
+    const pos = position ?? viewportPositionForNewNode(addNodeCountRef.current);
     addNodeCountRef.current += 1;
-    const { x, y } = viewportPositionForNewNode(index);
     const node: Node<NodePayload> = {
       id: nodeId,
       type: "flynt",
-      position: { x, y },
+      position: pos,
       data: {
         kind: definition.kind,
         payload: { ...(definition.defaultData ?? {}) },
@@ -515,7 +520,7 @@ function FlowCanvas({
     const nextNodes = [...latestRef.current.nodes, node];
     latestRef.current = { ...latestRef.current, nodes: nextNodes };
     setNodes(nextNodes);
-    setSelectedNodeId(null);
+    setSelectedNodeId(nodeId);
     scheduleEmit({ nodes: nextNodes });
   }, [scheduleEmit, viewportPositionForNewNode]);
 
@@ -573,10 +578,37 @@ function FlowCanvas({
     });
   }, [selectedNodeId, scheduleEmit]);
 
+  // Close popover / context menu on outside click or Escape
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") { setFabOpen(false); setContextMenu(null); }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Context menu handler — right-click on the canvas pane
+  const onPaneContextMenu = React.useCallback((event: React.MouseEvent | MouseEvent) => {
+    event.preventDefault();
+    const clientX = "clientX" in event ? event.clientX : 0;
+    const clientY = "clientY" in event ? event.clientY : 0;
+    const flowPos = reactFlowInstance.screenToFlowPosition({ x: clientX, y: clientY });
+    setContextMenu({ x: clientX, y: clientY, flowPos });
+    setFabOpen(false);
+  }, [reactFlowInstance]);
+
+  // Helper: add node from a menu and close it
+  const addNodeFromMenu = React.useCallback((definition: FlowNodeDefinition, position?: { x: number; y: number }) => {
+    addNode(definition, position);
+    setFabOpen(false);
+    setContextMenu(null);
+  }, [addNode]);
+
 
 
   return (
-    <div style={{ width: "100%", flex: 1, minHeight: 0, position: "relative" }}>
+    <div style={{ width: "100%", flex: 1, minHeight: 0, position: "relative" }}
+         onClick={() => { setFabOpen(false); setContextMenu(null); }}>
       <div className="flynt-flow-canvas">
         <ReactFlow
           nodes={nodes}
@@ -585,14 +617,15 @@ function FlowCanvas({
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
-          onNodeClick={(_, node) => setSelectedNodeId(node.id)}
-          onPaneClick={() => setSelectedNodeId(null)}
+          onNodeClick={(_, node) => { setSelectedNodeId(node.id); setContextMenu(null); }}
+          onPaneClick={() => { setSelectedNodeId(null); setContextMenu(null); setFabOpen(false); }}
+          onPaneContextMenu={readOnly ? undefined : onPaneContextMenu}
           nodesDraggable={!readOnly}
           nodesConnectable={!readOnly}
           edgesFocusable={!readOnly}
           elementsSelectable
           fitView
-          fitViewOptions={{ padding: 0.25, maxZoom: 1 }}
+          fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
           nodeOrigin={[0, 0]}
           minZoom={0.15}
           maxZoom={2.5}
@@ -614,32 +647,76 @@ function FlowCanvas({
           />
         </ReactFlow>
       </div>
+
+      {/* ── Fab button ──────────────────────────────────────── */}
       {!readOnly && (
-        <div className="flynt-flow-palette" onMouseDown={(event) => event.stopPropagation()}>
-          <div className="flynt-flow-palette-title">Core nodes <span>{nodes.length}</span></div>
-          <div className="flynt-flow-palette-grid">
+        <button
+          className={`flynt-fab ${fabOpen ? "open" : ""}`}
+          onClick={(e) => { e.stopPropagation(); setFabOpen(!fabOpen); setContextMenu(null); }}
+          title="Add node"
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+        </button>
+      )}
+
+      {/* ── Fab popover ─────────────────────────────────────── */}
+      {!readOnly && fabOpen && (
+        <div className="flynt-fab-popover" onClick={(e) => e.stopPropagation()}>
+          <div className="flynt-menu-section">
+            <div className="flynt-menu-section-title">Add node</div>
             {CORE_NODE_DEFINITIONS.map((definition) => (
-              <button
-                key={definition.kind}
-                className="flynt-flow-palette-btn"
-                title={definition.description}
-                onClick={() => addNode(definition)}
-              >
-                {definition.label}
+              <button key={definition.kind} className="flynt-menu-item"
+                onClick={() => addNodeFromMenu(definition)}>
+                <span className="flynt-menu-item-dot" style={{ background: KIND_ACCENT[definition.kind] ?? "#2ab4c8" }} />
+                <span className="flynt-menu-item-label">{definition.label}</span>
+                <span className="flynt-menu-item-desc">{definition.description}</span>
+              </button>
+            ))}
+          </div>
+          {nodes.length === 0 && (
+            <div className="flynt-menu-section">
+              <div className="flynt-menu-section-title">Quick start</div>
+              <button className="flynt-menu-item" onClick={() => { addStarterFlow(); setFabOpen(false); }}>
+                <span className="flynt-menu-item-dot" style={{ background: "#2ab4c8" }} />
+                <span className="flynt-menu-item-label">Input → Process → Output</span>
+                <span className="flynt-menu-item-desc">Starter three-node flow</span>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Context menu ────────────────────────────────────── */}
+      {!readOnly && contextMenu && (
+        <div className="flynt-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}>
+          <div className="flynt-menu-section">
+            <div className="flynt-menu-section-title">Add node here</div>
+            {CORE_NODE_DEFINITIONS.map((definition) => (
+              <button key={definition.kind} className="flynt-menu-item"
+                onClick={() => addNodeFromMenu(definition, contextMenu.flowPos)}>
+                <span className="flynt-menu-item-dot" style={{ background: KIND_ACCENT[definition.kind] ?? "#2ab4c8" }} />
+                <span className="flynt-menu-item-label">{definition.label}</span>
               </button>
             ))}
           </div>
         </div>
       )}
-      {!readOnly && nodes.length === 0 && (
+
+      {/* ── Empty state ─────────────────────────────────────── */}
+      {!readOnly && nodes.length === 0 && !fabOpen && (
         <div className="flynt-flow-empty">
           <h2>Build a flow</h2>
-          <p>Add core nodes, then connect their handles to describe direction or dependency.</p>
-          <button onClick={addStarterFlow}>Start with Input → Process → Output</button>
+          <p>Click <strong>+</strong> or right-click the canvas to add nodes.</p>
         </div>
       )}
+
+      {/* ── Node inspector ──────────────────────────────────── */}
       {!readOnly && selectedNode && (
-        <div className="flynt-flow-inspector" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="flynt-flow-inspector" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
           <div className="flynt-flow-inspector-header">
             <span className="flynt-flow-inspector-kind" style={{
               color: KIND_ACCENT[selectedNode.data.kind] ?? "#2ab4c8",
@@ -672,7 +749,6 @@ function FlowCanvas({
           </div>
         </div>
       )}
-
     </div>
   );
 }
@@ -698,12 +774,19 @@ function injectStyles() {
   style.textContent = reactFlowCss + `
 .flynt-flow-canvas { position: absolute; inset: 0; min-width: 0; min-height: 0; overflow: hidden; }
 .flynt-flow-canvas .react-flow { width: 100%; height: 100%; }
-.flynt-flow-palette { position: absolute; top: 12px; left: 12px; z-index: 8; width: 180px; padding: 10px; border: 1px solid #1a3448; border-radius: 10px; background: rgba(14, 22, 34, 0.92); box-shadow: 0 12px 28px rgba(0,0,0,0.35); }
-.flynt-flow-palette-title { color: #6ecad8; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; display: flex; justify-content: space-between; }
-.flynt-flow-palette-title span { color: #607888; }
-.flynt-flow-palette-grid { display: grid; gap: 6px; }
-.flynt-flow-palette-btn { width: 100%; border: 1px solid #1a3448; border-radius: 7px; padding: 6px 8px; color: #c4d8e4; background: #0f172a; font-size: 12px; text-align: left; cursor: pointer; }
-.flynt-flow-palette-btn:hover { border-color: #2ab4c8; color: #6ecad8; background: #131e2e; }
+.flynt-fab { position: absolute; top: 12px; left: 12px; z-index: 10; width: 40px; height: 40px; border-radius: 12px; border: 1px solid #1a3448; background: #0e1622; color: #607888; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+.flynt-fab:hover { color: #c4d8e4; border-color: #2ab4c8; background: #131e2e; }
+.flynt-fab.open { color: #2ab4c8; border-color: #2ab4c8; background: #131e2e; transform: rotate(45deg); }
+.flynt-fab-popover { position: absolute; top: 58px; left: 12px; z-index: 10; width: 260px; max-height: 70vh; overflow-y: auto; background: rgba(14, 22, 34, 0.97); border: 1px solid #1a3448; border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,0.5); backdrop-filter: blur(8px); }
+.flynt-context-menu { position: fixed; z-index: 20; width: 220px; background: rgba(14, 22, 34, 0.97); border: 1px solid #1a3448; border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,0.5); backdrop-filter: blur(8px); }
+.flynt-menu-section { padding: 6px 0; }
+.flynt-menu-section + .flynt-menu-section { border-top: 1px solid #1a3448; }
+.flynt-menu-section-title { padding: 6px 14px 4px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #475569; }
+.flynt-menu-item { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 7px 14px; border: none; background: transparent; color: #c4d8e4; cursor: pointer; text-align: left; font-size: 12px; line-height: 1.3; }
+.flynt-menu-item:hover { background: rgba(42, 180, 200, 0.08); }
+.flynt-menu-item-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; }
+.flynt-menu-item-label { font-weight: 600; white-space: nowrap; }
+.flynt-menu-item-desc { color: #475569; font-size: 11px; flex: 1; }
 .flynt-flow-empty { position: absolute; z-index: 7; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(420px, 80%); border: 1px solid #1a3448; border-radius: 14px; padding: 22px; background: rgba(14, 22, 34, 0.94); color: #c4d8e4; text-align: center; box-shadow: 0 18px 50px rgba(0,0,0,0.45); }
 .flynt-flow-empty h2 { margin: 0 0 8px; color: #6ecad8; font-size: 24px; }
 .flynt-flow-empty p { margin: 0 0 16px; color: #607888; line-height: 1.45; }
