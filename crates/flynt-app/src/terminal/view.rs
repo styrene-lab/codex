@@ -14,9 +14,9 @@ use dioxus::prelude::ModifiersInteraction;
 
 use alacritty_terminal::event::VoidListener;
 use alacritty_terminal::index::Point;
+use alacritty_terminal::term::Term;
 use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::term::test::TermSize;
-use alacritty_terminal::term::Term;
 use alacritty_terminal::vte::ansi::{Color as VteColor, NamedColor, Processor, Rgb};
 use portable_pty::{Child, CommandBuilder, ExitStatus, PtySize, native_pty_system};
 use tokio::sync::mpsc;
@@ -141,7 +141,8 @@ impl AlacrittyTerminalSession {
     pub fn resize(&mut self, rows: usize, cols: usize) -> anyhow::Result<()> {
         let rows = rows.max(1) as u16;
         let cols = cols.max(1) as u16;
-        self.term.resize(TermSize::new(cols as usize, rows as usize));
+        self.term
+            .resize(TermSize::new(cols as usize, rows as usize));
         self.pty.master.lock().unwrap().resize(PtySize {
             rows,
             cols,
@@ -200,9 +201,7 @@ impl AlacrittyTerminalSession {
     pub fn try_wait_status(&self) -> TerminalStatus {
         let mut child = self.pty.child.lock().unwrap();
         match child.try_wait() {
-            Ok(Some(status)) => {
-                TerminalStatus::Exited(exit_status_label(&status))
-            }
+            Ok(Some(status)) => TerminalStatus::Exited(exit_status_label(&status)),
             Ok(None) => TerminalStatus::Running,
             Err(err) => TerminalStatus::Failed(err.to_string()),
         }
@@ -212,9 +211,7 @@ impl AlacrittyTerminalSession {
         self.pty.child.lock().unwrap().kill()?;
         Ok(())
     }
-
 }
-
 
 fn exit_status_label(status: &ExitStatus) -> String {
     if let Some(signal) = status.signal() {

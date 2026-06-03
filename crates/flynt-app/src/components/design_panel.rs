@@ -35,14 +35,21 @@ pub fn grouped_component_summaries() -> Vec<ComponentGroup> {
             .push(ComponentSummary {
                 name: component.name.to_string(),
                 description: component.description.to_string(),
-                variants: component.variants.iter().map(|variant| variant.to_string()).collect(),
+                variants: component
+                    .variants
+                    .iter()
+                    .map(|variant| variant.to_string())
+                    .collect(),
             });
     }
     by_category
         .into_iter()
         .map(|(category, mut components)| {
             components.sort_by(|a, b| a.name.cmp(&b.name));
-            ComponentGroup { category, components }
+            ComponentGroup {
+                category,
+                components,
+            }
         })
         .collect()
 }
@@ -62,7 +69,7 @@ pub fn DesignPanel(
             section { class: "design-panel-section design-panel-intro",
                 div { class: "design-panel-heading", "Design" }
                 p { class: "design-panel-hint",
-                    "Boards, drawings, flows, templates, and components for visual work."
+                    "Create and manage visual surfaces: boards, drawings, flows, templates, and components."
                 }
             }
 
@@ -160,7 +167,7 @@ fn DesignFilesTab(
             }
             if artifacts.is_empty() {
                 div { class: "design-empty-state",
-                    div { class: "design-empty-title", "No design artifacts yet" }
+                    div { class: "design-empty-title", "No visual surfaces yet" }
                     p { "Create a board, drawing, or flow to start building the design inventory." }
                 }
             } else {
@@ -228,9 +235,11 @@ fn create_design_board(
         let name = format!("DesignBoard {ts_suffix}");
         if let Ok(md_path) = crate::views::design_board::create_design_board(&project.root, &name) {
             let _ = project.index_file(&project.root.join(&md_path));
-            let _ = ctx.project_events().send(flynt_store::watcher::ProjectChangeEvent::FileCreated(
-                project.root.join(&md_path),
-            ));
+            let _ =
+                ctx.project_events()
+                    .send(flynt_store::watcher::ProjectChangeEvent::FileCreated(
+                        project.root.join(&md_path),
+                    ));
             let slug = name.to_lowercase();
             if let Ok(Some(doc)) = project.store.find_document_by_slug(&slug) {
                 tab_state.write().open(doc.id, name);
@@ -284,7 +293,9 @@ fn create_flow(
         };
         if flynt_flow::save_flow(&abs, &flow, None).is_ok() {
             let _ = project.index_file(&abs);
-            let _ = ctx.project_events().send(flynt_store::watcher::ProjectChangeEvent::FileCreated(abs));
+            let _ = ctx
+                .project_events()
+                .send(flynt_store::watcher::ProjectChangeEvent::FileCreated(abs));
             let slug = name.to_lowercase();
             if let Ok(Some(doc)) = project.store.find_document_by_slug(&slug) {
                 tab_state.write().open(doc.id, name);
@@ -298,10 +309,12 @@ fn create_flow(
 fn design_artifacts(docs: &[DocumentMeta]) -> Vec<DesignArtifact> {
     let mut artifacts: Vec<_> = docs
         .iter()
-        .filter_map(|doc| design_artifact_kind(&doc.path).map(|kind| DesignArtifact {
-            doc: doc.clone(),
-            kind,
-        }))
+        .filter_map(|doc| {
+            design_artifact_kind(&doc.path).map(|kind| DesignArtifact {
+                doc: doc.clone(),
+                kind,
+            })
+        })
         .collect();
     artifacts.sort_by(|a, b| a.doc.path.cmp(&b.doc.path));
     artifacts
@@ -311,7 +324,8 @@ fn design_artifact_kind(path: &Path) -> Option<DesignArtifactKind> {
     let path_text = path.to_string_lossy();
     if path_text.starts_with("boards/") && path.extension().is_some_and(|ext| ext == "md") {
         Some(DesignArtifactKind::Board)
-    } else if path_text.starts_with("drawings/") && path.extension().is_some_and(|ext| ext == "md") {
+    } else if path_text.starts_with("drawings/") && path.extension().is_some_and(|ext| ext == "md")
+    {
         Some(DesignArtifactKind::Drawing)
     } else if path.extension().is_some_and(|ext| ext == "flow") {
         Some(DesignArtifactKind::Flow)
@@ -324,7 +338,10 @@ fn artifact_title(doc: &DocumentMeta) -> String {
     doc.path
         .file_stem()
         .and_then(|stem| stem.to_str())
-        .map_or_else(|| doc.path.to_string_lossy().to_string(), ToString::to_string)
+        .map_or_else(
+            || doc.path.to_string_lossy().to_string(),
+            ToString::to_string,
+        )
 }
 
 fn open_artifact(
@@ -446,7 +463,10 @@ mod tests {
             "ImagePlaceholder",
             "Panel",
         ] {
-            assert!(all.iter().any(|name| name == expected), "missing {expected}");
+            assert!(
+                all.iter().any(|name| name == expected),
+                "missing {expected}"
+            );
         }
     }
 
@@ -485,8 +505,14 @@ mod tests {
 
     #[test]
     fn rejects_non_markdown_files_in_drawing_directory() {
-        assert_eq!(design_artifact_kind(Path::new("drawings/System Map.excalidraw")), None);
-        assert_eq!(design_artifact_kind(Path::new("drawings/System Map.svg")), None);
+        assert_eq!(
+            design_artifact_kind(Path::new("drawings/System Map.excalidraw")),
+            None
+        );
+        assert_eq!(
+            design_artifact_kind(Path::new("drawings/System Map.svg")),
+            None
+        );
     }
 
     #[test]
@@ -503,8 +529,14 @@ mod tests {
 
     #[test]
     fn rejects_regular_markdown_notes() {
-        assert_eq!(design_artifact_kind(Path::new("docs/Architecture.md")), None);
-        assert_eq!(design_artifact_kind(Path::new("boards/Architecture.txt")), None);
+        assert_eq!(
+            design_artifact_kind(Path::new("docs/Architecture.md")),
+            None
+        );
+        assert_eq!(
+            design_artifact_kind(Path::new("boards/Architecture.txt")),
+            None
+        );
     }
 
     #[test]
@@ -524,7 +556,10 @@ mod tests {
             .collect();
         let kinds: Vec<_> = artifacts.iter().map(|artifact| artifact.kind).collect();
 
-        assert_eq!(paths, vec!["boards/Hero.md", "drawings/System.md", "flows/Auth.flow"]);
+        assert_eq!(
+            paths,
+            vec!["boards/Hero.md", "drawings/System.md", "flows/Auth.flow"]
+        );
         assert_eq!(
             kinds,
             vec![

@@ -2,7 +2,13 @@ use flynt_core::omegon_deployment::OmegonDeploymentManifest;
 
 pub fn activate_skill(manifest: &mut OmegonDeploymentManifest, skill_id: &str) -> bool {
     let skill_id = skill_id.trim();
-    if skill_id.is_empty() || manifest.activation.skills.iter().any(|skill| skill == skill_id) {
+    if skill_id.is_empty()
+        || manifest
+            .activation
+            .skills
+            .iter()
+            .any(|skill| skill == skill_id)
+    {
         return false;
     }
     manifest.activation.skills.push(skill_id.to_string());
@@ -12,7 +18,12 @@ pub fn activate_skill(manifest: &mut OmegonDeploymentManifest, skill_id: &str) -
 pub fn deactivate_skill(manifest: &mut OmegonDeploymentManifest, skill_id: &str) -> bool {
     let skill_id = skill_id.trim();
     let default = OmegonDeploymentManifest::default();
-    if default.activation.skills.iter().any(|skill| skill == skill_id) {
+    if default
+        .activation
+        .skills
+        .iter()
+        .any(|skill| skill == skill_id)
+    {
         return false;
     }
     let before = manifest.activation.skills.len();
@@ -20,7 +31,10 @@ pub fn deactivate_skill(manifest: &mut OmegonDeploymentManifest, skill_id: &str)
     before != manifest.activation.skills.len()
 }
 
-pub fn save_manifest(omegon: &crate::bootstrap::OmegonRuntimeContext, manifest: &OmegonDeploymentManifest) -> anyhow::Result<()> {
+pub fn save_manifest(
+    omegon: &crate::bootstrap::OmegonRuntimeContext,
+    manifest: &OmegonDeploymentManifest,
+) -> anyhow::Result<()> {
     if let Some(parent) = omegon.deployment_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -38,7 +52,12 @@ mod tests {
         assert!(activate_skill(&mut manifest, "custom-skill"));
         assert!(!activate_skill(&mut manifest, "custom-skill"));
         assert_eq!(
-            manifest.activation.skills.iter().filter(|skill| *skill == "custom-skill").count(),
+            manifest
+                .activation
+                .skills
+                .iter()
+                .filter(|skill| *skill == "custom-skill")
+                .count(),
             1
         );
     }
@@ -48,7 +67,12 @@ mod tests {
         let mut manifest = OmegonDeploymentManifest::default();
         activate_skill(&mut manifest, "custom-skill");
         assert!(deactivate_skill(&mut manifest, "custom-skill"));
-        assert!(!manifest.activation.skills.contains(&"custom-skill".to_string()));
+        assert!(
+            !manifest
+                .activation
+                .skills
+                .contains(&"custom-skill".to_string())
+        );
     }
 
     #[test]

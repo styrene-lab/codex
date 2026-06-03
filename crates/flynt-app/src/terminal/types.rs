@@ -84,7 +84,11 @@ mod tests {
     fn terminal_create_params_match_omegon_wire_shape() {
         let params = TerminalCreateParams {
             command: "cargo".to_string(),
-            args: vec!["check".to_string(), "-p".to_string(), "flynt-app".to_string()],
+            args: vec![
+                "check".to_string(),
+                "-p".to_string(),
+                "flynt-app".to_string(),
+            ],
             cwd: Some("${workspace}".to_string()),
             env: BTreeMap::from([("RUST_LOG".to_string(), "info".to_string())]),
             title: Some("Validate Flynt".to_string()),

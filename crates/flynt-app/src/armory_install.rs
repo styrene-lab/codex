@@ -12,14 +12,21 @@ pub fn skill_id_from_package(path: &Path) -> anyhow::Result<String> {
     if !is_skill_package(path) {
         bail!("not an Armory skill package: expected plugin.toml and SKILL.md");
     }
-    if let Some(name) = path.file_name().and_then(|name| name.to_str()).filter(|name| !name.is_empty()) {
+    if let Some(name) = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+    {
         Ok(name.to_string())
     } else {
         bail!("skill package path has no valid directory name")
     }
 }
 
-pub fn install_user_skill_package(src: &Path, omegon_home: &Path) -> anyhow::Result<InstalledSkillPackage> {
+pub fn install_user_skill_package(
+    src: &Path,
+    omegon_home: &Path,
+) -> anyhow::Result<InstalledSkillPackage> {
     let id = skill_id_from_package(src)?;
     let destination = omegon_home.join("armory/skills").join(&id);
     copy_skill_package(src, &destination)?;
@@ -47,8 +54,9 @@ fn copy_dir_contents(src: &Path, dst: &Path) -> anyhow::Result<()> {
                 .with_context(|| format!("create {}", dst_path.display()))?;
             copy_dir_contents(&src_path, &dst_path)?;
         } else if file_type.is_file() {
-            std::fs::copy(&src_path, &dst_path)
-                .with_context(|| format!("copy {} to {}", src_path.display(), dst_path.display()))?;
+            std::fs::copy(&src_path, &dst_path).with_context(|| {
+                format!("copy {} to {}", src_path.display(), dst_path.display())
+            })?;
         }
     }
     Ok(())

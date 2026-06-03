@@ -56,8 +56,19 @@ mod tests {
 
     #[test]
     fn acp_args_include_agent_when_selected() {
-        let args = OmegonCliContract::current().acp_args(Path::new("/tmp/project"), Some("flynt-agent"));
-        assert_eq!(args, vec!["acp", "--cwd", "/tmp/project", "-y", "--agent", "flynt-agent"]);
+        let args =
+            OmegonCliContract::current().acp_args(Path::new("/tmp/project"), Some("flynt-agent"));
+        assert_eq!(
+            args,
+            vec![
+                "acp",
+                "--cwd",
+                "/tmp/project",
+                "-y",
+                "--agent",
+                "flynt-agent"
+            ]
+        );
     }
 
     #[test]

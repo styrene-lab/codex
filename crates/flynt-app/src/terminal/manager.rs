@@ -74,7 +74,12 @@ impl TerminalManager {
             self.rows,
             self.cols,
         )
-        .with_context(|| format!("failed to create terminal '{}'; argv spawn failed", params.command))?;
+        .with_context(|| {
+            format!(
+                "failed to create terminal '{}'; argv spawn failed",
+                params.command
+            )
+        })?;
 
         inner.sessions.insert(
             terminal_id.clone(),
@@ -155,9 +160,9 @@ impl TerminalManager {
     pub fn release_all_exited(&self) -> usize {
         let mut inner = self.inner.lock().unwrap();
         let before = inner.sessions.len();
-        inner
-            .sessions
-            .retain(|_, record| matches!(record.session.try_wait_status(), TerminalStatus::Running));
+        inner.sessions.retain(|_, record| {
+            matches!(record.session.try_wait_status(), TerminalStatus::Running)
+        });
         before - inner.sessions.len()
     }
 
@@ -190,7 +195,11 @@ impl TerminalManager {
     }
 
     fn terminal_id_for(&self, params: &TerminalCreateParams) -> String {
-        if let Some(reuse_key) = params.reuse_key.as_deref().filter(|key| !key.trim().is_empty()) {
+        if let Some(reuse_key) = params
+            .reuse_key
+            .as_deref()
+            .filter(|key| !key.trim().is_empty())
+        {
             stable_terminal_id(reuse_key)
         } else {
             format!("term-{}", Uuid::new_v4())
@@ -236,9 +245,25 @@ mod tests {
     #[test]
     fn rejects_empty_and_nul_commands() {
         let manager = TerminalManager::new(".", 24, 80);
-        assert!(manager.validate_create(&TerminalCreateParams::new(" ")).is_err());
-        assert!(manager.validate_create(&TerminalCreateParams::new("bad\0cmd")).is_err());
-        assert!(manager.validate_create(&TerminalCreateParams::new("/bin/sh")).is_ok());
-        assert!(manager.validate_create(&TerminalCreateParams::new("cargo")).is_ok());
+        assert!(
+            manager
+                .validate_create(&TerminalCreateParams::new(" "))
+                .is_err()
+        );
+        assert!(
+            manager
+                .validate_create(&TerminalCreateParams::new("bad\0cmd"))
+                .is_err()
+        );
+        assert!(
+            manager
+                .validate_create(&TerminalCreateParams::new("/bin/sh"))
+                .is_ok()
+        );
+        assert!(
+            manager
+                .validate_create(&TerminalCreateParams::new("cargo"))
+                .is_ok()
+        );
     }
 }

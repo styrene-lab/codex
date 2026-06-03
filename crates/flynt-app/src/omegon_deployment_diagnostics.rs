@@ -1,6 +1,6 @@
 use flynt_core::omegon_deployment::{
-    OmegonDeploymentManifest, FLYNT_DEPLOYMENT_CONTRACT_VERSION, FLYNT_DEPLOYMENT_EXTENSION,
-    FLYNT_DEPLOYMENT_MEMORY_SCOPE, FLYNT_DEPLOYMENT_PROFILE, FLYNT_SURFACE_GUIDE_VERSION,
+    FLYNT_DEPLOYMENT_CONTRACT_VERSION, FLYNT_DEPLOYMENT_EXTENSION, FLYNT_DEPLOYMENT_MEMORY_SCOPE,
+    FLYNT_DEPLOYMENT_PROFILE, FLYNT_SURFACE_GUIDE_VERSION, OmegonDeploymentManifest,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -60,7 +60,10 @@ pub struct LoadedDeploymentManifest {
 
 impl LoadedDeploymentManifest {
     pub fn loaded(manifest: OmegonDeploymentManifest) -> Self {
-        Self { manifest, source: DeploymentManifestSource::Loaded }
+        Self {
+            manifest,
+            source: DeploymentManifestSource::Loaded,
+        }
     }
 }
 
@@ -155,11 +158,14 @@ pub fn classify_deployment(
             let info = &init["extension_info"];
             if info["required_profile"].as_str() != Some(FLYNT_DEPLOYMENT_PROFILE) {
                 status = DeploymentStatus::Blocked;
-                details.push("flynt extension did not report the required flynt-agent profile".into());
+                details
+                    .push("flynt extension did not report the required flynt-agent profile".into());
             }
             if info["project_root"].as_str() != Some(project_root.to_string_lossy().as_ref()) {
                 status = DeploymentStatus::Blocked;
-                details.push("flynt extension project root does not match the open Flynt project".into());
+                details.push(
+                    "flynt extension project root does not match the open Flynt project".into(),
+                );
             }
             if info["capability_contract_version"].as_u64()
                 != Some(FLYNT_DEPLOYMENT_CONTRACT_VERSION as u64)
@@ -183,9 +189,15 @@ pub fn classify_deployment(
 
     let summary = match status {
         DeploymentStatus::Ok => "Flynt ACP ready — scoped flynt-agent deployment is valid".into(),
-        DeploymentStatus::Warning => "Flynt ACP warning — deployment exists but provenance is incomplete".into(),
-        DeploymentStatus::Blocked => "Flynt ACP blocked — scoped deployment contract is violated".into(),
-        DeploymentStatus::Unknown => "Flynt ACP unknown — extension handshake has not completed".into(),
+        DeploymentStatus::Warning => {
+            "Flynt ACP warning — deployment exists but provenance is incomplete".into()
+        }
+        DeploymentStatus::Blocked => {
+            "Flynt ACP blocked — scoped deployment contract is violated".into()
+        }
+        DeploymentStatus::Unknown => {
+            "Flynt ACP unknown — extension handshake has not completed".into()
+        }
     };
 
     DeploymentDiagnostic {
@@ -216,7 +228,12 @@ mod tests {
     fn matching_manifest_and_extension_is_ok() {
         let tmp = TempDir::new().unwrap();
         let manifest = OmegonDeploymentManifest::default();
-        let diagnostic = classify_deployment(&manifest, Some(&init(tmp.path())), tmp.path(), &DeploymentManifestSource::Loaded);
+        let diagnostic = classify_deployment(
+            &manifest,
+            Some(&init(tmp.path())),
+            tmp.path(),
+            &DeploymentManifestSource::Loaded,
+        );
         assert_eq!(diagnostic.status, DeploymentStatus::Ok);
     }
 
@@ -224,7 +241,12 @@ mod tests {
     fn missing_extension_metadata_is_unknown() {
         let tmp = TempDir::new().unwrap();
         let manifest = OmegonDeploymentManifest::default();
-        let diagnostic = classify_deployment(&manifest, None, tmp.path(), &DeploymentManifestSource::Loaded);
+        let diagnostic = classify_deployment(
+            &manifest,
+            None,
+            tmp.path(),
+            &DeploymentManifestSource::Loaded,
+        );
         assert_eq!(diagnostic.status, DeploymentStatus::Unknown);
     }
 
@@ -233,7 +255,12 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let mut manifest = OmegonDeploymentManifest::default();
         manifest.deployment.profile = "default".into();
-        let diagnostic = classify_deployment(&manifest, Some(&init(tmp.path())), tmp.path(), &DeploymentManifestSource::Loaded);
+        let diagnostic = classify_deployment(
+            &manifest,
+            Some(&init(tmp.path())),
+            tmp.path(),
+            &DeploymentManifestSource::Loaded,
+        );
         assert_eq!(diagnostic.status, DeploymentStatus::Blocked);
     }
 
@@ -242,7 +269,12 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let other = TempDir::new().unwrap();
         let manifest = OmegonDeploymentManifest::default();
-        let diagnostic = classify_deployment(&manifest, Some(&init(other.path())), tmp.path(), &DeploymentManifestSource::Loaded);
+        let diagnostic = classify_deployment(
+            &manifest,
+            Some(&init(other.path())),
+            tmp.path(),
+            &DeploymentManifestSource::Loaded,
+        );
         assert_eq!(diagnostic.status, DeploymentStatus::Blocked);
     }
 
@@ -254,10 +286,16 @@ mod tests {
             &manifest,
             Some(&init(tmp.path())),
             tmp.path(),
-            &DeploymentManifestSource::Invalid { error: "bad toml".into() },
+            &DeploymentManifestSource::Invalid {
+                error: "bad toml".into(),
+            },
         );
         assert_eq!(diagnostic.status, DeploymentStatus::Blocked);
-        assert!(diagnostic.details.iter().any(|detail| detail.contains("bad toml")));
+        assert!(
+            diagnostic
+                .details
+                .iter()
+                .any(|detail| detail.contains("bad toml"))
+        );
     }
-
 }

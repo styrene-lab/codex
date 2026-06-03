@@ -52,7 +52,6 @@ pub struct PublicationPreviewCommand {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct BookmarkRefresh(pub u64);
 
-
 /// One-shot command bus for opening/selecting a terminal session.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct TerminalOpenCommand {

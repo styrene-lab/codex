@@ -18,7 +18,8 @@ pub fn TerminalLabView() -> Element {
     let mut last_open_version = use_signal(|| 0_u64);
     let mut sessions = use_signal(Vec::<TerminalSessionInfo>::new);
     let mut status = use_signal(|| TerminalStatus::Failed("not started".to_string()));
-    let mut snapshot = use_signal(|| crate::terminal::view::TerminalSnapshot::blank(TERMINAL_ROWS, TERMINAL_COLS));
+    let mut snapshot =
+        use_signal(|| crate::terminal::view::TerminalSnapshot::blank(TERMINAL_ROWS, TERMINAL_COLS));
     let mut error = use_signal(|| None::<String>);
 
     {
@@ -38,7 +39,16 @@ pub fn TerminalLabView() -> Element {
             match manager.create(params) {
                 Ok(result) => {
                     terminal_id.set(Some(result.terminal_id.clone()));
-                    snapshot.set(manager.poll_snapshot(&result.terminal_id).unwrap_or_else(|_| crate::terminal::view::TerminalSnapshot::blank(TERMINAL_ROWS, TERMINAL_COLS)));
+                    snapshot.set(
+                        manager
+                            .poll_snapshot(&result.terminal_id)
+                            .unwrap_or_else(|_| {
+                                crate::terminal::view::TerminalSnapshot::blank(
+                                    TERMINAL_ROWS,
+                                    TERMINAL_COLS,
+                                )
+                            }),
+                    );
                     sessions.set(manager.list());
                 }
                 Err(err) => {
@@ -47,7 +57,6 @@ pub fn TerminalLabView() -> Element {
             }
         });
     }
-
 
     {
         let command = terminal_open.read().clone();
@@ -64,18 +73,18 @@ pub fn TerminalLabView() -> Element {
         use_future(move || {
             let manager = manager.clone();
             async move {
-            loop {
-                if let Some(id) = terminal_id.read().clone() {
-                    if let Ok(next) = manager.poll_snapshot(&id) {
-                        snapshot.set(next);
+                loop {
+                    if let Some(id) = terminal_id.read().clone() {
+                        if let Ok(next) = manager.poll_snapshot(&id) {
+                            snapshot.set(next);
+                        }
+                        if let Ok(next_status) = manager.status(&id) {
+                            status.set(next_status);
+                        }
                     }
-                    if let Ok(next_status) = manager.status(&id) {
-                        status.set(next_status);
-                    }
+                    sessions.set(manager.list());
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                 }
-                sessions.set(manager.list());
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            }
             }
         });
     }

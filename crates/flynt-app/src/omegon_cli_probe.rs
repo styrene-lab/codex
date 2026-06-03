@@ -117,7 +117,11 @@ async fn run_probe_command(binary: &PathBuf, args: &[&str]) -> anyhow::Result<St
     if output.status.success() {
         Ok(text)
     } else {
-        Err(anyhow::anyhow!("command exited with {}: {}", output.status, text.trim()))
+        Err(anyhow::anyhow!(
+            "command exited with {}: {}",
+            output.status,
+            text.trim()
+        ))
     }
 }
 
@@ -134,14 +138,20 @@ mod tests {
 
     #[test]
     fn first_nonempty_line_skips_blanks() {
-        assert_eq!(first_nonempty_line("\n\n omegon 0.1\n"), Some("omegon 0.1".into()));
+        assert_eq!(
+            first_nonempty_line("\n\n omegon 0.1\n"),
+            Some("omegon 0.1".into())
+        );
         assert_eq!(first_nonempty_line("\n\t\n"), None);
     }
 
     #[test]
     fn probe_result_records_expected_contract_version() {
         let result = OmegonCliProbeResult::unknown("omegon".into(), vec!["missing".into()]);
-        assert_eq!(result.expected_contract_version, OmegonCliContract::current().version);
+        assert_eq!(
+            result.expected_contract_version,
+            OmegonCliContract::current().version
+        );
         assert_eq!(result.status, OmegonCliProbeStatus::Unknown);
     }
 }

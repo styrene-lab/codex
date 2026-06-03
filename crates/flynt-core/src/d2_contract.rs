@@ -79,7 +79,11 @@ queue: |md
 |
 "#;
         let diagnostics = lint_d2_source(source);
-        assert!(diagnostics.iter().any(|d| d.message.contains("multiline |md node")));
+        assert!(
+            diagnostics
+                .iter()
+                .any(|d| d.message.contains("multiline |md node"))
+        );
     }
 
     #[test]
@@ -98,6 +102,10 @@ title: |md
     fn warns_on_long_edge_labels() {
         let source = "api -> queue: writes command intent atomically with business state";
         let diagnostics = lint_d2_source(source);
-        assert!(diagnostics.iter().any(|d| d.message.contains("long edge label")));
+        assert!(
+            diagnostics
+                .iter()
+                .any(|d| d.message.contains("long edge label"))
+        );
     }
 }

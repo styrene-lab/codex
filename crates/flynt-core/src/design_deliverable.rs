@@ -33,10 +33,16 @@ pub fn parse_static_deliverable(html: &str) -> anyhow::Result<DesignDeliverableS
         .map(clean_text)
         .unwrap_or_default();
 
-    let details_re = Regex::new(r#"(?is)<details\s+id=["']([^"']+)["'][^>]*>\s*<summary>(.*?)</summary>\s*<div\s+class=["']section-body["'][^>]*>(.*?)</div>\s*</details>"#)?;
+    let details_re = Regex::new(
+        r#"(?is)<details\s+id=["']([^"']+)["'][^>]*>\s*<summary>(.*?)</summary>\s*<div\s+class=["']section-body["'][^>]*>(.*?)</div>\s*</details>"#,
+    )?;
     let mut sections = Vec::new();
     for caps in details_re.captures_iter(html) {
-        let id = caps.get(1).map(|m| m.as_str()).unwrap_or_default().to_string();
+        let id = caps
+            .get(1)
+            .map(|m| m.as_str())
+            .unwrap_or_default()
+            .to_string();
         let title = caps
             .get(2)
             .map(|m| clean_summary(m.as_str()))
@@ -63,11 +69,19 @@ pub fn parse_static_deliverable(html: &str) -> anyhow::Result<DesignDeliverableS
 }
 
 fn parse_items(body: &str) -> anyhow::Result<Vec<DeliverableItem>> {
-    let item_re = Regex::new(r#"(?is)<h3[^>]*>(.*?)</h3>\s*<p[^>]*>(.*?)</p>\s*<div\s+class=["']diagram["'][^>]*>\s*<img\s+src=["']([^"']+)["'][^>]*>.*?</div>"#)?;
+    let item_re = Regex::new(
+        r#"(?is)<h3[^>]*>(.*?)</h3>\s*<p[^>]*>(.*?)</p>\s*<div\s+class=["']diagram["'][^>]*>\s*<img\s+src=["']([^"']+)["'][^>]*>.*?</div>"#,
+    )?;
     let mut items = Vec::new();
     for caps in item_re.captures_iter(body) {
-        let title = caps.get(1).map(|m| clean_text(m.as_str())).unwrap_or_default();
-        let description = caps.get(2).map(|m| clean_text(m.as_str())).unwrap_or_default();
+        let title = caps
+            .get(1)
+            .map(|m| clean_text(m.as_str()))
+            .unwrap_or_default();
+        let description = caps
+            .get(2)
+            .map(|m| clean_text(m.as_str()))
+            .unwrap_or_default();
         let asset = caps.get(3).map(|m| m.as_str()).unwrap_or_default();
         items.push(DeliverableItem {
             title,
@@ -134,6 +148,9 @@ mod tests {
         assert_eq!(spec.subtitle, "31 diagrams · click any section to expand");
         assert_eq!(spec.sections[0].id, "overview");
         assert_eq!(spec.sections[0].title, "Architecture Overview");
-        assert_eq!(spec.sections[0].items[0].asset_path, PathBuf::from("overview-v1.svg"));
+        assert_eq!(
+            spec.sections[0].items[0].asset_path,
+            PathBuf::from("overview-v1.svg")
+        );
     }
 }

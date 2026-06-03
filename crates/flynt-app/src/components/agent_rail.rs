@@ -1,18 +1,20 @@
-use crate::acp::{AcpEvent, AcpSession, ConfigOption, PermissionDecision, PendingPermissionRequest, SlashCommand};
+use crate::acp::{
+    AcpEvent, AcpSession, ConfigOption, PendingPermissionRequest, PermissionDecision, SlashCommand,
+};
 use crate::bootstrap::AppContext;
 use crate::host_actions::metadata::{extract_host_action_outcomes, extract_host_actions};
 use crate::host_actions::terminal::extract_terminal_create;
 use crate::omegon_deployment_diagnostics::{
-    classify_loaded_deployment, DeploymentDiagnostic, DeploymentManifestSource,
-    LoadedDeploymentManifest,
+    DeploymentDiagnostic, DeploymentManifestSource, LoadedDeploymentManifest,
+    classify_loaded_deployment,
 };
 use crate::state::{Route, SettingsPage, TerminalOpenCommand};
+use crate::terminal::TerminalManager;
 use comrak::{Options, markdown_to_html};
 use dioxus::prelude::*;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::mpsc::TryRecvError;
-use crate::terminal::TerminalManager;
 
 /// Resolve the Omegon binary using the centralized channel-aware resolver.
 pub fn find_omegon_binary_public() -> Option<PathBuf> {
@@ -156,21 +158,19 @@ fn load_acp_overrides(
     omegon.load_operator_settings()
 }
 
-
 pub fn resolve_acp_agent_id(
     omegon: &crate::bootstrap::OmegonRuntimeContext,
     settings: &flynt_core::models::FlyntOperatorSettings,
 ) -> Option<String> {
-    if let Some(agent_id) = settings
-        .agent_id
-        .clone()
-        .filter(|id| !id.trim().is_empty())
-    {
+    if let Some(agent_id) = settings.agent_id.clone().filter(|id| !id.trim().is_empty()) {
         return Some(agent_id);
     }
 
     let profile = omegon.load_deployment_manifest().deployment.profile;
-    let catalog_path = omegon.home_dir.join("catalog").join(format!("{profile}.toml"));
+    let catalog_path = omegon
+        .home_dir
+        .join("catalog")
+        .join(format!("{profile}.toml"));
     catalog_path.exists().then_some(profile)
 }
 
@@ -289,7 +289,10 @@ pub fn start_setup_event_loop(
             match rx.try_recv() {
                 Ok(AcpEvent::DeploymentMetadata(meta)) => ctx.set_deployment_metadata(meta),
                 Ok(AcpEvent::CommandsAvailable(commands)) => {
-                    tracing::info!(count = commands.len(), "ACP setup session commands available");
+                    tracing::info!(
+                        count = commands.len(),
+                        "ACP setup session commands available"
+                    );
                 }
                 Ok(AcpEvent::ConfigChanged(config)) => {
                     tracing::info!(count = config.len(), "ACP setup session config available");
@@ -1317,15 +1320,21 @@ fn preflight_is_blocked(
         })
 }
 
-fn load_deployment_for_agent_rail(omegon: &crate::bootstrap::OmegonRuntimeContext) -> LoadedDeploymentManifest {
+fn load_deployment_for_agent_rail(
+    omegon: &crate::bootstrap::OmegonRuntimeContext,
+) -> LoadedDeploymentManifest {
     match std::fs::read_to_string(&omegon.deployment_path) {
-        Ok(content) => match flynt_core::omegon_deployment::OmegonDeploymentManifest::from_toml(&content) {
-            Ok(manifest) => LoadedDeploymentManifest::loaded(manifest),
-            Err(error) => LoadedDeploymentManifest {
-                manifest: flynt_core::omegon_deployment::OmegonDeploymentManifest::default(),
-                source: DeploymentManifestSource::Invalid { error: error.to_string() },
-            },
-        },
+        Ok(content) => {
+            match flynt_core::omegon_deployment::OmegonDeploymentManifest::from_toml(&content) {
+                Ok(manifest) => LoadedDeploymentManifest::loaded(manifest),
+                Err(error) => LoadedDeploymentManifest {
+                    manifest: flynt_core::omegon_deployment::OmegonDeploymentManifest::default(),
+                    source: DeploymentManifestSource::Invalid {
+                        error: error.to_string(),
+                    },
+                },
+            }
+        }
         Err(_) => LoadedDeploymentManifest {
             manifest: flynt_core::omegon_deployment::OmegonDeploymentManifest::default(),
             source: DeploymentManifestSource::MissingDefault,
@@ -1351,7 +1360,10 @@ fn AgentPreflightCard(
     let class = if blocked {
         "agent-preflight blocked"
     } else if deployment.status == crate::omegon_deployment_diagnostics::DeploymentStatus::Ok
-        && matches!(cli_probe.as_ref().map(|probe| &probe.status), Some(crate::omegon_cli_probe::OmegonCliProbeStatus::Compatible))
+        && matches!(
+            cli_probe.as_ref().map(|probe| &probe.status),
+            Some(crate::omegon_cli_probe::OmegonCliProbeStatus::Compatible)
+        )
     {
         "agent-preflight ok"
     } else {
@@ -1408,15 +1420,14 @@ fn handle_acp_event(
                 &ctx.project_root(),
                 &crate::omegon_deployment_diagnostics::DeploymentManifestSource::Loaded,
             );
-            tracing::info!(status = diagnostic.status.label(), "ACP deployment metadata received");
+            tracing::info!(
+                status = diagnostic.status.label(),
+                "ACP deployment metadata received"
+            );
             if diagnostic.status != crate::omegon_deployment_diagnostics::DeploymentStatus::Ok {
                 items.write().push(ChatItem::Message {
                     role: ChatRole::Assistant,
-                    content: format!(
-                        "{}\n{}",
-                        diagnostic.summary,
-                        diagnostic.details.join("\n")
-                    ),
+                    content: format!("{}\n{}", diagnostic.summary, diagnostic.details.join("\n")),
                 });
             }
         }
@@ -1507,7 +1518,8 @@ fn handle_acp_event(
                         "HostAction requested: {} ({})\n\n```json\n{}\n```",
                         action.action_type,
                         action.id,
-                        serde_json::to_string_pretty(&action.raw).unwrap_or_else(|_| action.raw.to_string())
+                        serde_json::to_string_pretty(&action.raw)
+                            .unwrap_or_else(|_| action.raw.to_string())
                     ),
                 });
             }
@@ -1518,7 +1530,8 @@ fn handle_acp_event(
                         "HostAction outcome: {} → {}\n\n```json\n{}\n```",
                         outcome.action_id,
                         outcome.status,
-                        serde_json::to_string_pretty(&outcome.raw).unwrap_or_else(|_| outcome.raw.to_string())
+                        serde_json::to_string_pretty(&outcome.raw)
+                            .unwrap_or_else(|_| outcome.raw.to_string())
                     ),
                 });
             }
@@ -1550,19 +1563,25 @@ fn handle_acp_event(
             }
         }
         AcpEvent::PermissionRequested(ref request) => {
-            tracing::info!("ACP PermissionRequested: {} ({})", request.title, request.request_id);
+            tracing::info!(
+                "ACP PermissionRequested: {} ({})",
+                request.title,
+                request.request_id
+            );
             let terminal = extract_terminal_create(request.raw_input.as_ref());
             let summary = terminal
                 .as_ref()
                 .map(|review| review.summary.clone())
                 .unwrap_or_else(|| summarize_tool_args(request.raw_input.as_ref()));
-            items.write().push(ChatItem::PermissionReview(PermissionReviewBlock {
-                request: request.clone(),
-                title: request.title.clone(),
-                summary,
-                terminal,
-                status: PermissionReviewStatus::Pending,
-            }));
+            items
+                .write()
+                .push(ChatItem::PermissionReview(PermissionReviewBlock {
+                    request: request.clone(),
+                    title: request.title.clone(),
+                    summary,
+                    terminal,
+                    status: PermissionReviewStatus::Pending,
+                }));
             *status.write() = AgentStatus::ToolRunning;
         }
         AcpEvent::PlanUpdated(ref plan) => {

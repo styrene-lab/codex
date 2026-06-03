@@ -10,12 +10,12 @@ use std::rc::Rc;
 
 use crate::omegon_cli_contract::OmegonCliContract;
 use agent_client_protocol::{
-    Agent, Client, ClientSideConnection, ContentBlock, ExtRequest, InitializeRequest,
-    NewSessionRequest, PermissionOption, PermissionOptionId, PermissionOptionKind, PromptRequest,
-    RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
-    SelectedPermissionOutcome, SessionConfigId, SessionConfigKind, SessionConfigOption,
-    SessionConfigSelectOptions, SessionConfigValueId, SessionId, SessionNotification,
-    SessionUpdate, SetSessionConfigOptionRequest, TextContent, ClientCapabilities,
+    Agent, Client, ClientCapabilities, ClientSideConnection, ContentBlock, ExtRequest,
+    InitializeRequest, NewSessionRequest, PermissionOption, PermissionOptionId,
+    PermissionOptionKind, PromptRequest, RequestPermissionOutcome, RequestPermissionRequest,
+    RequestPermissionResponse, SelectedPermissionOutcome, SessionConfigId, SessionConfigKind,
+    SessionConfigOption, SessionConfigSelectOptions, SessionConfigValueId, SessionId,
+    SessionNotification, SessionUpdate, SetSessionConfigOptionRequest, TextContent,
 };
 use anyhow::Result;
 use tokio::process::{Child, Command};
@@ -188,7 +188,10 @@ type EventSender = Rc<RefCell<std::sync::mpsc::Sender<AcpEvent>>>;
 fn allow_response(options: &[PermissionOption]) -> Option<RequestPermissionResponse> {
     choose_option(
         options,
-        &[PermissionOptionKind::AllowOnce, PermissionOptionKind::AllowAlways],
+        &[
+            PermissionOptionKind::AllowOnce,
+            PermissionOptionKind::AllowAlways,
+        ],
     )
     .map(selected_response)
 }
@@ -196,7 +199,10 @@ fn allow_response(options: &[PermissionOption]) -> Option<RequestPermissionRespo
 fn reject_response(options: &[PermissionOption]) -> RequestPermissionResponse {
     choose_option(
         options,
-        &[PermissionOptionKind::RejectOnce, PermissionOptionKind::RejectAlways],
+        &[
+            PermissionOptionKind::RejectOnce,
+            PermissionOptionKind::RejectAlways,
+        ],
     )
     .map(selected_response)
     .unwrap_or_else(|| RequestPermissionResponse::new(RequestPermissionOutcome::Cancelled))
@@ -261,12 +267,19 @@ impl Client for FlyntAcpClient {
             responder: std::sync::Arc::new(std::sync::Mutex::new(Some(decision_tx))),
         };
 
-        if self.tx.borrow().send(AcpEvent::PermissionRequested(request)).is_err() {
+        if self
+            .tx
+            .borrow()
+            .send(AcpEvent::PermissionRequested(request))
+            .is_err()
+        {
             return Ok(fallback);
         }
 
         match decision_rx.await {
-            Ok(PermissionDecision::Approve) => Ok(allow_response(&args.options).unwrap_or(fallback)),
+            Ok(PermissionDecision::Approve) => {
+                Ok(allow_response(&args.options).unwrap_or(fallback))
+            }
             Ok(PermissionDecision::Reject) | Err(_) => Ok(fallback),
         }
     }
@@ -946,7 +959,10 @@ mod tests {
         assert_eq!(
             choose_option(
                 &options,
-                &[PermissionOptionKind::AllowOnce, PermissionOptionKind::AllowAlways]
+                &[
+                    PermissionOptionKind::AllowOnce,
+                    PermissionOptionKind::AllowAlways
+                ]
             )
             .unwrap()
             .to_string(),
@@ -957,13 +973,20 @@ mod tests {
     #[test]
     fn choose_reject_prefers_reject_once() {
         let options = vec![
-            PermissionOption::new("always", "Reject always", PermissionOptionKind::RejectAlways),
+            PermissionOption::new(
+                "always",
+                "Reject always",
+                PermissionOptionKind::RejectAlways,
+            ),
             PermissionOption::new("once", "Reject once", PermissionOptionKind::RejectOnce),
         ];
         assert_eq!(
             choose_option(
                 &options,
-                &[PermissionOptionKind::RejectOnce, PermissionOptionKind::RejectAlways]
+                &[
+                    PermissionOptionKind::RejectOnce,
+                    PermissionOptionKind::RejectAlways
+                ]
             )
             .unwrap()
             .to_string(),

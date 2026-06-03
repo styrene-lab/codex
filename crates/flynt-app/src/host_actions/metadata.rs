@@ -20,14 +20,18 @@ pub struct HostActionOutcomeView {
 }
 
 pub fn extract_host_actions(value: Option<&Value>) -> Vec<HostActionCandidate> {
-    let Some(value) = value else { return Vec::new(); };
+    let Some(value) = value else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
     collect_actions(value, &mut out);
     out
 }
 
 pub fn extract_host_action_outcomes(value: Option<&Value>) -> Vec<HostActionOutcomeView> {
-    let Some(value) = value else { return Vec::new(); };
+    let Some(value) = value else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
     collect_outcomes(value, &mut out);
     out
@@ -44,10 +48,7 @@ fn collect_actions(value: &Value, out: &mut Vec<HostActionCandidate>) {
             {
                 out.extend(actions.iter().filter_map(parse_action));
             }
-            if let Some(actions) = obj
-                .get("omegon/hostActions")
-                .and_then(Value::as_array)
-            {
+            if let Some(actions) = obj.get("omegon/hostActions").and_then(Value::as_array) {
                 out.extend(actions.iter().filter_map(parse_action));
             }
             if let Some(meta) = obj.get("_meta") {
@@ -182,6 +183,9 @@ mod tests {
         });
         let outcomes = extract_host_action_outcomes(Some(&value));
         assert_eq!(outcomes[0].status, "completed");
-        assert_eq!(outcomes[0].result.as_ref().unwrap()["terminal_id"], "term-1");
+        assert_eq!(
+            outcomes[0].result.as_ref().unwrap()["terminal_id"],
+            "term-1"
+        );
     }
 }

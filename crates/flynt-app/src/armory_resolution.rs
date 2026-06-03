@@ -71,7 +71,15 @@ pub fn resolve_deployment_skills_with_dev_root(
         .activation
         .skills
         .iter()
-        .map(|skill| resolve_skill(skill, project_root, omegon_home, bundled_root, dev_armory_root))
+        .map(|skill| {
+            resolve_skill(
+                skill,
+                project_root,
+                omegon_home,
+                bundled_root,
+                dev_armory_root,
+            )
+        })
         .collect();
     ArmoryResolutionReport { skills }
 }
@@ -96,13 +104,23 @@ fn resolve_skill(
     dev_armory_root: Option<&Path>,
 ) -> ArmorySkillResolution {
     let candidates = [
-        (ArmoryArtifactSource::ProjectOverride, project_root.join(".flynt/omegon/skills").join(name)),
-        (ArmoryArtifactSource::UserArmory, omegon_home.join("armory/skills").join(name)),
+        (
+            ArmoryArtifactSource::ProjectOverride,
+            project_root.join(".flynt/omegon/skills").join(name),
+        ),
+        (
+            ArmoryArtifactSource::UserArmory,
+            omegon_home.join("armory/skills").join(name),
+        ),
     ];
 
     for (source, path) in candidates {
         if is_skill_package(&path) {
-            return ArmorySkillResolution { name: name.into(), source, path: Some(path) };
+            return ArmorySkillResolution {
+                name: name.into(),
+                source,
+                path: Some(path),
+            };
         }
     }
 
@@ -128,7 +146,11 @@ fn resolve_skill(
         }
     }
 
-    ArmorySkillResolution { name: name.into(), source: ArmoryArtifactSource::Missing, path: None }
+    ArmorySkillResolution {
+        name: name.into(),
+        source: ArmoryArtifactSource::Missing,
+        path: None,
+    }
 }
 
 pub fn is_skill_package(path: &Path) -> bool {
@@ -192,7 +214,8 @@ mod tests {
         let mut manifest = OmegonDeploymentManifest::default();
         manifest.activation.skills = vec!["d2-authoring".into()];
 
-        let report = resolve_deployment_skills_with_dev_root(&manifest, tmp.path(), tmp.path(), None, None);
+        let report =
+            resolve_deployment_skills_with_dev_root(&manifest, tmp.path(), tmp.path(), None, None);
         assert_eq!(report.missing_required_skills(), vec!["d2-authoring"]);
     }
 }

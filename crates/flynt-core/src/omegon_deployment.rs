@@ -70,17 +70,32 @@ pub fn merge_with_default_required_activation(
 ) -> OmegonDeploymentManifest {
     let default = OmegonDeploymentManifest::default();
     for skill in default.activation.skills {
-        if !manifest.activation.skills.iter().any(|existing| existing == &skill) {
+        if !manifest
+            .activation
+            .skills
+            .iter()
+            .any(|existing| existing == &skill)
+        {
             manifest.activation.skills.push(skill);
         }
     }
     for extension in default.activation.extensions {
-        if !manifest.activation.extensions.iter().any(|existing| existing == &extension) {
+        if !manifest
+            .activation
+            .extensions
+            .iter()
+            .any(|existing| existing == &extension)
+        {
             manifest.activation.extensions.push(extension);
         }
     }
     for skill in default.activation.optional_skills {
-        if !manifest.activation.optional_skills.iter().any(|existing| existing == &skill) {
+        if !manifest
+            .activation
+            .optional_skills
+            .iter()
+            .any(|existing| existing == &skill)
+        {
             manifest.activation.optional_skills.push(skill);
         }
     }
@@ -95,11 +110,27 @@ mod tests {
     fn default_manifest_pins_flynt_agent_scope() {
         let manifest = OmegonDeploymentManifest::default();
         assert_eq!(manifest.deployment.profile, FLYNT_DEPLOYMENT_PROFILE);
-        assert_eq!(manifest.deployment.memory_scope, FLYNT_DEPLOYMENT_MEMORY_SCOPE);
+        assert_eq!(
+            manifest.deployment.memory_scope,
+            FLYNT_DEPLOYMENT_MEMORY_SCOPE
+        );
         assert_eq!(manifest.deployment.host, "flynt-app");
-        assert_eq!(manifest.activation.extensions, vec![FLYNT_DEPLOYMENT_EXTENSION]);
-        assert!(manifest.activation.skills.contains(&"d2-authoring".to_string()));
-        assert!(manifest.activation.skills.contains(&"excalidraw-authoring".to_string()));
+        assert_eq!(
+            manifest.activation.extensions,
+            vec![FLYNT_DEPLOYMENT_EXTENSION]
+        );
+        assert!(
+            manifest
+                .activation
+                .skills
+                .contains(&"d2-authoring".to_string())
+        );
+        assert!(
+            manifest
+                .activation
+                .skills
+                .contains(&"excalidraw-authoring".to_string())
+        );
     }
 
     #[test]
@@ -121,10 +152,29 @@ mod tests {
 
         let merged = merge_with_default_required_activation(manifest);
         assert!(merged.activation.skills.contains(&"vault".to_string()));
-        assert!(merged.activation.skills.contains(&"flynt-design".to_string()));
-        assert!(merged.activation.skills.contains(&"d2-authoring".to_string()));
-        assert!(merged.activation.skills.contains(&"excalidraw-authoring".to_string()));
-        assert!(merged.activation.optional_skills.contains(&"security".to_string()));
+        assert!(
+            merged
+                .activation
+                .skills
+                .contains(&"flynt-design".to_string())
+        );
+        assert!(
+            merged
+                .activation
+                .skills
+                .contains(&"d2-authoring".to_string())
+        );
+        assert!(
+            merged
+                .activation
+                .skills
+                .contains(&"excalidraw-authoring".to_string())
+        );
+        assert!(
+            merged
+                .activation
+                .optional_skills
+                .contains(&"security".to_string())
+        );
     }
-
 }

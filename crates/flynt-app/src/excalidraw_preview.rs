@@ -19,7 +19,10 @@ pub fn render_excalidraw_preview_html(project_root: &Path, source_path: &Path) -
     }
 
     if source_abs.exists() {
-        preview_placeholder(&escaped_title, "No SVG preview yet. Use Edit, then Export SVG.")
+        preview_placeholder(
+            &escaped_title,
+            "No SVG preview yet. Use Edit, then Export SVG.",
+        )
     } else {
         preview_placeholder(&escaped_title, "Drawing source file is missing.")
     }
