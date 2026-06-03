@@ -640,9 +640,17 @@ function FlowCanvas({
       )}
       {!readOnly && selectedNode && (
         <div className="flynt-flow-inspector" onMouseDown={(event) => event.stopPropagation()}>
-          <div className="flynt-flow-inspector-title">{NODE_DEFINITION_BY_KIND.get(selectedNode.data.kind)?.label || selectedNode.data.kind}</div>
+          <div className="flynt-flow-inspector-header">
+            <span className="flynt-flow-inspector-kind" style={{
+              color: KIND_ACCENT[selectedNode.data.kind] ?? "#2ab4c8",
+              borderColor: KIND_ACCENT[selectedNode.data.kind] ?? "#2ab4c8",
+            }}>
+              {NODE_DEFINITION_BY_KIND.get(selectedNode.data.kind)?.label || selectedNode.data.kind}
+            </span>
+            <button className="flynt-flow-inspector-close" onClick={() => setSelectedNodeId(null)}>×</button>
+          </div>
           <label>
-            Title
+            <span className="flynt-flow-inspector-label">Title</span>
             <input
               value={typeof selectedNode.data.payload.title === "string" ? selectedNode.data.payload.title : ""}
               onChange={(event) => updateSelectedNodePayload({ title: event.target.value })}
@@ -650,13 +658,18 @@ function FlowCanvas({
           </label>
           {selectedNode.data.kind === "note" && (
             <label>
-              Body
+              <span className="flynt-flow-inspector-label">Body</span>
               <textarea
                 value={typeof selectedNode.data.payload.body === "string" ? selectedNode.data.payload.body : ""}
                 onChange={(event) => updateSelectedNodePayload({ body: event.target.value })}
               />
             </label>
           )}
+          <div className="flynt-flow-inspector-meta">
+            {selectedNode.data.sockets.length > 0 && (
+              <span>{selectedNode.data.sockets.filter(s => s.direction === "input").length} in · {selectedNode.data.sockets.filter(s => s.direction === "output").length} out</span>
+            )}
+          </div>
         </div>
       )}
 
@@ -719,11 +732,17 @@ function injectStyles() {
 .react-flow__controls-button:last-child { border-bottom: none !important; }
 .react-flow__controls-button svg { fill: inherit; }
 .react-flow__attribution { display: none !important; }
-.flynt-flow-inspector { position: absolute; bottom: 12px; right: 12px; z-index: 8; width: 240px; padding: 10px; border: 1px solid #1a3448; border-radius: 10px; background: rgba(14, 22, 34, 0.94); box-shadow: 0 12px 28px rgba(0,0,0,0.35); color: #c4d8e4; }
-.flynt-flow-inspector-title { color: #6ecad8; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
-.flynt-flow-inspector label { display: grid; gap: 4px; color: #607888; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 8px; }
-.flynt-flow-inspector input, .flynt-flow-inspector textarea { width: 100%; box-sizing: border-box; border: 1px solid #1a3448; border-radius: 7px; padding: 7px 8px; background: #06080e; color: #c4d8e4; font: inherit; text-transform: none; letter-spacing: normal; }
-.flynt-flow-inspector textarea { min-height: 90px; resize: vertical; }
+.flynt-flow-inspector { position: absolute; bottom: 12px; right: 12px; z-index: 8; width: 260px; border: 1px solid #1a3448; border-radius: 10px; background: rgba(14, 22, 34, 0.96); box-shadow: 0 12px 28px rgba(0,0,0,0.45); color: #c4d8e4; backdrop-filter: blur(8px); }
+.flynt-flow-inspector-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px 8px; border-bottom: 1px solid #1a3448; }
+.flynt-flow-inspector-kind { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; border: 1px solid; border-radius: 4px; padding: 2px 8px; }
+.flynt-flow-inspector-close { background: none; border: none; color: #607888; font-size: 18px; cursor: pointer; padding: 0 4px; line-height: 1; }
+.flynt-flow-inspector-close:hover { color: #c4d8e4; }
+.flynt-flow-inspector label { display: grid; gap: 4px; padding: 8px 12px 0; }
+.flynt-flow-inspector-label { color: #607888; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+.flynt-flow-inspector input, .flynt-flow-inspector textarea { width: 100%; box-sizing: border-box; border: 1px solid #1a3448; border-radius: 6px; padding: 7px 10px; background: #06080e; color: #c4d8e4; font: inherit; font-size: 12px; }
+.flynt-flow-inspector input:focus, .flynt-flow-inspector textarea:focus { outline: none; border-color: #2ab4c8; }
+.flynt-flow-inspector textarea { min-height: 80px; resize: vertical; }
+.flynt-flow-inspector-meta { padding: 8px 12px 10px; color: #475569; font-size: 10px; }
 `;
   document.head.appendChild(style);
 }

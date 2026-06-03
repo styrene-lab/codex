@@ -3183,6 +3183,9 @@ pub fn NotesView() -> Element {
     if crate::views::excalidraw::is_excalidraw(&rel_path) && *inspector_open.peek() {
         *inspector_open.write() = false;
     }
+    if crate::views::flow::is_flow(&rel_path) && *inspector_open.peek() {
+        *inspector_open.write() = false;
+    }
 
     let title = title.clone();
     let _body = body.clone();
