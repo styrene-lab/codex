@@ -493,18 +493,27 @@ function FlowCanvas({
     [nodes, scheduleEmit]
   );
 
-  const viewportPositionForNewNode = React.useCallback((index: number): { x: number; y: number } => {
-    const row = Math.floor(index / 3);
-    const col = index % 3;
-    return {
-      x: 420 + col * 260,
-      y: 220 + row * 180,
-    };
-  }, []);
+  const viewportCenterPosition = React.useCallback((): { x: number; y: number } => {
+    // Place new nodes at the center of the current viewport, with a
+    // small random offset so rapid sequential adds don't stack exactly.
+    try {
+      const container = document.querySelector('.flynt-flow-canvas');
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        const center = reactFlowInstance.screenToFlowPosition({
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+        });
+        const jitter = () => (Math.random() - 0.5) * 60;
+        return { x: Math.round(center.x + jitter()), y: Math.round(center.y + jitter()) };
+      }
+    } catch { /* fallback below */ }
+    return { x: 200, y: 200 };
+  }, [reactFlowInstance]);
 
   const addNode = React.useCallback((definition: FlowNodeDefinition, position?: { x: number; y: number }) => {
     const nodeId = uuid();
-    const pos = position ?? viewportPositionForNewNode(addNodeCountRef.current);
+    const pos = position ?? viewportCenterPosition();
     addNodeCountRef.current += 1;
     const node: Node<NodePayload> = {
       id: nodeId,
@@ -522,7 +531,7 @@ function FlowCanvas({
     setNodes(nextNodes);
     setSelectedNodeId(nodeId);
     scheduleEmit({ nodes: nextNodes });
-  }, [scheduleEmit, viewportPositionForNewNode]);
+  }, [scheduleEmit, viewportCenterPosition]);
 
   const addStarterFlow = React.useCallback(() => {
     const input = NODE_DEFINITION_BY_KIND.get("input")!;
