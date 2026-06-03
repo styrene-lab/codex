@@ -6,11 +6,12 @@
 
 interface LegacyEditorView {
   state: {
-    doc: { length: number; toString(): string; line(lineNumber: number): { from: number } };
+    doc: { length: number; toString(): string; line(lineNumber: number): { from: number }; lineAt(pos: number): { from: number; to: number; text: string } };
     selection: {
-      main: { anchor: number; head: number };
+      main: { anchor: number; head: number; from: number; to: number };
       ranges: Array<{ anchor: number; head: number }>;
     };
+    sliceDoc(from: number, to: number): string;
     replaceSelection(text: string): unknown;
   };
   scrollDOM: { scrollTop: number; scrollLeft: number };
@@ -66,7 +67,7 @@ interface FlyntEditorCompatApi {
   install(initialContent?: string): FlyntEditorApi;
   attachView(view: LegacyEditorView, initialContent?: string): FlyntEditorApi;
   changeHandlerExtension(EditorView: { updateListener: { of(callback: (update: { docChanged?: boolean }) => void): unknown } }): unknown;
-  keymapRegistry(keymap: { of(bindings: unknown[]): unknown }): { save: unknown; formatting: unknown; all: unknown[] };
+  keymapRegistry(keymap: { of(bindings: Array<{ key: string; run(view: LegacyEditorView): boolean }>): unknown }): { save: unknown; formatting: unknown; all: unknown[] };
   commandRegistry(): EditorCommandRegistry;
   dispatchEditorCommand(id: string, payload?: { text?: string }): BridgeResult;
 }
@@ -87,47 +88,16 @@ function currentView(): LegacyEditorView | null {
   return window._flyntCM ?? null;
 }
 
-function keymapRegistry(keymap: { of(bindings: unknown[]): unknown }): { save: unknown; formatting: unknown; all: unknown[] } {
-  function wrapSelection(view: any, before: string, after: string): boolean {
-    const sel = view.state.selection.main;
-    const selected = view.state.sliceDoc(sel.from, sel.to);
-    if (selected.startsWith(before) && selected.endsWith(after)) {
-      view.dispatch({ changes: { from: sel.from, to: sel.to, insert: selected.slice(before.length, -after.length) } });
-    } else {
-      view.dispatch({ changes: { from: sel.from, to: sel.to, insert: before + selected + after } });
-    }
-    return true;
-  }
-
+function keymapRegistry(keymap: { of(bindings: Array<{ key: string; run(view: LegacyEditorView): boolean }>): unknown }): { save: unknown; formatting: unknown; all: unknown[] } {
   const save = keymap.of([
-    {
-      key: "Mod-s",
-      run: (view: any) => {
-        window._flyntNotify?.("save", view.state.doc.toString());
-        return true;
-      },
-    },
-    {
-      key: "Mod-e",
-      run: () => {
-        window._flyntNotify?.("mode", "source");
-        return true;
-      },
-    },
+    { key: "Mod-s", run: () => dispatchEditorCommand("save").ok },
+    { key: "Mod-e", run: () => dispatchEditorCommand("source-mode").ok },
   ]);
 
   const formatting = keymap.of([
-    { key: "Mod-b", run: (view: any) => wrapSelection(view, "**", "**") },
-    { key: "Mod-i", run: (view: any) => wrapSelection(view, "*", "*") },
-    {
-      key: "Mod-k",
-      run: (view: any) => {
-        const sel = view.state.selection.main;
-        const selected = view.state.sliceDoc(sel.from, sel.to);
-        view.dispatch({ changes: { from: sel.from, to: sel.to, insert: "[" + selected + "](url)" } });
-        return true;
-      },
-    },
+    { key: "Mod-b", run: () => dispatchEditorCommand("bold").ok },
+    { key: "Mod-i", run: () => dispatchEditorCommand("italic").ok },
+    { key: "Mod-k", run: () => dispatchEditorCommand("link").ok },
   ]);
 
   return { save, formatting, all: [save, formatting] };
@@ -168,12 +138,13 @@ interface EditorCommandRegistry {
 
 function activeText(view: LegacyEditorView): { from: number; to: number; text: string; line: { from: number; to: number; text: string } } {
   const sel = view.state.selection.main;
-  const doc = view.state.doc as unknown as { lineAt(pos: number): { from: number; to: number; text: string } };
+  const from = Math.min(sel.anchor, sel.head);
+  const to = Math.max(sel.anchor, sel.head);
   return {
-    from: Math.min(sel.anchor, sel.head),
-    to: Math.max(sel.anchor, sel.head),
-    text: (view.state as unknown as { sliceDoc(from: number, to: number): string }).sliceDoc(Math.min(sel.anchor, sel.head), Math.max(sel.anchor, sel.head)),
-    line: doc.lineAt(sel.head),
+    from,
+    to,
+    text: view.state.sliceDoc(from, to),
+    line: view.state.doc.lineAt(sel.head),
   };
 }
 
@@ -209,6 +180,7 @@ function commandRegistry(): EditorCommandRegistry {
       const view = currentView();
       if (!view) return { ok: false, reason: "not-mounted" };
       const sel = activeText(view);
+      let mutatesDocument = true;
       switch (id) {
         case "bold": wrapSelection(view, "**", "**"); break;
         case "italic": wrapSelection(view, "*", "*"); break;
@@ -226,11 +198,11 @@ function commandRegistry(): EditorCommandRegistry {
         case "table": insertBlock(view, "| Column 1 | Column 2 | Column 3 |\n| --- | --- | --- |\n|  |  |  |"); break;
         case "hr": insertBlock(view, "---"); break;
         case "insert-text": view.dispatch(view.state.replaceSelection(String(payload.text ?? ""))); break;
-        case "save": window._flyntNotify?.("save", view.state.doc.toString()); break;
-        case "source-mode": window._flyntNotify?.("mode", "source"); break;
+        case "save": window._flyntNotify?.("save", view.state.doc.toString()); mutatesDocument = false; break;
+        case "source-mode": window._flyntNotify?.("mode", "source"); mutatesDocument = false; break;
         default: return { ok: false, reason: "unknown-command" };
       }
-      window._flyntEditorDirty = true;
+      if (mutatesDocument) window._flyntEditorDirty = true;
       view.focus();
       return { ok: true };
     }
