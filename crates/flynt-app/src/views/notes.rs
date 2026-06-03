@@ -847,6 +847,33 @@ fn insert_embed_resolution(
     insert_embed_resolution_for_key(map, &embed_slug(key), resolution);
 }
 
+
+fn is_embed_image_path(path: &std::path::Path) -> bool {
+    matches!(
+        path.extension().and_then(|ext| ext.to_str()).map(|ext| ext.to_ascii_lowercase()),
+        Some(ext) if matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp")
+    )
+}
+
+fn collect_embed_image_assets(root: &std::path::Path, rel_dir: &str, out: &mut Vec<std::path::PathBuf>) {
+    let dir = root.join(rel_dir);
+    let Ok(read_dir) = std::fs::read_dir(&dir) else {
+        return;
+    };
+    for entry in read_dir.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if let Ok(rel) = path.strip_prefix(root) {
+                collect_embed_image_assets(root, &rel.to_string_lossy(), out);
+            }
+        } else if is_embed_image_path(&path) {
+            if let Ok(rel) = path.strip_prefix(root) {
+                out.push(rel.to_path_buf());
+            }
+        }
+    }
+}
+
 fn build_embed_index_json(ctx: &AppContext) -> String {
     let project = ctx.project();
     let mut map = serde_json::Map::new();
@@ -911,6 +938,33 @@ fn build_embed_index_json(ctx: &AppContext) -> String {
         if let Some(wrapper) = wrapper {
             insert_embed_resolution(&mut map, &wrapper, resolution);
         }
+    }
+
+    let mut image_assets = Vec::new();
+    collect_embed_image_assets(&root, "assets", &mut image_assets);
+    collect_embed_image_assets(&root, "images", &mut image_assets);
+    collect_embed_image_assets(&root, "drawings", &mut image_assets);
+    image_assets.sort();
+    image_assets.dedup();
+    for asset_path in image_assets {
+        let path = asset_path.to_string_lossy().to_string();
+        let title = asset_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(&path)
+            .to_string();
+        let resolution = serde_json::json!({
+            "status": "resolved",
+            "ref": title,
+            "canonicalPath": path,
+            "title": title,
+            "kind": "image",
+            "surface": "asset-preview",
+            "icon": "🖼",
+            "label": title,
+        });
+        insert_embed_resolution(&mut map, &title, resolution.clone());
+        insert_embed_resolution(&mut map, &path, resolution);
     }
 
     serde_json::Value::Object(map).to_string()
