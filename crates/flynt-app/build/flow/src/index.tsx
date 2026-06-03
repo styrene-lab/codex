@@ -357,6 +357,10 @@ function FlowCanvas({
   const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number; flowPos: { x: number; y: number } } | null>(null);
   const reactFlowInstance = useReactFlow();
 
+  // Undo: single-level snapshot before destructive ops
+  const [undoSnapshot, setUndoSnapshot] = React.useState<{ nodes: Node<NodePayload>[]; edges: Edge[]; label: string } | null>(null);
+  const undoRef = React.useRef<() => void>(() => {});
+
   // Keep a ref to the current state so the debounced emitter doesn't
   // capture stale closures. React's setState batching makes "read latest
   // after change" tricky without this.
@@ -411,6 +415,10 @@ function FlowCanvas({
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault();
         flushEmit();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undoRef.current();
       }
     }
     document.addEventListener("keydown", onKey);
@@ -618,6 +626,7 @@ function FlowCanvas({
     const selectedNodes = nodes.filter((n) => n.selected);
     const selectedEdges = edges.filter((e) => e.selected);
     if (selectedNodes.length === 0 && selectedEdges.length === 0) return;
+    setUndoSnapshot({ nodes: [...nodes], edges: [...edges], label: `Delete ${selectedNodes.length + selectedEdges.length} element${selectedNodes.length + selectedEdges.length > 1 ? "s" : ""}` });
     reactFlowInstance.deleteElements({ nodes: selectedNodes, edges: selectedEdges });
     setSelectedNodeId(null);
     setContextMenu(null);
@@ -633,6 +642,8 @@ function FlowCanvas({
 
   // Action: clear all
   const clearAll = React.useCallback(() => {
+    if (nodes.length === 0 && edges.length === 0) return;
+    setUndoSnapshot({ nodes: [...nodes], edges: [...edges], label: `Clear ${nodes.length} nodes` });
     setNodes([]);
     setEdges([]);
     latestRef.current = { ...latestRef.current, nodes: [], edges: [] };
@@ -641,7 +652,7 @@ function FlowCanvas({
     scheduleEmit({ nodes: [], edges: [] });
     setContextMenu(null);
     setFabOpen(false);
-  }, [scheduleEmit]);
+  }, [nodes, edges, scheduleEmit]);
 
   // Action: duplicate selected
   const duplicateSelected = React.useCallback(() => {
@@ -670,6 +681,21 @@ function FlowCanvas({
     setContextMenu(null);
     setFabOpen(false);
   }, [reactFlowInstance]);
+
+  // Action: undo last destructive operation
+  const undo = React.useCallback(() => {
+    if (!undoSnapshot) return;
+    setNodes(undoSnapshot.nodes);
+    setEdges(undoSnapshot.edges);
+    latestRef.current = { ...latestRef.current, nodes: undoSnapshot.nodes, edges: undoSnapshot.edges };
+    addNodeCountRef.current = undoSnapshot.nodes.length;
+    scheduleEmit({ nodes: undoSnapshot.nodes, edges: undoSnapshot.edges });
+    setUndoSnapshot(null);
+    setSelectedNodeId(null);
+    setContextMenu(null);
+    setFabOpen(false);
+  }, [undoSnapshot, scheduleEmit]);
+  undoRef.current = undo;
 
 
 
@@ -753,6 +779,12 @@ function FlowCanvas({
             </div>
           )}
           <div className="flynt-menu-section">
+            {undoSnapshot && (
+              <button className="flynt-menu-item" onClick={undo}>
+                <span className="flynt-menu-item-label">Undo</span>
+                <span className="flynt-menu-item-shortcut">⌘Z</span>
+              </button>
+            )}
             <button className="flynt-menu-item" onClick={doFitView}>
               <span className="flynt-menu-item-label">Fit view</span>
             </button>
@@ -803,6 +835,12 @@ function FlowCanvas({
 
             {/* Canvas actions */}
             <div className="flynt-menu-section">
+              {undoSnapshot && (
+                <button className="flynt-menu-item" onClick={undo}>
+                  <span className="flynt-menu-item-label">Undo</span>
+                  <span className="flynt-menu-item-shortcut">⌘Z</span>
+                </button>
+              )}
               <button className="flynt-menu-item" onClick={selectAll}>
                 <span className="flynt-menu-item-label">Select all</span>
                 <span className="flynt-menu-item-shortcut">⌘A</span>
