@@ -65,6 +65,7 @@ interface FlyntEditorCompatApi {
   install(initialContent?: string): FlyntEditorApi;
   attachView(view: LegacyEditorView, initialContent?: string): FlyntEditorApi;
   changeHandlerExtension(EditorView: { updateListener: { of(callback: (update: { docChanged?: boolean }) => void): unknown } }): unknown;
+  keymapRegistry(keymap: { of(bindings: unknown[]): unknown }): { save: unknown; formatting: unknown; all: unknown[] };
 }
 
 declare global {
@@ -81,6 +82,52 @@ declare global {
 
 function currentView(): LegacyEditorView | null {
   return window._flyntCM ?? null;
+}
+
+function keymapRegistry(keymap: { of(bindings: unknown[]): unknown }): { save: unknown; formatting: unknown; all: unknown[] } {
+  function wrapSelection(view: any, before: string, after: string): boolean {
+    const sel = view.state.selection.main;
+    const selected = view.state.sliceDoc(sel.from, sel.to);
+    if (selected.startsWith(before) && selected.endsWith(after)) {
+      view.dispatch({ changes: { from: sel.from, to: sel.to, insert: selected.slice(before.length, -after.length) } });
+    } else {
+      view.dispatch({ changes: { from: sel.from, to: sel.to, insert: before + selected + after } });
+    }
+    return true;
+  }
+
+  const save = keymap.of([
+    {
+      key: "Mod-s",
+      run: (view: any) => {
+        window._flyntNotify?.("save", view.state.doc.toString());
+        return true;
+      },
+    },
+    {
+      key: "Mod-e",
+      run: () => {
+        window._flyntNotify?.("mode", "source");
+        return true;
+      },
+    },
+  ]);
+
+  const formatting = keymap.of([
+    { key: "Mod-b", run: (view: any) => wrapSelection(view, "**", "**") },
+    { key: "Mod-i", run: (view: any) => wrapSelection(view, "*", "*") },
+    {
+      key: "Mod-k",
+      run: (view: any) => {
+        const sel = view.state.selection.main;
+        const selected = view.state.sliceDoc(sel.from, sel.to);
+        view.dispatch({ changes: { from: sel.from, to: sel.to, insert: "[" + selected + "](url)" } });
+        return true;
+      },
+    },
+  ]);
+
+  return { save, formatting, all: [save, formatting] };
 }
 
 function changeHandlerExtension(EditorView: { updateListener: { of(callback: (update: { docChanged?: boolean }) => void): unknown } }): unknown {
@@ -236,6 +283,6 @@ function install(initialContent = ""): FlyntEditorApi {
   return api;
 }
 
-window.FlyntEditorCompat = { install, attachView, changeHandlerExtension };
+window.FlyntEditorCompat = { install, attachView, changeHandlerExtension, keymapRegistry };
 
 export {};

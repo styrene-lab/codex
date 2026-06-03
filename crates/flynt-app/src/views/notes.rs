@@ -1377,52 +1377,36 @@ fn cm6_init_js(content: &str) -> String {
         }}
     }});
 
-    // Formatting shortcuts: wrap selection with markdown syntax
-    function wrapSelection(view, before, after) {{
-        const sel = view.state.selection.main;
-        const selected = view.state.sliceDoc(sel.from, sel.to);
-        // If already wrapped, unwrap
-        if (selected.startsWith(before) && selected.endsWith(after)) {{
-            view.dispatch({{ changes: {{ from: sel.from, to: sel.to, insert: selected.slice(before.length, -after.length) }} }});
-        }} else {{
-            view.dispatch({{ changes: {{ from: sel.from, to: sel.to, insert: before + selected + after }} }});
-        }}
-        return true;
-    }}
-    const formatKeymap = keymap.of([
-        {{ key: 'Mod-b', run: (v) => wrapSelection(v, '**', '**') }},
-        {{ key: 'Mod-i', run: (v) => wrapSelection(v, '*', '*') }},
-        {{ key: 'Mod-k', run: (v) => {{
-            const sel = v.state.selection.main;
-            const selected = v.state.sliceDoc(sel.from, sel.to);
-            v.dispatch({{ changes: {{ from: sel.from, to: sel.to, insert: '[' + selected + '](url)' }} }});
-            return true;
-        }} }},
-    ]);
-
-    const changeHandler = window.FlyntEditorCompat && window.FlyntEditorCompat.changeHandlerExtension
-        ? window.FlyntEditorCompat.changeHandlerExtension(EditorView)
-        : EditorView.updateListener.of((update) => {{
-            if (update.docChanged) {{
-                window._flyntEditorDirty = true;
-                if (window._flyntCM) window._flyntNotify('edit', window._flyntCM.state.doc.toString());
-                if (window._flyntCM) window._flyntNotify('autosave', window._flyntCM.state.doc.toString());
+    const flyntKeymaps = window.FlyntEditorCompat && window.FlyntEditorCompat.keymapRegistry
+        ? window.FlyntEditorCompat.keymapRegistry(keymap)
+        : (function() {{
+            function wrapSelection(view, before, after) {{
+                const sel = view.state.selection.main;
+                const selected = view.state.sliceDoc(sel.from, sel.to);
+                if (selected.startsWith(before) && selected.endsWith(after)) {{
+                    view.dispatch({{ changes: {{ from: sel.from, to: sel.to, insert: selected.slice(before.length, -after.length) }} }});
+                }} else {{
+                    view.dispatch({{ changes: {{ from: sel.from, to: sel.to, insert: before + selected + after }} }});
+                }}
+                return true;
             }}
-        }});
-
-    const saveKeymap = keymap.of([{{
-        key: 'Mod-s',
-        run: (view) => {{
-            window._flyntNotify('save', view.state.doc.toString());
-            return true;
-        }},
-    }}, {{
-        key: 'Mod-e',
-        run: () => {{
-            window._flyntNotify('mode', 'source');
-            return true;
-        }},
-    }}]);
+            return {{
+                save: keymap.of([
+                    {{ key: 'Mod-s', run: (view) => {{ window._flyntNotify('save', view.state.doc.toString()); return true; }} }},
+                    {{ key: 'Mod-e', run: () => {{ window._flyntNotify('mode', 'source'); return true; }} }},
+                ]),
+                formatting: keymap.of([
+                    {{ key: 'Mod-b', run: (v) => wrapSelection(v, '**', '**') }},
+                    {{ key: 'Mod-i', run: (v) => wrapSelection(v, '*', '*') }},
+                    {{ key: 'Mod-k', run: (v) => {{
+                        const sel = v.state.selection.main;
+                        const selected = v.state.sliceDoc(sel.from, sel.to);
+                        v.dispatch({{ changes: {{ from: sel.from, to: sel.to, insert: '[' + selected + '](url)' }} }});
+                        return true;
+                    }} }},
+                ]),
+            }};
+        }})();
 
     // Context menu action dispatcher
     window._flyntCtxAction = function(id, view) {{
@@ -1512,8 +1496,8 @@ fn cm6_init_js(content: &str) -> String {
             bracketMatching(),
             closeBrackets(),
             keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
-            saveKeymap,
-            formatKeymap,
+            flyntKeymaps.save,
+            flyntKeymaps.formatting,
             changeHandler,
             livePreview,
             blockRenderPlugin,
