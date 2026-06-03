@@ -1285,7 +1285,6 @@ fn cm6_init_js(content: &str) -> String {
         }},
         open(resolution) {{
             window._flyntNotify('editor.embed.open', JSON.stringify(resolution));
-            if (resolution.surface === 'drawing') window._flyntNotify('open-drawing', resolution.canonicalPath || resolution.ref);
         }}
     }};
 
@@ -2792,6 +2791,38 @@ pub fn NotesView() -> Element {
                             // the "edit" message handler above keeps it in
                             // sync with CM6. No read-CM6 dance needed.
                             *mode.write() = EditMode::Source;
+                        }
+                    }
+                    "editor.embed.open" => {
+                        let Ok(resolution) = serde_json::from_str::<serde_json::Value>(data) else {
+                            continue;
+                        };
+                        let surface = resolution["surface"].as_str().unwrap_or("");
+                        let ref_value = resolution["canonicalPath"]
+                            .as_str()
+                            .or_else(|| resolution["title"].as_str())
+                            .or_else(|| resolution["label"].as_str())
+                            .or_else(|| resolution["ref"].as_str())
+                            .unwrap_or("");
+                        match surface {
+                            "drawing" | "flow" | "canvas" | "note" => {
+                                let slug = std::path::Path::new(ref_value)
+                                    .file_stem()
+                                    .and_then(|s| s.to_str())
+                                    .unwrap_or(ref_value)
+                                    .to_lowercase();
+                                let project = c.project();
+                                if let Ok(Some(meta)) = tokio::task::spawn_blocking(move || {
+                                    project.store.find_document_by_slug(&slug)
+                                })
+                                .await
+                                .unwrap_or(Ok(None))
+                                {
+                                    ts_link.write().open(meta.id.clone(), meta.title.clone());
+                                    *ar_link.write() = Route::Notes;
+                                }
+                            }
+                            _ => {}
                         }
                     }
                     "open-drawing" => {
