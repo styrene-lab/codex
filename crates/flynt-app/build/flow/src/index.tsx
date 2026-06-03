@@ -613,6 +613,64 @@ function FlowCanvas({
     setContextMenu(null);
   }, [addNode]);
 
+  // Action: delete selected nodes and edges
+  const deleteSelected = React.useCallback(() => {
+    const selectedNodes = nodes.filter((n) => n.selected);
+    const selectedEdges = edges.filter((e) => e.selected);
+    if (selectedNodes.length === 0 && selectedEdges.length === 0) return;
+    reactFlowInstance.deleteElements({ nodes: selectedNodes, edges: selectedEdges });
+    setSelectedNodeId(null);
+    setContextMenu(null);
+    setFabOpen(false);
+  }, [nodes, edges, reactFlowInstance]);
+
+  // Action: select all
+  const selectAll = React.useCallback(() => {
+    setNodes((ns) => ns.map((n) => ({ ...n, selected: true })));
+    setEdges((es) => es.map((e) => ({ ...e, selected: true })));
+    setContextMenu(null);
+  }, []);
+
+  // Action: clear all
+  const clearAll = React.useCallback(() => {
+    setNodes([]);
+    setEdges([]);
+    latestRef.current = { ...latestRef.current, nodes: [], edges: [] };
+    setSelectedNodeId(null);
+    addNodeCountRef.current = 0;
+    scheduleEmit({ nodes: [], edges: [] });
+    setContextMenu(null);
+    setFabOpen(false);
+  }, [scheduleEmit]);
+
+  // Action: duplicate selected
+  const duplicateSelected = React.useCallback(() => {
+    const sel = nodes.filter((n) => n.selected);
+    if (sel.length === 0) return;
+    const newNodes = sel.map((n) => ({
+      ...n,
+      id: uuid(),
+      position: { x: n.position.x + 40, y: n.position.y + 40 },
+      selected: true,
+      data: { ...n.data, payload: { ...n.data.payload } },
+    }));
+    // Deselect originals, add clones
+    setNodes((ns) => {
+      const next = ns.map((n) => ({ ...n, selected: false })).concat(newNodes);
+      scheduleEmit({ nodes: next });
+      return next;
+    });
+    addNodeCountRef.current += newNodes.length;
+    setContextMenu(null);
+  }, [nodes, scheduleEmit]);
+
+  // Action: fit view
+  const doFitView = React.useCallback(() => {
+    reactFlowInstance.fitView({ padding: 0.15, duration: 300 });
+    setContextMenu(null);
+    setFabOpen(false);
+  }, [reactFlowInstance]);
+
 
 
   return (
@@ -694,26 +752,74 @@ function FlowCanvas({
               </button>
             </div>
           )}
+          <div className="flynt-menu-section">
+            <button className="flynt-menu-item" onClick={doFitView}>
+              <span className="flynt-menu-item-label">Fit view</span>
+            </button>
+            {nodes.length > 0 && (
+              <button className="flynt-menu-item flynt-menu-item-danger" onClick={clearAll}>
+                <span className="flynt-menu-item-label">Clear all</span>
+                <span className="flynt-menu-item-shortcut">{nodes.length} nodes</span>
+              </button>
+            )}
+          </div>
         </div>
       )}
 
       {/* ── Context menu ────────────────────────────────────── */}
-      {!readOnly && contextMenu && (
-        <div className="flynt-context-menu"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-          onClick={(e) => e.stopPropagation()}>
-          <div className="flynt-menu-section">
-            <div className="flynt-menu-section-title">Add node here</div>
-            {CORE_NODE_DEFINITIONS.map((definition) => (
-              <button key={definition.kind} className="flynt-menu-item"
-                onClick={() => addNodeFromMenu(definition, contextMenu.flowPos)}>
-                <span className="flynt-menu-item-dot" style={{ background: KIND_ACCENT[definition.kind] ?? "#2ab4c8" }} />
-                <span className="flynt-menu-item-label">{definition.label}</span>
+      {!readOnly && contextMenu && (() => {
+        const hasSelection = nodes.some((n) => n.selected) || edges.some((e) => e.selected);
+        const selectedCount = nodes.filter((n) => n.selected).length + edges.filter((e) => e.selected).length;
+        return (
+          <div className="flynt-context-menu"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            onClick={(e) => e.stopPropagation()}>
+
+            {/* Selection actions — only when something is selected */}
+            {hasSelection && (
+              <div className="flynt-menu-section">
+                <button className="flynt-menu-item" onClick={duplicateSelected}>
+                  <span className="flynt-menu-item-label">Duplicate</span>
+                  <span className="flynt-menu-item-shortcut">{selectedCount} selected</span>
+                </button>
+                <button className="flynt-menu-item flynt-menu-item-danger" onClick={deleteSelected}>
+                  <span className="flynt-menu-item-label">Delete</span>
+                  <span className="flynt-menu-item-shortcut">⌫</span>
+                </button>
+              </div>
+            )}
+
+            {/* Add node */}
+            <div className="flynt-menu-section">
+              <div className="flynt-menu-section-title">Add node</div>
+              {CORE_NODE_DEFINITIONS.map((definition) => (
+                <button key={definition.kind} className="flynt-menu-item"
+                  onClick={() => addNodeFromMenu(definition, contextMenu.flowPos)}>
+                  <span className="flynt-menu-item-dot" style={{ background: KIND_ACCENT[definition.kind] ?? "#2ab4c8" }} />
+                  <span className="flynt-menu-item-label">{definition.label}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Canvas actions */}
+            <div className="flynt-menu-section">
+              <button className="flynt-menu-item" onClick={selectAll}>
+                <span className="flynt-menu-item-label">Select all</span>
+                <span className="flynt-menu-item-shortcut">⌘A</span>
               </button>
-            ))}
+              <button className="flynt-menu-item" onClick={doFitView}>
+                <span className="flynt-menu-item-label">Fit view</span>
+              </button>
+              {nodes.length > 0 && (
+                <button className="flynt-menu-item flynt-menu-item-danger" onClick={clearAll}>
+                  <span className="flynt-menu-item-label">Clear all</span>
+                  <span className="flynt-menu-item-shortcut">{nodes.length} nodes</span>
+                </button>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Empty state ─────────────────────────────────────── */}
       {!readOnly && nodes.length === 0 && !fabOpen && (
@@ -796,6 +902,10 @@ function injectStyles() {
 .flynt-menu-item-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; }
 .flynt-menu-item-label { font-weight: 600; white-space: nowrap; }
 .flynt-menu-item-desc { color: #475569; font-size: 11px; flex: 1; }
+.flynt-menu-item-shortcut { color: #475569; font-size: 10px; margin-left: auto; padding-left: 12px; white-space: nowrap; }
+.flynt-menu-item-danger .flynt-menu-item-label { color: #c83030; }
+.flynt-menu-item-danger:hover { background: rgba(200, 48, 48, 0.1); }
+.flynt-menu-item-danger:hover .flynt-menu-item-label { color: #ef4444; }
 .flynt-flow-empty { position: absolute; z-index: 7; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(420px, 80%); border: 1px solid #1a3448; border-radius: 14px; padding: 22px; background: rgba(14, 22, 34, 0.94); color: #c4d8e4; text-align: center; box-shadow: 0 18px 50px rgba(0,0,0,0.45); }
 .flynt-flow-empty h2 { margin: 0 0 8px; color: #6ecad8; font-size: 24px; }
 .flynt-flow-empty p { margin: 0 0 16px; color: #607888; line-height: 1.45; }
