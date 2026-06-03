@@ -848,6 +848,21 @@ fn insert_embed_resolution(
 }
 
 
+
+fn insert_embed_path_aliases(
+    map: &mut serde_json::Map<String, serde_json::Value>,
+    path: &str,
+    resolution: serde_json::Value,
+) {
+    let path_ref = std::path::Path::new(path);
+    if let Some(file_name) = path_ref.file_name().and_then(|name| name.to_str()) {
+        insert_embed_resolution(map, file_name, resolution.clone());
+    }
+    if let Some(file_stem) = path_ref.file_stem().and_then(|stem| stem.to_str()) {
+        insert_embed_resolution(map, file_stem, resolution);
+    }
+}
+
 fn is_embed_image_path(path: &std::path::Path) -> bool {
     matches!(
         path.extension().and_then(|ext| ext.to_str()).map(|ext| ext.to_ascii_lowercase()),
@@ -893,7 +908,8 @@ fn build_embed_index_json(ctx: &AppContext) -> String {
                 "label": doc.title,
             });
             insert_embed_resolution(&mut map, &title, resolution.clone());
-            insert_embed_resolution(&mut map, &path, resolution);
+            insert_embed_resolution(&mut map, &path, resolution.clone());
+            insert_embed_path_aliases(&mut map, &path, resolution);
         }
     }
 
@@ -935,8 +951,10 @@ fn build_embed_index_json(ctx: &AppContext) -> String {
         });
         insert_embed_resolution(&mut map, &title, resolution.clone());
         insert_embed_resolution(&mut map, &source, resolution.clone());
+        insert_embed_path_aliases(&mut map, &source, resolution.clone());
         if let Some(wrapper) = wrapper {
-            insert_embed_resolution(&mut map, &wrapper, resolution);
+            insert_embed_resolution(&mut map, &wrapper, resolution.clone());
+            insert_embed_path_aliases(&mut map, &wrapper, resolution);
         }
     }
 
@@ -964,7 +982,8 @@ fn build_embed_index_json(ctx: &AppContext) -> String {
             "label": title,
         });
         insert_embed_resolution(&mut map, &title, resolution.clone());
-        insert_embed_resolution(&mut map, &path, resolution);
+        insert_embed_resolution(&mut map, &path, resolution.clone());
+        insert_embed_path_aliases(&mut map, &path, resolution);
     }
 
     serde_json::Value::Object(map).to_string()
@@ -3853,5 +3872,72 @@ pub fn NotesView() -> Element {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod embed_index_tests {
+    use super::*;
+    use std::fs;
+
+    fn resolved(kind: &str, canonical: &str, title: &str) -> serde_json::Value {
+        serde_json::json!({
+            "status": "resolved",
+            "kind": kind,
+            "canonicalPath": canonical,
+            "title": title,
+            "label": title,
+        })
+    }
+
+    #[test]
+    fn embed_insert_dedupes_same_identity() {
+        let mut map = serde_json::Map::new();
+        let one = resolved("note", "notes/foo.md", "Foo");
+        insert_embed_resolution(&mut map, "Foo", one.clone());
+        insert_embed_resolution(&mut map, "Foo", one);
+
+        let entry = map.get("Foo").expect("entry exists");
+        assert_eq!(entry["status"], "resolved");
+        assert!(entry.get("candidates").is_none());
+    }
+
+    #[test]
+    fn embed_insert_preserves_collisions_as_ambiguous() {
+        let mut map = serde_json::Map::new();
+        insert_embed_resolution(&mut map, "Foo", resolved("note", "notes/foo.md", "Foo"));
+        insert_embed_resolution(&mut map, "Foo", resolved("flow", "flows/foo.flow", "Foo"));
+
+        let entry = map.get("Foo").expect("entry exists");
+        assert_eq!(entry["status"], "ambiguous");
+        let candidates = entry["candidates"].as_array().expect("candidates array");
+        assert_eq!(candidates.len(), 2);
+    }
+
+    #[test]
+    fn embed_image_asset_collection_is_recursive_and_filtered() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join("assets/icons")).unwrap();
+        fs::write(tmp.path().join("assets/logo.png"), b"png").unwrap();
+        fs::write(tmp.path().join("assets/icons/mark.svg"), b"svg").unwrap();
+        fs::write(tmp.path().join("assets/readme.txt"), b"txt").unwrap();
+
+        let mut out = Vec::new();
+        collect_embed_image_assets(tmp.path(), "assets", &mut out);
+        out.sort();
+
+        assert_eq!(out.len(), 2);
+        assert!(out.contains(&std::path::PathBuf::from("assets/logo.png")));
+        assert!(out.contains(&std::path::PathBuf::from("assets/icons/mark.svg")));
+    }
+
+    #[test]
+    fn embed_path_aliases_include_file_name_and_stem() {
+        let mut map = serde_json::Map::new();
+        let resolution = resolved("image", "assets/icons/logo.png", "logo.png");
+        insert_embed_path_aliases(&mut map, "assets/icons/logo.png", resolution);
+
+        assert!(map.contains_key("logo.png"));
+        assert!(map.contains_key("logo"));
     }
 }
