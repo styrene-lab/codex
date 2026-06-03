@@ -1538,6 +1538,26 @@
   border-color:  var(--primary);
   background:    color-mix(in srgb, var(--primary) 8%, transparent);
 }
+.cm-embed-missing {
+  color:         var(--text-muted);
+  border-style:  dashed;
+  cursor:        default;
+}
+.cm-embed-missing:hover {
+  border-color:  var(--border);
+  background:    var(--surface);
+}
+.cm-embed-ambiguous {
+  color:         var(--warning);
+  border-color:  color-mix(in srgb, var(--warning) 50%, var(--border));
+  cursor:        default;
+}
+.cm-embed-ambiguous:hover {
+  background:    color-mix(in srgb, var(--warning) 8%, transparent);
+}
+.cm-embed-drawing { color: var(--primary); }
+.cm-embed-flow { color: var(--primary-bright); }
+.cm-embed-canvas { color: var(--accent); }
 .cm-embed-image {
   max-width:     100%;
   height:        auto;

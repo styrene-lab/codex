@@ -228,12 +228,24 @@ function embedExtension(modules: EditorCompatModules, resolver: EmbedResolver): 
       }
 
       const chip = document.createElement("span");
-      chip.className = `cm-embed-chip cm-embed-${resolution.kind || "unknown"}`;
-      const icon = resolution.icon || (resolution.status === "missing" ? "?" : "◈");
-      const label = resolution.label || resolution.title || resolution.ref;
+      const statusClass = resolution.status === "ambiguous" ? "ambiguous" : resolution.status === "missing" ? "missing" : (resolution.kind || "unknown");
+      chip.className = `cm-embed-chip cm-embed-${statusClass}`;
+      const candidateCount = Array.isArray((resolution as { candidates?: unknown[] }).candidates)
+        ? (resolution as { candidates?: unknown[] }).candidates?.length ?? 0
+        : 0;
+      const icon = resolution.icon || (resolution.status === "missing" ? "?" : resolution.status === "ambiguous" ? "⚠" : "◈");
+      const label = resolution.status === "ambiguous"
+        ? `${resolution.label || resolution.ref} (${candidateCount} candidates)`
+        : resolution.label || resolution.title || resolution.ref;
       chip.textContent = `${icon} ${label}`;
-      chip.title = resolution.status === "ambiguous" ? "Ambiguous embed reference" : "Open embedded artifact";
-      chip.onclick = () => resolver.open(resolution);
+      chip.title = resolution.status === "ambiguous"
+        ? `Ambiguous embed reference: ${candidateCount} candidates`
+        : resolution.status === "missing"
+          ? "Missing embed reference"
+          : "Open embedded artifact";
+      chip.onclick = () => {
+        if (resolution.status === "resolved") resolver.open(resolution);
+      };
       return chip;
     }
   }
