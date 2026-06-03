@@ -141,7 +141,7 @@ interface EditorCommandRegistry {
 
 interface EditorCompatModules {
   EditorState?: { create(config: { doc: string; selection?: { anchor: number }; extensions: unknown[] }): unknown };
-  EditorView: { lineWrapping: unknown; updateListener: { of(callback: (update: { docChanged?: boolean }) => void): unknown } };
+  EditorView: { lineWrapping: unknown; updateListener: { of(callback: (update: { docChanged?: boolean }) => void): unknown }; decorations?: { compute(deps: string[], fn: (state: { doc: { lines: number; line(i: number): { from: number; text: string } } }) => unknown): unknown } };
   syntaxHighlighting(style: unknown, config?: unknown): unknown;
   flyntHighlight: unknown;
   defaultHighlightStyle: unknown;
@@ -162,11 +162,64 @@ interface EditorCompatModules {
   GFM: unknown;
   languages: unknown;
   createFrontmatterHider?: () => unknown;
+  Decoration?: { replace(spec?: { widget?: unknown }): { range(from: number, to: number): unknown }; set(values: unknown[]): unknown };
+  WidgetType?: { new(): { eq?(other: unknown): boolean; toDOM?(): HTMLElement } };
   keymap: { of(bindings: unknown[]): unknown };
+}
+
+
+function taskListExtension(modules: EditorCompatModules): unknown | null {
+  if (!modules.EditorView.decorations || !modules.Decoration || !modules.WidgetType) return null;
+  const Decoration = modules.Decoration;
+  const BaseWidget = modules.WidgetType;
+  class TaskCheckWidget extends BaseWidget {
+    private checked: boolean;
+    private lineFrom: number;
+    constructor(checked: boolean, lineFrom: number) {
+      super();
+      this.checked = checked;
+      this.lineFrom = lineFrom;
+    }
+    eq(other: unknown): boolean {
+      return other instanceof TaskCheckWidget && other.checked === this.checked;
+    }
+    toDOM(): HTMLElement {
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = this.checked;
+      checkbox.className = "cm-task-checkbox";
+      checkbox.onclick = (event) => {
+        event.preventDefault();
+        const view = currentView();
+        if (!view) return;
+        const line = view.state.doc.lineAt(this.lineFrom);
+        const next = this.checked
+          ? line.text.replace("[x]", "[ ]").replace("[X]", "[ ]")
+          : line.text.replace("[ ]", "[x]");
+        view.dispatch({ changes: { from: line.from, to: line.from + line.text.length, insert: next } });
+      };
+      return checkbox;
+    }
+  }
+
+  return modules.EditorView.decorations.compute(["doc"], (state) => {
+    const decorations: unknown[] = [];
+    for (let i = 1; i <= state.doc.lines; i += 1) {
+      const line = state.doc.line(i);
+      const match = line.text.match(/^(\s*[-*]\s*)\[([ xX])\]\s/);
+      if (!match) continue;
+      const prefixLength = match[1]?.length ?? 0;
+      const checked = match[2] !== " ";
+      decorations.push(Decoration.replace({ widget: new TaskCheckWidget(checked, line.from) }).range(line.from + prefixLength, line.from + prefixLength + 3));
+      if (prefixLength > 0) decorations.push(Decoration.replace({}).range(line.from, line.from + prefixLength));
+    }
+    return Decoration.set(decorations);
+  });
 }
 
 function baseExtensions(modules: EditorCompatModules, localExtensions: unknown[] = []): unknown[] {
   const flyntKeymaps = keymapRegistry(modules.keymap);
+  const taskList = taskListExtension(modules);
   return [
     modules.syntaxHighlighting(modules.flyntHighlight),
     modules.oneDark,
@@ -193,6 +246,7 @@ function baseExtensions(modules: EditorCompatModules, localExtensions: unknown[]
     flyntKeymaps.formatting,
     changeHandlerExtension(modules.EditorView),
     ...(modules.createFrontmatterHider ? [modules.createFrontmatterHider()] : []),
+    ...(taskList ? [taskList] : []),
     ...localExtensions,
     modules.EditorView.lineWrapping,
   ];

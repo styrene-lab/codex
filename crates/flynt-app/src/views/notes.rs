@@ -1260,55 +1260,6 @@ fn cm6_init_js(content: &str) -> String {
         return Decoration.set(decorations);
     }});
 
-    // Task list plugin: render - [ ] and - [x] as checkboxes
-    class TaskCheckWidget extends WidgetType {{
-        constructor(checked, lineFrom) {{ super(); this._checked = checked; this._lineFrom = lineFrom; }}
-        eq(o) {{ return this._checked === o._checked; }}
-        toDOM() {{
-            const cb = document.createElement('input');
-            cb.type = 'checkbox';
-            cb.checked = this._checked;
-            cb.className = 'cm-task-checkbox';
-            cb.onclick = (e) => {{
-                e.preventDefault();
-                const view = window._flyntCM;
-                if (!view) return;
-                const line = view.state.doc.lineAt(this._lineFrom);
-                const text = line.text;
-                const newText = this._checked
-                    ? text.replace('[x]', '[ ]').replace('[X]', '[ ]')
-                    : text.replace('[ ]', '[x]');
-                view.dispatch({{ changes: {{ from: line.from, to: line.to, insert: newText }} }});
-                window._flyntNotify('edit', view.state.doc.toString());
-            }};
-            return cb;
-        }}
-    }}
-    const taskListPlugin = EditorView.decorations.compute(['doc'], (state) => {{
-        const decs = [];
-        for (let i = 1; i <= state.doc.lines; i++) {{
-            const line = state.doc.line(i);
-            const text = line.text;
-            // Skip if cursor is on this line
-            const m = text.match(/^(\s*[-*]\s*)\[([ xX])\]\s/);
-            if (m) {{
-                const prefixLen = m[1].length;
-                const checked = m[2] !== ' ';
-                // Replace "- [ ] " or "- [x] " with checkbox widget
-                const replaceFrom = line.from + prefixLen;
-                const replaceTo = line.from + prefixLen + 3; // [x] or [ ]
-                decs.push(Decoration.replace({{
-                    widget: new TaskCheckWidget(checked, line.from),
-                }}).range(replaceFrom, replaceTo));
-                // Also hide the leading "- "
-                if (prefixLen > 0) {{
-                    decs.push(Decoration.replace({{}}).range(line.from, line.from + prefixLen));
-                }}
-            }}
-        }}
-        return Decoration.set(decs.sort((a, b) => a.from - b.from));
-    }});
-
     // Embed plugin: render ![[file.excalidraw]] and ![[image.png]] as widgets
     class EmbedWidget extends WidgetType {{
         constructor(ref, type) {{ super(); this._ref = ref; this._type = type; }}
@@ -1537,6 +1488,8 @@ fn cm6_init_js(content: &str) -> String {
         GFM,
         languages,
         createFrontmatterHider,
+        Decoration,
+        WidgetType,
         keymap,
     }}, container, docText, cursorPos, flyntLocalExtensions, flyntTheme);
 
