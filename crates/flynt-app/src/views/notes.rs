@@ -755,6 +755,85 @@ fn embed_slug(value: &str) -> String {
         .replace([' ', '_'], "-")
 }
 
+fn embed_resolution_identity(value: &serde_json::Value) -> String {
+    let canonical = value
+        .get("canonicalPath")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    let title = value
+        .get("title")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    let kind = value
+        .get("kind")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    format!("{kind}:{canonical}:{title}")
+}
+
+fn merge_embed_resolution(
+    key: &str,
+    existing: serde_json::Value,
+    incoming: serde_json::Value,
+) -> serde_json::Value {
+    if embed_resolution_identity(&existing) == embed_resolution_identity(&incoming) {
+        return existing;
+    }
+
+    let mut candidates = if existing
+        .get("status")
+        .and_then(|v| v.as_str())
+        == Some("ambiguous")
+    {
+        existing
+            .get("candidates")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default()
+    } else {
+        vec![existing]
+    };
+
+    let incoming_id = embed_resolution_identity(&incoming);
+    if !candidates
+        .iter()
+        .any(|candidate| embed_resolution_identity(candidate) == incoming_id)
+    {
+        candidates.push(incoming);
+    }
+
+    serde_json::json!({
+        "status": "ambiguous",
+        "ref": key,
+        "kind": "unknown",
+        "surface": "unknown",
+        "icon": "⚠",
+        "label": format!("Ambiguous: {key}"),
+        "candidates": candidates,
+    })
+}
+
+fn insert_embed_resolution_for_key(
+    map: &mut serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    resolution: serde_json::Value,
+) {
+    if key.trim().is_empty() {
+        return;
+    }
+    match map.remove(key) {
+        Some(existing) => {
+            map.insert(
+                key.to_string(),
+                merge_embed_resolution(key, existing, resolution),
+            );
+        }
+        None => {
+            map.insert(key.to_string(), resolution);
+        }
+    }
+}
+
 fn insert_embed_resolution(
     map: &mut serde_json::Map<String, serde_json::Value>,
     key: impl AsRef<str>,
@@ -764,8 +843,8 @@ fn insert_embed_resolution(
     if key.trim().is_empty() {
         return;
     }
-    map.insert(key.to_string(), resolution.clone());
-    map.insert(embed_slug(key), resolution);
+    insert_embed_resolution_for_key(map, key, resolution.clone());
+    insert_embed_resolution_for_key(map, &embed_slug(key), resolution);
 }
 
 fn build_embed_index_json(ctx: &AppContext) -> String {
