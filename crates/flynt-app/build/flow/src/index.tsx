@@ -69,6 +69,93 @@ interface FlowEdgeJson {
   target: { node: string; socket: string };
 }
 
+interface FlowNodeDefinition {
+  kind: string;
+  label: string;
+  description: string;
+  category: "Core";
+  sockets: SocketJson[];
+  defaultData?: Record<string, unknown>;
+}
+
+const CORE_NODE_DEFINITIONS: FlowNodeDefinition[] = [
+  {
+    kind: "input",
+    label: "Input",
+    description: "Starting point, trigger, or external value.",
+    category: "Core",
+    sockets: [{ name: "out", direction: "output", ty: "any" }],
+    defaultData: { title: "Input" },
+  },
+  {
+    kind: "process",
+    label: "Process",
+    description: "A generic transformation or work step.",
+    category: "Core",
+    sockets: [
+      { name: "in", direction: "input", ty: "any" },
+      { name: "out", direction: "output", ty: "any" },
+    ],
+    defaultData: { title: "Process" },
+  },
+  {
+    kind: "decision",
+    label: "Decision",
+    description: "Branch a flow into yes/no paths.",
+    category: "Core",
+    sockets: [
+      { name: "in", direction: "input", ty: "any" },
+      { name: "yes", direction: "output", ty: "any" },
+      { name: "no", direction: "output", ty: "any" },
+    ],
+    defaultData: { title: "Decision" },
+  },
+  {
+    kind: "branch",
+    label: "Branch",
+    description: "Fan out one input into two paths.",
+    category: "Core",
+    sockets: [
+      { name: "in", direction: "input", ty: "any" },
+      { name: "a", direction: "output", ty: "any" },
+      { name: "b", direction: "output", ty: "any" },
+    ],
+    defaultData: { title: "Branch" },
+  },
+  {
+    kind: "merge",
+    label: "Merge",
+    description: "Join two inputs into one output.",
+    category: "Core",
+    sockets: [
+      { name: "a", direction: "input", ty: "any" },
+      { name: "b", direction: "input", ty: "any" },
+      { name: "out", direction: "output", ty: "any" },
+    ],
+    defaultData: { title: "Merge" },
+  },
+  {
+    kind: "output",
+    label: "Output",
+    description: "Terminal result, sink, or destination.",
+    category: "Core",
+    sockets: [{ name: "in", direction: "input", ty: "any" }],
+    defaultData: { title: "Output" },
+  },
+  {
+    kind: "note",
+    label: "Note",
+    description: "Annotation with no graph sockets.",
+    category: "Core",
+    sockets: [],
+    defaultData: { title: "Note" },
+  },
+];
+
+const NODE_DEFINITION_BY_KIND = new Map(
+  CORE_NODE_DEFINITIONS.map((definition) => [definition.kind, definition])
+);
+
 interface MountOptions {
   readOnly?: boolean;
   /** Called debounced (~500ms) after node/edge mutations. The argument
@@ -101,6 +188,7 @@ function toRfNode(n: FlowNodeJson): Node<NodePayload> {
       kind: n.kind ?? "custom",
       payload: n.data ?? {},
       sockets: Array.isArray(n.sockets) ? n.sockets : [],
+      label: `${n.kind ?? "custom"}: ${typeof n.data?.title === "string" ? n.data.title : n.kind ?? "custom"}`,
     },
   };
 }
@@ -157,11 +245,12 @@ function uuid(): string {
 
 function FlyntNode({ data }: { data: NodePayload }) {
   const { kind, payload, sockets } = data;
+  const definition = NODE_DEFINITION_BY_KIND.get(kind);
   const title =
     (typeof payload.title === "string" && payload.title) ||
     (typeof payload.name === "string" && payload.name) ||
     (typeof payload.skill === "string" && payload.skill) ||
-    kind;
+    definition?.label || kind;
 
   // Group sockets by direction so input handles render on the left,
   // output handles on the right. Note nodes (no sockets) get nothing —
@@ -173,36 +262,44 @@ function FlyntNode({ data }: { data: NodePayload }) {
     <div
       style={{
         padding: "8px 12px",
-        background: kind === "note" ? "#1e293b" : "#0f172a",
-        border: "1px solid #334155",
+        background: "transparent",
+        border: "0",
         borderRadius: 6,
         color: "#e2e8f0",
         fontSize: 12,
-        minWidth: 140,
+        minWidth: 150,
+        position: "relative",
         boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
       }}
     >
       <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5 }}>
-        {kind}
+        {definition?.label || kind}
       </div>
       <div style={{ fontWeight: 500, marginTop: 2 }}>{title}</div>
+      {kind === "note" && typeof payload.body === "string" && payload.body && (
+        <div style={{ marginTop: 6, color: "#94a3b8", fontSize: 11, lineHeight: 1.35, whiteSpace: "pre-wrap" }}>{payload.body}</div>
+      )}
       {inputs.map((s, i) => (
-        <Handle
-          key={`in-${s.name}`}
-          type="target"
-          position={Position.Left}
-          id={s.name}
-          style={{ top: 24 + i * 14 }}
-        />
+        <React.Fragment key={`in-${s.name}`}>
+          <Handle
+            type="target"
+            position={Position.Left}
+            id={s.name}
+            style={{ top: 30 + i * 18 }}
+          />
+          <div className="flynt-flow-socket-label input" style={{ top: 23 + i * 18 }}>{s.name}</div>
+        </React.Fragment>
       ))}
       {outputs.map((s, i) => (
-        <Handle
-          key={`out-${s.name}`}
-          type="source"
-          position={Position.Right}
-          id={s.name}
-          style={{ top: 24 + i * 14 }}
-        />
+        <React.Fragment key={`out-${s.name}`}>
+          <Handle
+            type="source"
+            position={Position.Right}
+            id={s.name}
+            style={{ top: 30 + i * 18 }}
+          />
+          <div className="flynt-flow-socket-label output" style={{ top: 23 + i * 18 }}>{s.name}</div>
+        </React.Fragment>
       ))}
     </div>
   );
@@ -210,9 +307,18 @@ function FlyntNode({ data }: { data: NodePayload }) {
 
 const NODE_TYPES = { flynt: FlyntNode };
 
+
 // ── App + state management ──────────────────────────────────────────────────
 
-function FlowApp({
+function FlowApp(props: { flow: FlowJson; readOnly: boolean; onChange?: (body: FlowJson) => void }) {
+  return (
+    <ReactFlowProvider>
+      <FlowCanvas {...props} />
+    </ReactFlowProvider>
+  );
+}
+
+function FlowCanvas({
   flow,
   readOnly,
   onChange,
@@ -228,6 +334,8 @@ function FlowApp({
     flow.nodes.map(toRfNode)
   );
   const [edges, setEdges] = React.useState<Edge[]>(() => flow.edges.map(toRfEdge));
+  const [selectedNodeId, setSelectedNodeId] = React.useState<string | null>(null);
+  const addNodeCountRef = React.useRef(flow.nodes.length);
 
   // Keep a ref to the current state so the debounced emitter doesn't
   // capture stale closures. React's setState batching makes "read latest
@@ -262,7 +370,14 @@ function FlowApp({
     }
   }, [onChange]);
 
-  const scheduleEmit = React.useCallback(() => {
+  const scheduleEmit = React.useCallback((next?: { nodes?: Node<NodePayload>[]; edges?: Edge[] }) => {
+    if (next) {
+      latestRef.current = {
+        ...latestRef.current,
+        nodes: next.nodes ?? latestRef.current.nodes,
+        edges: next.edges ?? latestRef.current.edges,
+      };
+    }
     if (!onChange) return;
     if (emitTimerRef.current) clearTimeout(emitTimerRef.current);
     emitTimerRef.current = setTimeout(flushEmit, 500);
@@ -301,26 +416,45 @@ function FlowApp({
   // disk with no-op writes when the operator clicks around.
   const onNodesChange = React.useCallback(
     (changes: NodeChange[]) => {
-      setNodes((ns) => applyNodeChanges(changes, ns) as Node<NodePayload>[]);
-      const dirty = changes.some(
-        (c) => c.type !== "select" && c.type !== "dimensions"
-      );
-      if (dirty) scheduleEmit();
+      setNodes((ns) => {
+        const next = applyNodeChanges(changes, ns) as Node<NodePayload>[];
+        const dirty = changes.some(
+          (c) => c.type !== "select" && c.type !== "dimensions"
+        );
+        if (dirty) scheduleEmit({ nodes: next });
+        return next;
+      });
+      const selected = changes.find((c) => c.type === "select" && c.selected);
+      if (selected && "id" in selected) setSelectedNodeId(selected.id);
     },
     [scheduleEmit]
   );
 
   const onEdgesChange = React.useCallback(
     (changes: EdgeChange[]) => {
-      setEdges((es) => applyEdgeChanges(changes, es));
-      const dirty = changes.some((c) => c.type !== "select");
-      if (dirty) scheduleEmit();
+      setEdges((es) => {
+        const next = applyEdgeChanges(changes, es);
+        const dirty = changes.some((c) => c.type !== "select");
+        if (dirty) scheduleEmit({ edges: next });
+        return next;
+      });
     },
     [scheduleEmit]
   );
 
   const onConnect = React.useCallback(
     (conn: Connection) => {
+      const sourceNode = nodes.find((node) => node.id === conn.source);
+      const targetNode = nodes.find((node) => node.id === conn.target);
+      const sourceSocket = sourceNode?.data.sockets.find(
+        (socket) => socket.name === (conn.sourceHandle ?? "")
+      );
+      const targetSocket = targetNode?.data.sockets.find(
+        (socket) => socket.name === (conn.targetHandle ?? "")
+      );
+      if (!sourceSocket || !targetSocket || sourceSocket.direction !== "output" || targetSocket.direction !== "input") {
+        return;
+      }
       // react-flow generates edges without ids; we stamp a UUID so the
       // schema's id contract is satisfied and round-trips remain stable.
       const e: Edge = {
@@ -330,15 +464,106 @@ function FlowApp({
         sourceHandle: conn.sourceHandle ?? undefined,
         targetHandle: conn.targetHandle ?? undefined,
       };
-      setEdges((es) => addEdge(e, es));
-      scheduleEmit();
+      setEdges((es) => {
+        const next = addEdge(e, es);
+        scheduleEmit({ edges: next });
+        return next;
+      });
     },
-    [scheduleEmit]
+    [nodes, scheduleEmit]
   );
 
+  const viewportPositionForNewNode = React.useCallback((index: number): { x: number; y: number } => {
+    const row = Math.floor(index / 3);
+    const col = index % 3;
+    return {
+      x: 420 + col * 260,
+      y: 220 + row * 180,
+    };
+  }, []);
+
+  const addNode = React.useCallback((definition: FlowNodeDefinition) => {
+    const nodeId = uuid();
+    const index = addNodeCountRef.current;
+    addNodeCountRef.current += 1;
+    const { x, y } = viewportPositionForNewNode(index);
+    const node: Node<NodePayload> = {
+      id: nodeId,
+      type: "flynt",
+      position: { x, y },
+      data: {
+        kind: definition.kind,
+        payload: { ...(definition.defaultData ?? {}) },
+        sockets: definition.sockets.map((socket) => ({ ...socket })),
+        label: `${definition.label}: ${String((definition.defaultData ?? {}).title ?? definition.label)}`,
+      },
+    };
+    const nextNodes = [...latestRef.current.nodes, node];
+    latestRef.current = { ...latestRef.current, nodes: nextNodes };
+    setNodes(nextNodes);
+    setSelectedNodeId(null);
+    scheduleEmit({ nodes: nextNodes });
+  }, [scheduleEmit, viewportPositionForNewNode]);
+
+  const addStarterFlow = React.useCallback(() => {
+    const input = NODE_DEFINITION_BY_KIND.get("input")!;
+    const process = NODE_DEFINITION_BY_KIND.get("process")!;
+    const output = NODE_DEFINITION_BY_KIND.get("output")!;
+    const inputId = uuid();
+    const processId = uuid();
+    const outputId = uuid();
+    const makeNode = (definition: FlowNodeDefinition, id: string, x: number): Node<NodePayload> => ({
+      id,
+      type: "flynt",
+      position: { x, y: 260 },
+      data: {
+        kind: definition.kind,
+        payload: { ...(definition.defaultData ?? {}) },
+        sockets: definition.sockets.map((socket) => ({ ...socket })),
+        label: `${definition.label}: ${String((definition.defaultData ?? {}).title ?? definition.label)}`,
+      },
+    });
+    const nextNodes = [
+      makeNode(input, inputId, 420),
+      makeNode(process, processId, 680),
+      makeNode(output, outputId, 940),
+    ];
+    const nextEdges = [
+      { id: uuid(), source: inputId, target: processId, sourceHandle: "out", targetHandle: "in" },
+      { id: uuid(), source: processId, target: outputId, sourceHandle: "out", targetHandle: "in" },
+    ];
+    setNodes(nextNodes);
+    setEdges(nextEdges);
+    addNodeCountRef.current = nextNodes.length;
+    setSelectedNodeId(null);
+    scheduleEmit({ nodes: nextNodes, edges: nextEdges });
+  }, [scheduleEmit]);
+
+  const selectedNode = selectedNodeId ? nodes.find((node) => node.id === selectedNodeId) : undefined;
+
+  const updateSelectedNodePayload = React.useCallback((patch: Record<string, unknown>) => {
+    if (!selectedNodeId) return;
+    setNodes((current) => {
+      const next = current.map((node) => {
+        if (node.id !== selectedNodeId) return node;
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            payload: { ...node.data.payload, ...patch },
+          },
+        };
+      });
+      scheduleEmit({ nodes: next });
+      return next;
+    });
+  }, [selectedNodeId, scheduleEmit]);
+
+
+
   return (
-    <div style={{ width: "100%", height: "100%" }}>
-      <ReactFlowProvider>
+    <div style={{ width: "100%", height: "100%", position: "relative" }}>
+      <div className="flynt-flow-canvas">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -346,13 +571,18 @@ function FlowApp({
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onNodeClick={(_, node) => setSelectedNodeId(node.id)}
+          onPaneClick={() => setSelectedNodeId(null)}
           nodesDraggable={!readOnly}
           nodesConnectable={!readOnly}
           edgesFocusable={!readOnly}
           elementsSelectable
-          fitView
+          defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+          nodeOrigin={[0, 0]}
+          minZoom={0.2}
+          maxZoom={2}
           deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]}
-          style={{ background: "#020617" }}
+          style={{ width: "100%", height: "100%", background: "#020617" }}
         >
           <Background gap={20} color="#1e293b" />
           <Controls position="bottom-right" showInteractive={false} />
@@ -363,7 +593,53 @@ function FlowApp({
             nodeColor="#475569"
           />
         </ReactFlow>
-      </ReactFlowProvider>
+      </div>
+      {!readOnly && (
+        <div className="flynt-flow-palette" onMouseDown={(event) => event.stopPropagation()}>
+          <div className="flynt-flow-palette-title">Core nodes <span>{nodes.length}</span></div>
+          <div className="flynt-flow-palette-grid">
+            {CORE_NODE_DEFINITIONS.map((definition) => (
+              <button
+                key={definition.kind}
+                className="flynt-flow-palette-btn"
+                title={definition.description}
+                onClick={() => addNode(definition)}
+              >
+                {definition.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {!readOnly && nodes.length === 0 && (
+        <div className="flynt-flow-empty">
+          <h2>Build a flow</h2>
+          <p>Add core nodes, then connect their handles to describe direction or dependency.</p>
+          <button onClick={addStarterFlow}>Start with Input → Process → Output</button>
+        </div>
+      )}
+      {!readOnly && selectedNode && (
+        <div className="flynt-flow-inspector" onMouseDown={(event) => event.stopPropagation()}>
+          <div className="flynt-flow-inspector-title">{NODE_DEFINITION_BY_KIND.get(selectedNode.data.kind)?.label || selectedNode.data.kind}</div>
+          <label>
+            Title
+            <input
+              value={typeof selectedNode.data.payload.title === "string" ? selectedNode.data.payload.title : ""}
+              onChange={(event) => updateSelectedNodePayload({ title: event.target.value })}
+            />
+          </label>
+          {selectedNode.data.kind === "note" && (
+            <label>
+              Body
+              <textarea
+                value={typeof selectedNode.data.payload.body === "string" ? selectedNode.data.payload.body : ""}
+                onChange={(event) => updateSelectedNodePayload({ body: event.target.value })}
+              />
+            </label>
+          )}
+        </div>
+      )}
+
     </div>
   );
 }
@@ -386,7 +662,28 @@ function injectStyles() {
   if (document.getElementById("flynt-flow-styles")) return;
   const style = document.createElement("style");
   style.id = "flynt-flow-styles";
-  style.textContent = reactFlowCss;
+  style.textContent = reactFlowCss + `
+.flynt-flow-canvas { position: absolute; inset: 0; min-width: 0; min-height: 0; overflow: hidden; }
+.flynt-flow-canvas .react-flow { width: 100%; height: 100%; }
+.flynt-flow-palette { position: absolute; top: 12px; left: 12px; z-index: 8; width: 180px; padding: 10px; border: 1px solid #1a3448; border-radius: 10px; background: rgba(14, 22, 34, 0.92); box-shadow: 0 12px 28px rgba(0,0,0,0.35); }
+.flynt-flow-palette-title { color: #6ecad8; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; display: flex; justify-content: space-between; }
+.flynt-flow-palette-title span { color: #607888; }
+.flynt-flow-palette-grid { display: grid; gap: 6px; }
+.flynt-flow-palette-btn { width: 100%; border: 1px solid #1a3448; border-radius: 7px; padding: 6px 8px; color: #c4d8e4; background: #0f172a; font-size: 12px; text-align: left; cursor: pointer; }
+.flynt-flow-palette-btn:hover { border-color: #2ab4c8; color: #6ecad8; background: #131e2e; }
+.flynt-flow-empty { position: absolute; z-index: 7; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(420px, 80%); border: 1px solid #1a3448; border-radius: 14px; padding: 22px; background: rgba(14, 22, 34, 0.94); color: #c4d8e4; text-align: center; box-shadow: 0 18px 50px rgba(0,0,0,0.45); }
+.flynt-flow-empty h2 { margin: 0 0 8px; color: #6ecad8; font-size: 24px; }
+.flynt-flow-empty p { margin: 0 0 16px; color: #607888; line-height: 1.45; }
+.flynt-flow-empty button { border: 1px solid #2ab4c8; border-radius: 8px; padding: 8px 12px; color: #06080e; background: #2ab4c8; font-weight: 700; cursor: pointer; }
+.flynt-flow-socket-label { position: absolute; color: #607888; font-size: 9px; line-height: 1; pointer-events: none; }
+.flynt-flow-socket-label.input { left: 8px; }
+.flynt-flow-socket-label.output { right: 8px; }
+.flynt-flow-inspector { position: absolute; bottom: 12px; right: 12px; z-index: 8; width: 240px; padding: 10px; border: 1px solid #1a3448; border-radius: 10px; background: rgba(14, 22, 34, 0.94); box-shadow: 0 12px 28px rgba(0,0,0,0.35); color: #c4d8e4; }
+.flynt-flow-inspector-title { color: #6ecad8; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
+.flynt-flow-inspector label { display: grid; gap: 4px; color: #607888; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 8px; }
+.flynt-flow-inspector input, .flynt-flow-inspector textarea { width: 100%; box-sizing: border-box; border: 1px solid #1a3448; border-radius: 7px; padding: 7px 8px; background: #06080e; color: #c4d8e4; font: inherit; text-transform: none; letter-spacing: normal; }
+.flynt-flow-inspector textarea { min-height: 90px; resize: vertical; }
+`;
   document.head.appendChild(style);
 }
 
