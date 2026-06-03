@@ -68,6 +68,7 @@ interface FlyntEditorCompatApi {
   attachView(view: LegacyEditorView, initialContent?: string): FlyntEditorApi;
   changeHandlerExtension(EditorView: { updateListener: { of(callback: (update: { docChanged?: boolean }) => void): unknown } }): unknown;
   keymapRegistry(keymap: { of(bindings: Array<{ key: string; run(view: LegacyEditorView): boolean }>): unknown }): { save: unknown; formatting: unknown; all: unknown[] };
+  baseExtensions(modules: EditorCompatModules, localExtensions?: unknown[]): unknown[];
   commandRegistry(): EditorCommandRegistry;
   dispatchEditorCommand(id: string, payload?: { text?: string }): BridgeResult;
 }
@@ -134,6 +135,62 @@ function attachView(view: LegacyEditorView, initialContent = ""): FlyntEditorApi
 
 interface EditorCommandRegistry {
   execute(id: string, payload?: { text?: string }): BridgeResult;
+}
+
+interface EditorCompatModules {
+  EditorView: { lineWrapping: unknown; updateListener: { of(callback: (update: { docChanged?: boolean }) => void): unknown } };
+  syntaxHighlighting(style: unknown, config?: unknown): unknown;
+  flyntHighlight: unknown;
+  defaultHighlightStyle: unknown;
+  oneDark: unknown;
+  highlightActiveLine(): unknown;
+  highlightSpecialChars(): unknown;
+  highlightSelectionMatches(): unknown;
+  drawSelection(): unknown;
+  bracketMatching(): unknown;
+  closeBrackets(): unknown;
+  searchKeymap: unknown;
+  defaultKeymap: unknown;
+  history(): unknown;
+  historyKeymap: unknown;
+  indentWithTab: unknown;
+  markdown(config: unknown): unknown;
+  markdownLanguage: unknown;
+  GFM: unknown;
+  languages: unknown;
+  keymap: { of(bindings: unknown[]): unknown };
+}
+
+function baseExtensions(modules: EditorCompatModules, localExtensions: unknown[] = []): unknown[] {
+  const flyntKeymaps = keymapRegistry(modules.keymap);
+  return [
+    modules.syntaxHighlighting(modules.flyntHighlight),
+    modules.oneDark,
+    modules.syntaxHighlighting(modules.defaultHighlightStyle, { fallback: true }),
+    modules.markdown({
+      base: modules.markdownLanguage,
+      codeLanguages: modules.languages,
+      extensions: modules.GFM,
+    }),
+    modules.history(),
+    modules.drawSelection(),
+    modules.highlightActiveLine(),
+    modules.highlightSpecialChars(),
+    modules.highlightSelectionMatches(),
+    modules.bracketMatching(),
+    modules.closeBrackets(),
+    modules.keymap.of([
+      modules.indentWithTab,
+      ...(modules.defaultKeymap as unknown[]),
+      ...(modules.historyKeymap as unknown[]),
+      ...(modules.searchKeymap as unknown[]),
+    ]),
+    flyntKeymaps.save,
+    flyntKeymaps.formatting,
+    changeHandlerExtension(modules.EditorView),
+    ...localExtensions,
+    modules.EditorView.lineWrapping,
+  ];
 }
 
 function activeText(view: LegacyEditorView): { from: number; to: number; text: string; line: { from: number; to: number; text: string } } {
@@ -330,6 +387,6 @@ function install(initialContent = ""): FlyntEditorApi {
   return api;
 }
 
-window.FlyntEditorCompat = { install, attachView, changeHandlerExtension, keymapRegistry, commandRegistry, dispatchEditorCommand };
+window.FlyntEditorCompat = { install, attachView, changeHandlerExtension, keymapRegistry, baseExtensions, commandRegistry, dispatchEditorCommand };
 
 export {};

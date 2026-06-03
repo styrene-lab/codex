@@ -1435,26 +1435,34 @@ fn cm6_init_js(content: &str) -> String {
         selection: {{ anchor: cursorPos }},
         extensions: [
             flyntTheme,
-            syntaxHighlighting(flyntHighlight),
-            oneDark,
-            syntaxHighlighting(defaultHighlightStyle, {{ fallback: true }}),
-            markdown({{ base: markdownLanguage, codeLanguages: languages, extensions: GFM }}),
-            history(),
-            drawSelection(),
-            highlightActiveLine(),
-            highlightSpecialChars(),
-            highlightSelectionMatches(),
-            bracketMatching(),
-            closeBrackets(),
-            keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
-            flyntKeymaps.save,
-            flyntKeymaps.formatting,
-            changeHandler,
-            livePreview,
-            blockRenderPlugin,
-            frontmatterPlugin,
-            // Click wikilink to navigate; uses document text at click position
-            EditorView.domEventHandlers({{
+            ...window.FlyntEditorCompat.baseExtensions({{
+                EditorView,
+                syntaxHighlighting,
+                flyntHighlight,
+                defaultHighlightStyle,
+                oneDark,
+                highlightActiveLine,
+                highlightSpecialChars,
+                highlightSelectionMatches,
+                drawSelection,
+                bracketMatching,
+                closeBrackets,
+                searchKeymap,
+                defaultKeymap,
+                history,
+                historyKeymap,
+                indentWithTab,
+                markdown,
+                markdownLanguage,
+                GFM,
+                languages,
+                keymap,
+            }}, [
+                livePreview,
+                blockRenderPlugin,
+                frontmatterPlugin,
+                // Click wikilink to navigate; uses document text at click position
+                EditorView.domEventHandlers({{
                 click(event, view) {{
                     const old = document.getElementById('flynt-ctx-menu');
                     if (old) old.remove();
@@ -1603,7 +1611,7 @@ fn cm6_init_js(content: &str) -> String {
                     return true;
                 }}
             }}),
-            EditorView.lineWrapping,
+            ]),
         ],
     }});
 
@@ -1617,11 +1625,37 @@ fn cm6_init_js(content: &str) -> String {
         window._flyntEditorSavedContent = initialContent;
         window._flyntEditorDirty = false;
         window.FlyntEditor = {{
-            getDocument: function() {{ const cm = window._flyntCM; const content = cm ? cm.state.doc.toString() : ; return {{ content, dirty: false }}; }},
+            getDocument: function() {{
+                const cm = window._flyntCM;
+                const content = cm ? cm.state.doc.toString() : '';
+                return {{ content, dirty: false }};
+            }},
             focus: function() {{ if (window._flyntCM) window._flyntCM.focus(); }},
-            replaceSelection: function(text) {{ const cm = window._flyntCM; if (!cm) return {{ ok: false, reason: not-mounted }}; cm.dispatch(cm.state.replaceSelection(String(text || ))); cm.focus(); return {{ ok: true }}; }},
-            revealLine: function(lineNumber) {{ const cm = window._flyntCM; if (!cm) return {{ ok: false, reason: not-mounted }}; const line = cm.state.doc.line(Math.max(1, Number(lineNumber) || 1)); cm.dispatch({{ selection: {{ anchor: line.from }}, effects: CM.EditorView.scrollIntoView(line.from, {{ y: start, yMargin: 24 }}) }}); cm.focus(); return {{ ok: true }}; }},
-            saveNow: function() {{ const cm = window._flyntCM; if (!cm) return {{ ok: false, reason: not-mounted }}; window._flyntNotify(save, cm.state.doc.toString()); return {{ ok: true }}; }},
+            replaceSelection: function(text) {{
+                const cm = window._flyntCM;
+                if (!cm) return {{ ok: false, reason: 'not-mounted' }};
+                cm.dispatch(cm.state.replaceSelection(String(text || '')));
+                cm.focus();
+                return {{ ok: true }};
+            }},
+            executeCommand: function(id, payload) {{
+                if (id === 'insert-text') return this.replaceSelection(payload && payload.text);
+                return {{ ok: false, reason: 'bridge-bundle-unavailable' }};
+            }},
+            revealLine: function(lineNumber) {{
+                const cm = window._flyntCM;
+                if (!cm) return {{ ok: false, reason: 'not-mounted' }};
+                const line = cm.state.doc.line(Math.max(1, Number(lineNumber) || 1));
+                cm.dispatch({{ selection: {{ anchor: line.from }}, effects: CM.EditorView.scrollIntoView(line.from, {{ y: 'start', yMargin: 24 }}) }});
+                cm.focus();
+                return {{ ok: true }};
+            }},
+            saveNow: function() {{
+                const cm = window._flyntCM;
+                if (!cm) return {{ ok: false, reason: 'not-mounted' }};
+                window._flyntNotify('save', cm.state.doc.toString());
+                return {{ ok: true }};
+            }},
             markSaved: function() {{ window._flyntEditorDirty = false; return {{ ok: true }}; }},
             isDirty: function() {{ return !!window._flyntEditorDirty; }},
         }};
