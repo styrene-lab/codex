@@ -1760,6 +1760,14 @@ fn cm6_init_js(content: &str) -> String {
                 if (typeof state.scrollLeft === 'number') cm.scrollDOM.scrollLeft = state.scrollLeft;
                 return {{ ok: true }};
             }},
+            revealLine: function(lineNumber) {{
+                const cm = window._flyntCM;
+                if (!cm) return {{ ok: false, reason: 'not-mounted' }};
+                const line = cm.state.doc.line(Math.max(1, Number(lineNumber) || 1));
+                cm.dispatch({{ selection: {{ anchor: line.from }}, effects: CM.EditorView.scrollIntoView(line.from, {{ y: 'start', yMargin: 24 }}) }});
+                cm.focus();
+                return {{ ok: true }};
+            }},
             reconfigure: function() {{ return {{ ok: false, reason: 'compatibility-wrapper' }}; }},
         }};
     }}
@@ -3472,7 +3480,7 @@ pub fn NotesView() -> Element {
                                     class: "btn btn-ghost",
                                     onclick: move |_| {
                                         spawn(async move {
-                                            let mut eval = document::eval("if(window._flyntCM){dioxus.send(window._flyntCM.state.doc.toString())}else{dioxus.send('')}");
+                                            let mut eval = document::eval("if(window.FlyntEditor){dioxus.send(window.FlyntEditor.getDocument().content)}else{dioxus.send('')}");
                                             if let Ok(content) = eval.recv::<String>().await {
                                                 if !content.is_empty() {
                                                     *edit_body.write() = content;
@@ -3747,11 +3755,9 @@ pub fn NotesView() -> Element {
                     on_jump_line: move |line: usize| {
                         let js = format!(
                             r#"(function(){{
-                            if(window._flyntCM){{
-                                const line = window._flyntCM.state.doc.line(Math.max(1, {line}));
-                                window._flyntCM.dispatch({{selection: {{anchor: line.from}}, effects: window.CM.EditorView.scrollIntoView(line.from, {{y: "start", yMargin: 24}})}});
-                                window._flyntCM.focus();
-                                return;
+                            if(window.FlyntEditor){{
+                                const result = window.FlyntEditor.revealLine({line});
+                                if(result && result.ok) return;
                             }}
                             const ed = document.getElementById('flynt-editor');
                             if(ed){{

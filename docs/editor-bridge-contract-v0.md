@@ -136,6 +136,10 @@ interface SerializedEditorState {
 
 Restores selection and scroll state.
 
+### `revealLine(lineNumber)`
+
+Moves the cursor to a one-indexed line number, scrolls it into view, and focuses the editor.
+
 ### `reconfigure(config)`
 
 Applies dynamic configuration using CM6 compartments. Future config keys:

@@ -362,7 +362,7 @@ fn execute_command(
             if let Ok(_path) = crate::views::excalidraw::create_drawing(&project.root, &name) {
                 let embed = format!("![[{name}.excalidraw]]");
                 let js = format!(
-                    "if(window._flyntCM){{const t=window._flyntCM.state.selection.main.head;window._flyntCM.dispatch({{changes:{{from:t,insert:{escaped}}}}});}}else{{alert('Open a note first to insert a drawing.')}}",
+                    "if(window.FlyntEditor){{window.FlyntEditor.replaceSelection({escaped});}}else{{alert('Open a note first to insert a drawing.')}}",
                     escaped = serde_json::to_string(&embed).unwrap_or_default()
                 );
                 document::eval(&js);
