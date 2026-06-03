@@ -1,6 +1,5 @@
 use crate::{
     bootstrap::{AppContext, OmegonRuntimeContext},
-    components::{NotePreview, NotePreviewCard},
     state::{BookmarkRefresh, Route, TabState},
 };
 use dioxus::prelude::*;
@@ -23,7 +22,6 @@ use std::{collections::BTreeMap, path::PathBuf};
 pub fn Sidebar(mut active_route: Signal<Route>) -> Element {
     let ctx = use_context::<AppContext>();
     let mut refresh = use_context_provider(|| Signal::new(0_u64));
-    let mut settings_open = use_context::<Signal<crate::state::SettingsOpen>>();
 
     // Debounced project watcher — coalesces rapid-fire events (e.g., during
     // reindex of 1000+ files) into a single sidebar refresh after 500ms of quiet.
@@ -79,9 +77,10 @@ pub fn Sidebar(mut active_route: Signal<Route>) -> Element {
         }
     });
 
-    let mut creating = use_signal(|| false);
-    let mut new_name = use_signal(String::new);
-    let mut create_err = use_signal(|| Option::<String>::None);
+    let creating = use_signal(|| false);
+    let new_name = use_signal(String::new);
+    let create_err = use_signal(|| Option::<String>::None);
+    let sidebar_lane = use_signal(|| SidebarLane::Files);
 
     rsx! {
         nav { class: "sidebar",
@@ -97,21 +96,6 @@ pub fn Sidebar(mut active_route: Signal<Route>) -> Element {
             } else {
                 // ── File tree ─────────────────────────────────────
                 div { class: "file-tree",
-                    div { class: "file-tree-header",
-                        button {
-                            class: "file-tree-new-btn",
-                            title: "New note (\u{2318}N)",
-                            onclick: move |_| {
-                                let was = *creating.read();
-                                creating.set(!was);
-                                if !was {
-                                    new_name.set(String::new());
-                                    create_err.set(None);
-                                }
-                            },
-                            "+"
-                        }
-                    }
                     if *creating.read() {
                         NewNoteInput {
                             new_name,
@@ -123,19 +107,19 @@ pub fn Sidebar(mut active_route: Signal<Route>) -> Element {
                     }
                     match (projection.read().as_ref(), docs.read().as_ref()) {
                         (None, _) => rsx! { span { class: "tree-item muted", "Loading…" } },
-                        (Some(projection), Some(_docs)) if projection_is_empty(projection) => rsx! {
-                            div { class: "tree-empty",
-                                "Empty project — press + to create a file"
-                            }
-                            if let Some(error) = projection_error.read().clone() {
-                                div { class: "tree-empty", "Sidebar registry error: {error}" }
-                            }
-                        },
                         (Some(projection), Some(docs)) => rsx! {
                             if let Some(error) = projection_error.read().clone() {
                                 div { class: "tree-empty", "Sidebar registry error: {error}" }
                             }
-                            DualLaneTree { projection: projection.clone(), docs: docs.clone() }
+                            DualLaneTree {
+                                projection: projection.clone(),
+                                docs: docs.clone(),
+                                lane: *sidebar_lane.read(),
+                                sidebar_lane,
+                                creating,
+                                new_name,
+                                create_err,
+                            }
                         },
                         _ => rsx! { span { class: "tree-item muted", "Loading…" } },
                     }
@@ -144,51 +128,6 @@ pub fn Sidebar(mut active_route: Signal<Route>) -> Element {
                 BookmarksPanel { active_route }
             }
 
-            // ── Nav (pinned bottom) ───────────────────────────
-            div { class: "sidebar-nav",
-                button {
-                    class: if *active_route.read() == Route::Notes    { "nav-btn active" } else { "nav-btn" },
-                    title: "Notes",
-                    onclick: move |_| *active_route.write() = Route::Notes,
-                    span { class: "nav-icon", dangerous_inner_html: crate::icons::ICON_SCROLL }
-                }
-                button {
-                    class: if *active_route.read() == Route::Design   { "nav-btn active" } else { "nav-btn" },
-                    title: "Design",
-                    onclick: move |_| *active_route.write() = Route::Design,
-                    span { class: "nav-icon", dangerous_inner_html: crate::icons::ICON_PALETTE }
-                }
-                button {
-                    class: if *active_route.read() == Route::Kanban   { "nav-btn active" } else { "nav-btn" },
-                    title: "Tasks",
-                    onclick: move |_| *active_route.write() = Route::Kanban,
-                    span { class: "nav-icon", dangerous_inner_html: crate::icons::ICON_BOARD }
-                }
-                button {
-                    class: if *active_route.read() == Route::Lenses   { "nav-btn active" } else { "nav-btn" },
-                    title: "Lenses",
-                    onclick: move |_| *active_route.write() = Route::Lenses,
-                    span { class: "nav-icon", dangerous_inner_html: crate::icons::ICON_LENS }
-                }
-                button {
-                    class: if *active_route.read() == Route::Graph    { "nav-btn active" } else { "nav-btn" },
-                    title: "Graph",
-                    onclick: move |_| *active_route.write() = Route::Graph,
-                    span { class: "nav-icon", dangerous_inner_html: crate::icons::ICON_GRAPH }
-                }
-                button {
-                    class: if *active_route.read() == Route::TerminalLab { "nav-btn active" } else { "nav-btn" },
-                    title: "Terminal",
-                    onclick: move |_| *active_route.write() = Route::TerminalLab,
-                    span { class: "nav-icon", "⌁" }
-                }
-                button {
-                    class: if settings_open.read().0 { "nav-btn active" } else { "nav-btn" },
-                    title: "Settings",
-                    onclick: move |_| *settings_open.write() = crate::state::SettingsOpen(true),
-                    span { class: "nav-icon", dangerous_inner_html: crate::icons::ICON_SETTINGS }
-                }
-            }
         }
     }
 }
@@ -200,7 +139,7 @@ fn BookmarksPanel(mut active_route: Signal<Route>) -> Element {
     let mut bookmark_refresh = use_context::<Signal<BookmarkRefresh>>();
     let mut tab_state = use_context::<Signal<TabState>>();
     let mut search_query = use_context::<Signal<String>>();
-    let mut collapsed = use_signal(|| false);
+    let mut collapsed = use_signal(|| true);
 
     let mut bookmarks: Signal<Vec<Bookmark>> = use_signal(Vec::new);
     use_effect(move || {
@@ -210,7 +149,11 @@ fn BookmarksPanel(mut active_route: Signal<Route>) -> Element {
             .load_bookmarks()
             .map(|file| file.bookmarks)
             .unwrap_or_default();
+        let is_empty = list.is_empty();
         bookmarks.set(list);
+        if !is_empty && *collapsed.peek() {
+            collapsed.set(false);
+        }
     });
 
     let count = bookmarks.read().len();
@@ -341,46 +284,87 @@ fn open_bookmark_target(
 
 // ── File tree builder ─────────────────────────────────────────────────────────
 
-fn projection_is_empty(projection: &SidebarProjection) -> bool {
-    projection.text_files.is_empty()
-        && projection.artifacts.boards.is_empty()
-        && projection.artifacts.drawings.is_empty()
-        && projection.artifacts.diagrams.is_empty()
-        && projection.artifacts.flows.is_empty()
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SidebarLane {
+    Files,
+    Surfaces,
 }
 
 #[component]
-fn DualLaneTree(projection: SidebarProjection, docs: Vec<DocumentMeta>) -> Element {
+fn DualLaneTree(
+    projection: SidebarProjection,
+    docs: Vec<DocumentMeta>,
+    lane: SidebarLane,
+    mut sidebar_lane: Signal<SidebarLane>,
+    mut creating: Signal<bool>,
+    mut new_name: Signal<String>,
+    mut create_err: Signal<Option<String>>,
+) -> Element {
     let doc_by_id: BTreeMap<_, _> = docs
         .into_iter()
         .map(|doc| (doc.id.0.to_string(), doc))
         .collect();
     rsx! {
-        section { class: "sidebar-lane sidebar-lane-notes",
-            div { class: "file-tree-section-title", "Notes / Text Files" }
-            if projection.text_files.is_empty() {
-                div { class: "tree-empty", "No text files" }
-            } else {
-                { build_text_file_tree(&projection.text_files, &doc_by_id) }
+        div { class: "sidebar-lane-switcher",
+            button {
+                class: if lane == SidebarLane::Files { "sidebar-lane-switch active" } else { "sidebar-lane-switch" },
+                title: "Ordinary project text files",
+                onclick: move |_| sidebar_lane.set(SidebarLane::Files),
+                "Files"
+            }
+            button {
+                class: if lane == SidebarLane::Surfaces { "sidebar-lane-switch active" } else { "sidebar-lane-switch" },
+                title: "Visual surfaces: boards, drawings, diagrams, and flows",
+                onclick: move |_| sidebar_lane.set(SidebarLane::Surfaces),
+                "Surfaces"
             }
         }
-        section { class: "sidebar-lane sidebar-lane-artifacts",
-            div { class: "file-tree-section-title", "Artifacts" }
-            if !projection.artifacts.boards.is_empty() {
-                ArtifactGroup { label: "Boards", items: projection.artifacts.boards.clone() }
-            }
-            if !projection.artifacts.drawings.is_empty() {
-                ArtifactGroup { label: "Drawings", items: projection.artifacts.drawings.clone() }
-            }
-            if !projection.artifacts.diagrams.is_empty() {
-                ArtifactGroup { label: "Diagrams", items: projection.artifacts.diagrams.clone() }
-            }
-            if !projection.artifacts.flows.is_empty() {
-                ArtifactGroup { label: "Flows", items: projection.artifacts.flows.clone() }
-            }
-            if projection.artifacts.boards.is_empty() && projection.artifacts.drawings.is_empty() && projection.artifacts.diagrams.is_empty() && projection.artifacts.flows.is_empty() {
-                div { class: "tree-empty", "No artifacts" }
-            }
+        match lane {
+            SidebarLane::Files => rsx! {
+                section { class: "sidebar-lane sidebar-lane-notes",
+                    div { class: "file-tree-section-title file-tree-section-title-row",
+                        span { title: "Ordinary project text files", "Files" }
+                        button {
+                            class: "file-tree-new-btn file-tree-section-action",
+                            title: "New file (⌘N)",
+                            onclick: move |_| {
+                                let was = *creating.read();
+                                creating.set(!was);
+                                if !was {
+                                    new_name.set(String::new());
+                                    create_err.set(None);
+                                }
+                            },
+                            "+"
+                        }
+                    }
+                    if projection.text_files.is_empty() {
+                        div { class: "tree-empty", "No text files" }
+                    } else {
+                        { build_text_file_tree(&projection.text_files, &doc_by_id) }
+                    }
+                }
+            },
+            SidebarLane::Surfaces => rsx! {
+                section { class: "sidebar-lane sidebar-lane-artifacts",
+                    div { class: "file-tree-section-title", title: "Visual surfaces backed by source/wrapper/render files", "Surfaces" }
+                    if !projection.artifacts.boards.is_empty() {
+                        ArtifactGroup { label: "Boards", items: projection.artifacts.boards.clone() }
+                    }
+                    if !projection.artifacts.drawings.is_empty() {
+                        ArtifactGroup { label: "Drawings", items: projection.artifacts.drawings.clone() }
+                    }
+                    if !projection.artifacts.diagrams.is_empty() {
+                        ArtifactGroup { label: "Diagrams", items: projection.artifacts.diagrams.clone() }
+                    }
+                    if !projection.artifacts.flows.is_empty() {
+                        ArtifactGroup { label: "Flows", items: projection.artifacts.flows.clone() }
+                    }
+                    if projection.artifacts.boards.is_empty() && projection.artifacts.drawings.is_empty() && projection.artifacts.diagrams.is_empty() && projection.artifacts.flows.is_empty() {
+                        div { class: "tree-empty", "No surfaces" }
+                    }
+                }
+            },
         }
     }
 }
@@ -424,7 +408,7 @@ fn insert_document_tree_node(root: &mut BTreeMap<String, TreeNode>, doc: &Docume
             .or_insert_with(|| TreeNode::Folder {
                 name: part.clone(),
                 children: BTreeMap::new(),
-                default_open: false,
+                default_open: part == "notes",
             });
         current = match entry {
             TreeNode::Folder { children, .. } => children,
@@ -544,7 +528,7 @@ fn render_virtual_artifact_file(
     let mut tab_state = use_context::<Signal<TabState>>();
     let mut active_route = use_context::<Signal<Route>>();
     let mut ctx_menu = use_signal(|| None::<(f64, f64)>);
-    let title = item.title.clone();
+    let title = artifact_display_title(item);
     let path = item.source_path.clone();
     let wrapper_path = item.wrapper_path.clone();
     let render_paths = item.render_paths.clone();
@@ -552,6 +536,9 @@ fn render_virtual_artifact_file(
     let secondary_format = secondary_render_format(kind);
     let primary_status = render_status_for(&render_paths, primary_format);
     let secondary_status = render_status_for(&render_paths, secondary_format);
+    let primary_format_label = render_format_label(primary_format);
+    let secondary_format_label = render_format_label(secondary_format);
+    let primary_format_short = primary_format.short_label();
     let artifact_title = visual_artifact_title(kind, &path, consumes);
     let click_path = path.clone();
     let menu_path = path.clone();
@@ -577,11 +564,8 @@ fn render_virtual_artifact_file(
                 let coords = e.client_coordinates();
                 *ctx_menu.write() = Some((coords.x, coords.y));
             },
-            span { class: "tree-file-icon", "{visual_artifact_icon(kind)}" }
             span { class: "tree-name", "{title}" }
-            span { class: "diagram-artifact-badge present", title: "{visual_artifact_label(kind)}", "{visual_artifact_short_label(kind)}" }
-            span { class: "diagram-artifact-badge {primary_status.class()}", title: "{primary_format.label()} {primary_status.label()}", "{primary_format.label()}" }
-            span { class: "diagram-artifact-badge {secondary_status.class()}", title: "{secondary_format.label()} {secondary_status.label()}", "{secondary_format.label()}" }
+            span { class: "diagram-artifact-badge {primary_status.class()}", title: "{primary_format_label} {primary_status.label()}; secondary {secondary_format_label} {secondary_status.label()}", "{primary_format_short}" }
             if d2_count > 0 {
                 span { class: "diagram-artifact-badge present", title: "Consumes {d2_count} D2 diagram(s)", "◇{d2_count}" }
             }
@@ -611,6 +595,21 @@ fn render_virtual_artifact_file(
             }
         }
     }
+}
+
+fn artifact_display_title(item: &ArtifactNavItem) -> String {
+    let source_stem = item
+        .source_path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or(item.title.as_str());
+    item.title
+        .strip_suffix(".board")
+        .or_else(|| item.title.strip_suffix(".excalidraw"))
+        .or_else(|| item.title.strip_suffix(".d2"))
+        .or_else(|| item.title.strip_suffix(".flow"))
+        .unwrap_or(source_stem)
+        .to_string()
 }
 
 fn artifact_context_menu_items(
@@ -716,15 +715,6 @@ fn secondary_render_format(_kind: VisualArtifactKind) -> RenderFormat {
     RenderFormat::Png
 }
 
-fn visual_artifact_icon(kind: VisualArtifactKind) -> &'static str {
-    match kind {
-        VisualArtifactKind::D2Diagram => "◇",
-        VisualArtifactKind::ExcalidrawDrawing => "✎",
-        VisualArtifactKind::DesignBoard => "▦",
-        VisualArtifactKind::Flow => "⇄",
-    }
-}
-
 fn visual_artifact_label(kind: VisualArtifactKind) -> &'static str {
     match kind {
         VisualArtifactKind::D2Diagram => "D2 diagram",
@@ -734,21 +724,34 @@ fn visual_artifact_label(kind: VisualArtifactKind) -> &'static str {
     }
 }
 
-fn visual_artifact_short_label(kind: VisualArtifactKind) -> &'static str {
-    match kind {
-        VisualArtifactKind::D2Diagram => "D2",
-        VisualArtifactKind::ExcalidrawDrawing => "DRAW",
-        VisualArtifactKind::DesignBoard => "BOARD",
-        VisualArtifactKind::Flow => "FLOW",
-    }
-}
-
 fn render_status_for(renders: &[RenderArtifact], format: RenderFormat) -> RenderStatus {
     renders
         .iter()
         .find(|render| render.format == format)
         .map(|render| render.status)
         .unwrap_or(RenderStatus::Missing)
+}
+
+fn render_format_label(format: RenderFormat) -> &'static str {
+    match format {
+        RenderFormat::Svg => "SVG",
+        RenderFormat::Png => "PNG",
+        RenderFormat::Html => "HTML",
+    }
+}
+
+impl RenderFormatLabel for RenderFormat {
+    fn short_label(self) -> &'static str {
+        match self {
+            Self::Svg => "svg",
+            Self::Png => "png",
+            Self::Html => "html",
+        }
+    }
+}
+
+trait RenderFormatLabel {
+    fn short_label(self) -> &'static str;
 }
 
 impl RenderStatusBadgeClass for RenderStatus {
@@ -810,6 +813,23 @@ fn render_folder_keyed(
     }
 }
 
+fn file_type_badge(path: &std::path::Path) -> Option<&'static str> {
+    match path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "txt" => Some("txt"),
+        "toml" => Some("toml"),
+        "yaml" | "yml" => Some("yaml"),
+        "json" => Some("json"),
+        "csv" => Some("csv"),
+        _ => None,
+    }
+}
+
 #[component]
 fn TreeFile(meta: DocumentMeta, depth: u32) -> Element {
     let ctx = use_context::<AppContext>();
@@ -828,7 +848,6 @@ fn TreeFile(meta: DocumentMeta, depth: u32) -> Element {
     let indent = depth as f32 * 12.0;
 
     let mut ctx_menu: Signal<Option<(f64, f64)>> = use_signal(|| None);
-    let mut preview: Signal<Option<NotePreview>> = use_signal(|| None);
 
     // Task files live under Tasks/ — they're real notes but get a
     // subtle visual cue (different icon + class) so the operator can
@@ -838,6 +857,7 @@ fn TreeFile(meta: DocumentMeta, depth: u32) -> Element {
     // DocumentMeta yet.
     let is_task =
         meta.path.starts_with("Tasks/") || meta.path.to_string_lossy().starts_with("Tasks/");
+    let file_badge = file_type_badge(&meta.path);
 
     rsx! {
         button {
@@ -848,20 +868,6 @@ fn TreeFile(meta: DocumentMeta, depth: u32) -> Element {
                 (false, false) => "tree-item tree-file note-preview-anchor",
             },
             style: "padding-left: {indent + 20.0}px;",
-            onmouseenter: move |_| {
-                if preview.peek().is_some() {
-                    return;
-                }
-                let project = ctx.project();
-                let id = meta.id.clone();
-                spawn(async move {
-                    if let Ok(Some(preview_data)) = tokio::task::spawn_blocking(move || {
-                        NotePreview::load_by_id(&project, &id)
-                    }).await {
-                        preview.set(Some(preview_data));
-                    }
-                });
-            },
             onclick: move |_| {
                     if let Ok(Some(doc)) = ctx.project().store.get_document(&id) {
                         let _ = document::eval(&crate::views::notes::cm6_fast_swap_js(&doc.content));
@@ -882,10 +888,8 @@ fn TreeFile(meta: DocumentMeta, depth: u32) -> Element {
                 if is_task { "\u{2611}" } else { "\u{25C7}" }
             }
             span { class: "tree-name", "{meta.title}" }
-            if let Some(preview_data) = preview.read().clone() {
-                div { class: "note-preview-inline",
-                    NotePreviewCard { preview: preview_data }
-                }
+            if let Some(badge) = file_badge {
+                span { class: "text-file-badge", "{badge}" }
             }
         }
 
@@ -1185,6 +1189,47 @@ mod sidebar_tests {
         assert_eq!(
             full,
             vec!["open", "reveal-source", "reveal-wrapper", "reveal-outputs"]
+        );
+    }
+}
+
+#[cfg(test)]
+mod sidebar_visual_tests {
+    use super::*;
+    use flynt_core::project_registry::VisualArtifactId;
+
+    #[test]
+    fn artifact_display_title_strips_source_extensions() {
+        let item = ArtifactNavItem {
+            id: VisualArtifactId("board:boards/Demo.board".into()),
+            title: "Demo.board".into(),
+            kind: flynt_core::sidebar_projection::ArtifactNavKind::Board,
+            source_path: std::path::PathBuf::from("boards/Demo.board"),
+            wrapper_path: None,
+            render_paths: Vec::new(),
+        };
+        assert_eq!(artifact_display_title(&item), "Demo");
+    }
+}
+
+#[cfg(test)]
+mod sidebar_file_badge_tests {
+    use super::*;
+
+    #[test]
+    fn file_type_badge_marks_non_markdown_text_files() {
+        assert_eq!(file_type_badge(std::path::Path::new("note.md")), None);
+        assert_eq!(
+            file_type_badge(std::path::Path::new("scratchpad.txt")),
+            Some("txt")
+        );
+        assert_eq!(
+            file_type_badge(std::path::Path::new("fixture.json")),
+            Some("json")
+        );
+        assert_eq!(
+            file_type_badge(std::path::Path::new("data.csv")),
+            Some("csv")
         );
     }
 }

@@ -44,14 +44,18 @@ fn main() {
     dioxus::LaunchBuilder::desktop()
         .with_cfg(
             Config::default()
-                .with_icon(dioxus::desktop::icon_from_memory(include_bytes!("../assets/icon.png")).expect("valid Flynt window icon"))
+                .with_icon(
+                    dioxus::desktop::icon_from_memory(include_bytes!("../assets/icon.png"))
+                        .expect("valid Flynt window icon"),
+                )
                 .with_menu(flynt_app::menu::build_menu_bar())
                 .with_disable_context_menu(false)
                 .with_window(
                     WindowBuilder::new()
                         .with_title("Flynt")
-                        .with_inner_size(LogicalSize::new(1280.0f64, 860.0f64))
+                        .with_inner_size(LogicalSize::new(1440.0f64, 960.0f64))
                         .with_min_inner_size(LogicalSize::new(800.0f64, 500.0f64))
+                        .with_maximized(true)
                         .with_always_on_top(false)
                         .with_resizable(true),
                 )

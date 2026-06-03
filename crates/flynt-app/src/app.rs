@@ -1123,6 +1123,7 @@ pub fn App() -> Element {
                     AgentRail {}
                 }
             }
+            WorkspaceFooter { active_route }
         }
     }
 }
@@ -1141,6 +1142,86 @@ impl ExistingProjectSetup {
             path,
             create_portable_metadata,
             track_index_snapshot: false,
+        }
+    }
+}
+
+#[component]
+fn WorkspaceFooter(mut active_route: Signal<Route>) -> Element {
+    let mut settings_open = use_context::<Signal<SettingsOpen>>();
+    rsx! {
+        footer { class: "workspace-footer",
+            nav { class: "workspace-footer-nav", aria_label: "Workspace modes",
+                WorkspaceFooterButton {
+                    active: *active_route.read() == Route::Notes,
+                    label: "Write",
+                    title: "Write — edit notes and text files",
+                    icon: crate::icons::ICON_SCROLL,
+                    onclick: move |_| *active_route.write() = Route::Notes,
+                }
+                WorkspaceFooterButton {
+                    active: *active_route.read() == Route::Design,
+                    label: "Design",
+                    title: "Design — create and manage visual surfaces",
+                    icon: crate::icons::ICON_PALETTE,
+                    onclick: move |_| *active_route.write() = Route::Design,
+                }
+                WorkspaceFooterButton {
+                    active: *active_route.read() == Route::Kanban,
+                    label: "Tasks",
+                    title: "Tasks — manage boards and tasks",
+                    icon: crate::icons::ICON_BOARD,
+                    onclick: move |_| *active_route.write() = Route::Kanban,
+                }
+                WorkspaceFooterButton {
+                    active: *active_route.read() == Route::Lenses,
+                    label: "Lenses",
+                    title: "Lenses — query saved project views",
+                    icon: crate::icons::ICON_LENS,
+                    onclick: move |_| *active_route.write() = Route::Lenses,
+                }
+                WorkspaceFooterButton {
+                    active: *active_route.read() == Route::Graph,
+                    label: "Graph",
+                    title: "Graph — explore project links",
+                    icon: crate::icons::ICON_GRAPH,
+                    onclick: move |_| *active_route.write() = Route::Graph,
+                }
+                button {
+                    class: if *active_route.read() == Route::TerminalLab { "workspace-footer-btn active" } else { "workspace-footer-btn" },
+                    title: "Terminal — run shell sessions",
+                    onclick: move |_| *active_route.write() = Route::TerminalLab,
+                    span { class: "workspace-footer-icon", "⌁" }
+                    span { class: "workspace-footer-label", "Term" }
+                }
+            }
+            div { class: "workspace-footer-spacer" }
+            button {
+                class: if settings_open.read().0 { "workspace-footer-btn active" } else { "workspace-footer-btn" },
+                title: "Settings — configure Flynt",
+                onclick: move |_| *settings_open.write() = SettingsOpen(true),
+                span { class: "workspace-footer-icon", dangerous_inner_html: crate::icons::ICON_SETTINGS }
+                span { class: "workspace-footer-label", "Settings" }
+            }
+        }
+    }
+}
+
+#[component]
+fn WorkspaceFooterButton(
+    active: bool,
+    label: &'static str,
+    title: &'static str,
+    icon: &'static str,
+    onclick: EventHandler<MouseEvent>,
+) -> Element {
+    rsx! {
+        button {
+            class: if active { "workspace-footer-btn active" } else { "workspace-footer-btn" },
+            title,
+            onclick: move |event| onclick.call(event),
+            span { class: "workspace-footer-icon", dangerous_inner_html: icon }
+            span { class: "workspace-footer-label", "{label}" }
         }
     }
 }

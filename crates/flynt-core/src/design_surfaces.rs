@@ -201,8 +201,7 @@ const AGENT_GENERATED_INTERACTION_PROFILE: DesignBoardInteractionProfile =
     DesignBoardInteractionProfile {
         interaction: DesignBoardInteraction::AgentGenerated,
         label: "Agent output",
-        description:
-            "Agent-authored visual output intended for review, export, and agent-directed revision.",
+        description: "Agent-authored visual output intended for review, export, and agent-directed revision.",
         badge: "Agent output",
         primary_action: "ask_agent_to_revise",
         secondary_actions: &["export", "duplicate_as_interactive", "view_source"],
@@ -223,8 +222,18 @@ const INTERACTIVE_INTERACTION_PROFILE: DesignBoardInteractionProfile =
         description: "Operator-maintained board that can expose editing controls, component palette, and inspectors.",
         badge: "Interactive",
         primary_action: "open_editor",
-        secondary_actions: &["add_component", "change_theme", "export", "ask_agent_to_assist"],
-        visible_panels: &["component_palette", "focus_summary", "property_inspector", "exports"],
+        secondary_actions: &[
+            "add_component",
+            "change_theme",
+            "export",
+            "ask_agent_to_assist",
+        ],
+        visible_panels: &[
+            "component_palette",
+            "focus_summary",
+            "property_inspector",
+            "exports",
+        ],
         hidden_panels: &[],
         supports_focus_layer: true,
         focus_actions: &["edit_props", "ask_agent_to_assist", "delete_selected"],
@@ -243,18 +252,28 @@ const TEMPLATE_INTERACTION_PROFILE: DesignBoardInteractionProfile = DesignBoardI
     focus_actions: &["use_section", "create_from_template"],
 };
 
-const REFERENCE_INTERACTION_PROFILE: DesignBoardInteractionProfile = DesignBoardInteractionProfile {
-    interaction: DesignBoardInteraction::Reference,
-    label: "Reference",
-    description: "Read-only or source-backed projection intended for inspection, refresh, export, or duplication.",
-    badge: "Reference",
-    primary_action: "inspect_reference",
-    secondary_actions: &["refresh", "export", "duplicate_as_interactive"],
-    visible_panels: &["focus_summary", "provenance", "exports"],
-    hidden_panels: &["drag_handles", "resize_handles", "property_inspector", "direct_mutation"],
-    supports_focus_layer: true,
-    focus_actions: &["inspect_source", "ask_agent_about_selection", "duplicate_as_interactive"],
-};
+const REFERENCE_INTERACTION_PROFILE: DesignBoardInteractionProfile =
+    DesignBoardInteractionProfile {
+        interaction: DesignBoardInteraction::Reference,
+        label: "Reference",
+        description: "Read-only or source-backed projection intended for inspection, refresh, export, or duplication.",
+        badge: "Reference",
+        primary_action: "inspect_reference",
+        secondary_actions: &["refresh", "export", "duplicate_as_interactive"],
+        visible_panels: &["focus_summary", "provenance", "exports"],
+        hidden_panels: &[
+            "drag_handles",
+            "resize_handles",
+            "property_inspector",
+            "direct_mutation",
+        ],
+        supports_focus_layer: true,
+        focus_actions: &[
+            "inspect_source",
+            "ask_agent_about_selection",
+            "duplicate_as_interactive",
+        ],
+    };
 
 const PROFILES: [DesignBoardSurfaceProfile; 9] = [
     WEBSITE_PROFILE,
@@ -443,8 +462,7 @@ const WHITEBOARD_PROFILE: DesignBoardSurfaceProfile = DesignBoardSurfaceProfile 
 const DIAGRAM_PROFILE: DesignBoardSurfaceProfile = DesignBoardSurfaceProfile {
     kind: DesignBoardKind::Diagram,
     label: "Diagram",
-    description:
-        "Architecture maps, process diagrams, system flows, and text-authored diagram panels.",
+    description: "Architecture maps, process diagrams, system flows, and text-authored diagram panels.",
     source_format: DESIGN_BOARD_SOURCE_FORMAT,
     component_categories: &["layout", "typography", "diagram"],
     recommended_components: &[
@@ -499,8 +517,7 @@ const DASHBOARD_PROFILE: DesignBoardSurfaceProfile = DesignBoardSurfaceProfile {
 const RESEARCH_PROFILE: DesignBoardSurfaceProfile = DesignBoardSurfaceProfile {
     kind: DesignBoardKind::Research,
     label: "Research board",
-    description:
-        "Source-backed research synthesis boards with claims, evidence, tasks, and citations.",
+    description: "Source-backed research synthesis boards with claims, evidence, tasks, and citations.",
     source_format: DESIGN_BOARD_SOURCE_FORMAT,
     component_categories: &["layout", "typography", "research", "data", "whiteboard"],
     recommended_components: &[
@@ -868,18 +885,26 @@ mod tests {
 
     #[test]
     fn focus_actions_differ_by_interaction_mode() {
-        assert!(interaction_profile(DesignBoardInteraction::AgentGenerated)
-            .focus_actions
-            .contains(&"ask_agent_to_revise"));
-        assert!(interaction_profile(DesignBoardInteraction::Interactive)
-            .focus_actions
-            .contains(&"edit_props"));
-        assert!(interaction_profile(DesignBoardInteraction::Template)
-            .focus_actions
-            .contains(&"use_section"));
-        assert!(interaction_profile(DesignBoardInteraction::Reference)
-            .focus_actions
-            .contains(&"inspect_source"));
+        assert!(
+            interaction_profile(DesignBoardInteraction::AgentGenerated)
+                .focus_actions
+                .contains(&"ask_agent_to_revise")
+        );
+        assert!(
+            interaction_profile(DesignBoardInteraction::Interactive)
+                .focus_actions
+                .contains(&"edit_props")
+        );
+        assert!(
+            interaction_profile(DesignBoardInteraction::Template)
+                .focus_actions
+                .contains(&"use_section")
+        );
+        assert!(
+            interaction_profile(DesignBoardInteraction::Reference)
+                .focus_actions
+                .contains(&"inspect_source")
+        );
     }
 
     #[test]

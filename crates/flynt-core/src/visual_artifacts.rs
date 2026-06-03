@@ -304,6 +304,29 @@ pub fn discover_design_board_artifacts(project_root: &Path) -> Vec<VisualArtifac
         .collect()
 }
 
+/// Discover node-flow artifacts under the flows directory.
+pub fn discover_flow_artifacts(project_root: &Path) -> Vec<VisualArtifact> {
+    let flows_root = project_root.join("flows");
+    let mut sources = Vec::new();
+    collect_sources_with_extension(&flows_root, "flow", &mut sources);
+    sources.sort();
+
+    sources
+        .into_iter()
+        .filter_map(|source| {
+            let rel_source = source.strip_prefix(project_root).ok()?.to_path_buf();
+            let title = source.file_name()?.to_string_lossy().into_owned();
+            Some(VisualArtifact {
+                kind: VisualArtifactKind::Flow,
+                title,
+                source_path: rel_source,
+                wrapper_path: None,
+                renders: Vec::new(),
+            })
+        })
+        .collect()
+}
+
 pub fn discover_design_board_consumed_artifacts(
     project_root: &Path,
     board_source_path: &Path,
@@ -754,5 +777,18 @@ mod tests {
             kind: VisualArtifactKind::ExcalidrawDrawing,
             source_path: PathBuf::from("drawings/sketch.excalidraw")
         }));
+    }
+
+    #[test]
+    fn discovers_flow_artifacts() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir_all(tmp.path().join("flows")).unwrap();
+        fs::write(tmp.path().join("flows/auth.flow"), "{}").unwrap();
+
+        let artifacts = discover_flow_artifacts(tmp.path());
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(artifacts[0].kind, VisualArtifactKind::Flow);
+        assert_eq!(artifacts[0].source_path, PathBuf::from("flows/auth.flow"));
+        assert!(artifacts[0].wrapper_path.is_none());
     }
 }

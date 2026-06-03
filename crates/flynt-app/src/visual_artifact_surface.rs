@@ -26,15 +26,20 @@ fn resolve_excalidraw_surface(
     frontmatter: &Frontmatter,
 ) -> Option<VisualArtifactSurface> {
     let from_body = crate::views::excalidraw::excalidraw_embed_path(body);
-    let from_recovery = if from_body.is_none() && frontmatter.tags.iter().any(|tag| tag == "drawing")
-    {
-        rel_path
-            .file_stem()
-            .map(|stem| format!("{}.excalidraw", stem.to_string_lossy()))
-    } else {
-        None
-    };
-    resolve_sibling_artifact(project_root, rel_path, from_body.or(from_recovery), VisualArtifactKind::ExcalidrawDrawing)
+    let from_recovery =
+        if from_body.is_none() && frontmatter.tags.iter().any(|tag| tag == "drawing") {
+            rel_path
+                .file_stem()
+                .map(|stem| format!("{}.excalidraw", stem.to_string_lossy()))
+        } else {
+            None
+        };
+    resolve_sibling_artifact(
+        project_root,
+        rel_path,
+        from_body.or(from_recovery),
+        VisualArtifactKind::ExcalidrawDrawing,
+    )
 }
 
 fn resolve_design_board_surface(
@@ -52,7 +57,12 @@ fn resolve_design_board_surface(
     } else {
         None
     };
-    resolve_sibling_artifact(project_root, rel_path, from_body.or(from_recovery), VisualArtifactKind::DesignBoard)
+    resolve_sibling_artifact(
+        project_root,
+        rel_path,
+        from_body.or(from_recovery),
+        VisualArtifactKind::DesignBoard,
+    )
 }
 
 fn resolve_sibling_artifact(
@@ -68,7 +78,9 @@ fn resolve_sibling_artifact(
         return None;
     }
     match kind {
-        VisualArtifactKind::ExcalidrawDrawing => Some(VisualArtifactSurface::ExcalidrawPreview { source_path }),
+        VisualArtifactKind::ExcalidrawDrawing => {
+            Some(VisualArtifactSurface::ExcalidrawPreview { source_path })
+        }
         VisualArtifactKind::DesignBoard => Some(VisualArtifactSurface::DesignBoard { source_path }),
         _ => None,
     }

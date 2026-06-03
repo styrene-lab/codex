@@ -4,8 +4,8 @@
 //! they enter the existing iframe `srcdoc` pipeline. This keeps Design Board
 //! cells portable and isolated while giving agents a patchable component layer.
 
-use anyhow::{anyhow, bail, Context};
-use serde_json::{json, Value};
+use anyhow::{Context, anyhow, bail};
+use serde_json::{Value, json};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderedCell {
@@ -123,8 +123,7 @@ const COMPONENT_CONSTRAINTS: &[&str] = &[
 const PANEL: DesignComponentDefinition = DesignComponentDefinition {
     name: "Panel",
     category: "layout",
-    description:
-        "Generic shadcn-style card shell with optional title, description, badge, body, and footer.",
+    description: "Generic shadcn-style card shell with optional title, description, badge, body, and footer.",
     variants: &["default", "muted", "accent"],
     props_schema: panel_props_schema,
     examples: panel_examples,
@@ -135,8 +134,7 @@ const PANEL: DesignComponentDefinition = DesignComponentDefinition {
 const FRAME: DesignComponentDefinition = DesignComponentDefinition {
     name: "Frame",
     category: "layout",
-    description:
-        "Generic visual region for page sections, artboards, brochure panels, and whiteboard zones.",
+    description: "Generic visual region for page sections, artboards, brochure panels, and whiteboard zones.",
     variants: &["plain", "card", "bordered", "hero", "muted", "accent"],
     props_schema: frame_props_schema,
     examples: frame_examples,
@@ -147,8 +145,7 @@ const FRAME: DesignComponentDefinition = DesignComponentDefinition {
 const TEXT_BLOCK: DesignComponentDefinition = DesignComponentDefinition {
     name: "TextBlock",
     category: "typography",
-    description:
-        "Structured typography block for headings, body copy, quotes, captions, and fine print.",
+    description: "Structured typography block for headings, body copy, quotes, captions, and fine print.",
     variants: &["body", "heading", "lead", "quote", "caption", "fine-print"],
     props_schema: text_block_props_schema,
     examples: text_block_examples,
@@ -159,8 +156,7 @@ const TEXT_BLOCK: DesignComponentDefinition = DesignComponentDefinition {
 const COLUMNS: DesignComponentDefinition = DesignComponentDefinition {
     name: "Columns",
     category: "layout",
-    description:
-        "Multi-column content layout for brochures, resumes, comparisons, and web sections.",
+    description: "Multi-column content layout for brochures, resumes, comparisons, and web sections.",
     variants: &["two", "three", "asymmetric-left", "asymmetric-right"],
     props_schema: columns_props_schema,
     examples: columns_examples,
@@ -182,8 +178,7 @@ const STACK: DesignComponentDefinition = DesignComponentDefinition {
 const BUTTON_ROW: DesignComponentDefinition = DesignComponentDefinition {
     name: "ButtonRow",
     category: "actions",
-    description:
-        "Primary/secondary action row for website mockups, product one-pagers, and document CTAs.",
+    description: "Primary/secondary action row for website mockups, product one-pagers, and document CTAs.",
     variants: &["left", "center", "right", "stacked"],
     props_schema: button_row_props_schema,
     examples: button_row_examples,
@@ -317,7 +312,20 @@ fn render_frame(props: &Value, variant: Option<&str>) -> anyhow::Result<Rendered
         "accent" => "rounded-lg border border-primary bg-card text-card-foreground",
         other => bail!("unknown Frame variant '{other}'"),
     };
-    Ok(RenderedCell{html:format!("<section data-flynt-focus-kind=\"component\" data-flynt-component=\"Frame\" data-flynt-component-part=\"root\" class=\"h-full {classes} {pad}\"><div class=\"flex h-full flex-col justify-center gap-3\">{}{}{}</div></section>", opt_h("h2","text-2xl font-bold tracking-tight text-foreground",title), opt_p("text-sm text-muted-foreground",subtitle), opt_p("text-sm leading-6 text-muted-foreground",body)), css:String::new(), js:None})
+    Ok(RenderedCell {
+        html: format!(
+            "<section data-flynt-focus-kind=\"component\" data-flynt-component=\"Frame\" data-flynt-component-part=\"root\" class=\"h-full {classes} {pad}\"><div class=\"flex h-full flex-col justify-center gap-3\">{}{}{}</div></section>",
+            opt_h(
+                "h2",
+                "text-2xl font-bold tracking-tight text-foreground",
+                title
+            ),
+            opt_p("text-sm text-muted-foreground", subtitle),
+            opt_p("text-sm leading-6 text-muted-foreground", body)
+        ),
+        css: String::new(),
+        js: None,
+    })
 }
 
 fn text_block_props_schema() -> Value {
@@ -366,7 +374,19 @@ fn render_text_block(props: &Value, variant: Option<&str>) -> anyhow::Result<Ren
         ),
         other => bail!("unknown TextBlock variant '{other}'"),
     };
-    Ok(RenderedCell{html:format!("<section data-flynt-focus-kind=\"component\" data-flynt-component=\"TextBlock\" data-flynt-component-part=\"root\" class=\"h-full flex flex-col justify-center gap-3 {align_class}\">{}{}{}</section>", opt_p("text-xs font-semibold uppercase tracking-wide text-primary",eyebrow), opt_h("h2",hcls,heading), opt_p(bcls,body)), css:String::new(), js:None})
+    Ok(RenderedCell {
+        html: format!(
+            "<section data-flynt-focus-kind=\"component\" data-flynt-component=\"TextBlock\" data-flynt-component-part=\"root\" class=\"h-full flex flex-col justify-center gap-3 {align_class}\">{}{}{}</section>",
+            opt_p(
+                "text-xs font-semibold uppercase tracking-wide text-primary",
+                eyebrow
+            ),
+            opt_h("h2", hcls, heading),
+            opt_p(bcls, body)
+        ),
+        css: String::new(),
+        js: None,
+    })
 }
 
 fn columns_props_schema() -> Value {
@@ -401,7 +421,9 @@ fn render_columns(props: &Value, variant: Option<&str>) -> anyhow::Result<Render
         out.push_str(&format!("<div class=\"rounded-lg border border-border bg-card p-4{span}\"><h3 class=\"text-sm font-semibold text-foreground\">{}</h3>{}</div>", escape_html(&title), body.map(|b|format!("<p class=\"mt-2 text-sm leading-6 text-muted-foreground\">{}</p>",escape_html(&b))).unwrap_or_default()));
     }
     Ok(RenderedCell {
-        html: format!("<div data-flynt-focus-kind=\"component\" data-flynt-component=\"Columns\" data-flynt-component-part=\"root\" class=\"h-full grid {grid} gap-4\">{out}</div>"),
+        html: format!(
+            "<div data-flynt-focus-kind=\"component\" data-flynt-component=\"Columns\" data-flynt-component-part=\"root\" class=\"h-full grid {grid} gap-4\">{out}</div>"
+        ),
         css: String::new(),
         js: None,
     })
@@ -436,7 +458,14 @@ fn render_stack(props: &Value, variant: Option<&str>) -> anyhow::Result<Rendered
         };
         lis.push_str(&format!("<li class=\"flex gap-3 text-sm text-muted-foreground\"><span class=\"w-5 shrink-0 text-primary\">{}</span><span>{}</span></li>",marker,escape_html(text)));
     }
-    Ok(RenderedCell{html:format!("<section data-flynt-focus-kind=\"component\" data-flynt-component=\"Stack\" data-flynt-component-part=\"root\" class=\"h-full rounded-lg border border-border bg-card p-5\">{}<ul class=\"flex h-full flex-col gap-3\">{lis}</ul></section>", opt_h("h3","mb-3 text-sm font-semibold text-foreground",title)), css:String::new(), js:None})
+    Ok(RenderedCell {
+        html: format!(
+            "<section data-flynt-focus-kind=\"component\" data-flynt-component=\"Stack\" data-flynt-component-part=\"root\" class=\"h-full rounded-lg border border-border bg-card p-5\">{}<ul class=\"flex h-full flex-col gap-3\">{lis}</ul></section>",
+            opt_h("h3", "mb-3 text-sm font-semibold text-foreground", title)
+        ),
+        css: String::new(),
+        js: None,
+    })
 }
 
 fn button_row_props_schema() -> Value {
@@ -469,7 +498,9 @@ fn render_button_row(props: &Value, variant: Option<&str>) -> anyhow::Result<Ren
         buttons.push_str(&format!("<span class=\"inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-muted-foreground\">{}</span>",escape_html(&v)));
     }
     Ok(RenderedCell {
-        html: format!("<div data-flynt-focus-kind=\"component\" data-flynt-component=\"ButtonRow\" data-flynt-component-part=\"root\" class=\"h-full flex gap-3 {layout}\">{buttons}</div>"),
+        html: format!(
+            "<div data-flynt-focus-kind=\"component\" data-flynt-component=\"ButtonRow\" data-flynt-component-part=\"root\" class=\"h-full flex gap-3 {layout}\">{buttons}</div>"
+        ),
         css: String::new(),
         js: None,
     })
@@ -494,8 +525,27 @@ fn render_image_placeholder(props: &Value, variant: Option<&str>) -> anyhow::Res
         "auto" => "h-full",
         other => bail!("unknown aspect '{other}'"),
     };
-    let chrome=match variant.unwrap_or("default"){"browser"=>"<div class=\"flex gap-1 border-b border-border p-2\"><span class=\"h-2 w-2 rounded-full bg-destructive\"></span><span class=\"h-2 w-2 rounded-full bg-yellow-500\"></span><span class=\"h-2 w-2 rounded-full bg-green-500\"></span></div>","default"|"device"|"plain"=>"",other=>bail!("unknown ImagePlaceholder variant '{other}'")};
-    Ok(RenderedCell{html:format!("<figure data-flynt-focus-kind=\"component\" data-flynt-component=\"ImagePlaceholder\" data-flynt-component-part=\"root\" class=\"h-full rounded-lg border border-dashed border-border bg-muted/40 text-muted-foreground overflow-hidden\">{chrome}<div class=\"flex {aspect_cls} h-full flex-col items-center justify-center gap-2 p-4 text-center\"><div class=\"text-sm font-medium text-foreground\">{}</div>{}</div></figure>",escape_html(&label), caption.map(|c|format!("<figcaption class=\"text-xs\">{}</figcaption>",escape_html(&c))).unwrap_or_default()), css:String::new(), js:None})
+    let chrome = match variant.unwrap_or("default") {
+        "browser" => {
+            "<div class=\"flex gap-1 border-b border-border p-2\"><span class=\"h-2 w-2 rounded-full bg-destructive\"></span><span class=\"h-2 w-2 rounded-full bg-yellow-500\"></span><span class=\"h-2 w-2 rounded-full bg-green-500\"></span></div>"
+        }
+        "default" | "device" | "plain" => "",
+        other => bail!("unknown ImagePlaceholder variant '{other}'"),
+    };
+    Ok(RenderedCell {
+        html: format!(
+            "<figure data-flynt-focus-kind=\"component\" data-flynt-component=\"ImagePlaceholder\" data-flynt-component-part=\"root\" class=\"h-full rounded-lg border border-dashed border-border bg-muted/40 text-muted-foreground overflow-hidden\">{chrome}<div class=\"flex {aspect_cls} h-full flex-col items-center justify-center gap-2 p-4 text-center\"><div class=\"text-sm font-medium text-foreground\">{}</div>{}</div></figure>",
+            escape_html(&label),
+            caption
+                .map(|c| format!(
+                    "<figcaption class=\"text-xs\">{}</figcaption>",
+                    escape_html(&c)
+                ))
+                .unwrap_or_default()
+        ),
+        css: String::new(),
+        js: None,
+    })
 }
 
 fn opt_h(tag: &str, class: &str, value: Option<String>) -> String {

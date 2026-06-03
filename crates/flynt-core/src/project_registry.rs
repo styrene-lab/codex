@@ -5,7 +5,7 @@ use crate::models::{
 use crate::store::ProjectStore;
 use crate::visual_artifacts::{
     RenderArtifact, VisualArtifact, VisualArtifactKind, discover_d2_artifacts,
-    discover_design_board_artifacts, discover_excalidraw_artifacts,
+    discover_design_board_artifacts, discover_excalidraw_artifacts, discover_flow_artifacts,
 };
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -146,6 +146,11 @@ impl VisualArtifactRegistry {
         );
         artifacts.extend(
             discover_design_board_artifacts(project_root)
+                .into_iter()
+                .map(VisualArtifactRecord::from),
+        );
+        artifacts.extend(
+            discover_flow_artifacts(project_root)
                 .into_iter()
                 .map(VisualArtifactRecord::from),
         );
