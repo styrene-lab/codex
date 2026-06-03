@@ -52,6 +52,7 @@ interface FlyntEditorApi {
   focus(): void;
   getSelection(): SerializedSelection | null;
   replaceSelection(text: string): BridgeResult;
+  executeCommand(id: string, payload?: { text?: string }): BridgeResult;
   saveNow(): BridgeResult;
   markSaved(revision?: number, content?: string): BridgeResult;
   isDirty(): boolean;
@@ -66,6 +67,8 @@ interface FlyntEditorCompatApi {
   attachView(view: LegacyEditorView, initialContent?: string): FlyntEditorApi;
   changeHandlerExtension(EditorView: { updateListener: { of(callback: (update: { docChanged?: boolean }) => void): unknown } }): unknown;
   keymapRegistry(keymap: { of(bindings: unknown[]): unknown }): { save: unknown; formatting: unknown; all: unknown[] };
+  commandRegistry(): EditorCommandRegistry;
+  dispatchEditorCommand(id: string, payload?: { text?: string }): BridgeResult;
 }
 
 declare global {
@@ -158,6 +161,87 @@ function attachView(view: LegacyEditorView, initialContent = ""): FlyntEditorApi
   return install(initialContent);
 }
 
+
+interface EditorCommandRegistry {
+  execute(id: string, payload?: { text?: string }): BridgeResult;
+}
+
+function activeText(view: LegacyEditorView): { from: number; to: number; text: string; line: { from: number; to: number; text: string } } {
+  const sel = view.state.selection.main;
+  const doc = view.state.doc as unknown as { lineAt(pos: number): { from: number; to: number; text: string } };
+  return {
+    from: Math.min(sel.anchor, sel.head),
+    to: Math.max(sel.anchor, sel.head),
+    text: (view.state as unknown as { sliceDoc(from: number, to: number): string }).sliceDoc(Math.min(sel.anchor, sel.head), Math.max(sel.anchor, sel.head)),
+    line: doc.lineAt(sel.head),
+  };
+}
+
+function wrapSelection(view: LegacyEditorView, before: string, after: string): void {
+  const sel = activeText(view);
+  const insert = sel.text.startsWith(before) && sel.text.endsWith(after)
+    ? sel.text.slice(before.length, -after.length)
+    : before + sel.text + after;
+  view.dispatch({ changes: { from: sel.from, to: sel.to, insert } });
+}
+
+function insertAtLineStart(view: LegacyEditorView, prefix: string): void {
+  const { line } = activeText(view);
+  const text = line.text;
+  if (text.startsWith(prefix)) {
+    view.dispatch({ changes: { from: line.from, to: line.from + prefix.length, insert: "" } });
+    return;
+  }
+  const heading = text.match(/^#{1,6}\s/);
+  const remove = heading ? heading[0].length : 0;
+  view.dispatch({ changes: { from: line.from, to: line.from + remove, insert: prefix } });
+}
+
+function insertBlock(view: LegacyEditorView, text: string): void {
+  const { line } = activeText(view);
+  const pos = line.to;
+  view.dispatch({ changes: { from: pos, insert: "\n" + text + "\n" }, selection: { anchor: pos + 1 + text.length } });
+}
+
+function commandRegistry(): EditorCommandRegistry {
+  return {
+    execute(id, payload = {}) {
+      const view = currentView();
+      if (!view) return { ok: false, reason: "not-mounted" };
+      const sel = activeText(view);
+      switch (id) {
+        case "bold": wrapSelection(view, "**", "**"); break;
+        case "italic": wrapSelection(view, "*", "*"); break;
+        case "code": wrapSelection(view, "`", "`"); break;
+        case "strike": wrapSelection(view, "~~", "~~"); break;
+        case "link": view.dispatch({ changes: { from: sel.from, to: sel.to, insert: "[" + sel.text + "](url)" } }); break;
+        case "wikilink": wrapSelection(view, "[[", "]]"); break;
+        case "h1": insertAtLineStart(view, "# "); break;
+        case "h2": insertAtLineStart(view, "## "); break;
+        case "h3": insertAtLineStart(view, "### "); break;
+        case "bullet": insertAtLineStart(view, "- "); break;
+        case "task": insertAtLineStart(view, "- [ ] "); break;
+        case "quote": insertAtLineStart(view, "> "); break;
+        case "codeblock": insertBlock(view, "```\n\n```"); break;
+        case "table": insertBlock(view, "| Column 1 | Column 2 | Column 3 |\n| --- | --- | --- |\n|  |  |  |"); break;
+        case "hr": insertBlock(view, "---"); break;
+        case "insert-text": view.dispatch(view.state.replaceSelection(String(payload.text ?? ""))); break;
+        case "save": window._flyntNotify?.("save", view.state.doc.toString()); break;
+        case "source-mode": window._flyntNotify?.("mode", "source"); break;
+        default: return { ok: false, reason: "unknown-command" };
+      }
+      window._flyntEditorDirty = true;
+      view.focus();
+      return { ok: true };
+    }
+  };
+}
+
+function dispatchEditorCommand(id: string, payload?: { text?: string }): BridgeResult {
+  const registry = commandRegistry();
+  return registry.execute(id, payload);
+}
+
 function install(initialContent = ""): FlyntEditorApi {
   window._flyntEditorSavedContent = initialContent;
   window._flyntEditorDirty = false;
@@ -215,20 +299,11 @@ function install(initialContent = ""): FlyntEditorApi {
       };
     },
 
-    replaceSelection: (text) => {
-      const cm = currentView();
-      if (!cm) return { ok: false, reason: "not-mounted" };
-      cm.dispatch(cm.state.replaceSelection(String(text ?? "")));
-      cm.focus();
-      return { ok: true };
-    },
+    replaceSelection: (text) => dispatchEditorCommand("insert-text", { text }),
 
-    saveNow: () => {
-      const cm = currentView();
-      if (!cm) return { ok: false, reason: "not-mounted" };
-      window._flyntNotify?.("save", cm.state.doc.toString());
-      return { ok: true };
-    },
+    executeCommand: (id, payload) => dispatchEditorCommand(id, payload),
+
+    saveNow: () => dispatchEditorCommand("save"),
 
     markSaved: (revision, content) => {
       const cm = currentView();
@@ -283,6 +358,6 @@ function install(initialContent = ""): FlyntEditorApi {
   return api;
 }
 
-window.FlyntEditorCompat = { install, attachView, changeHandlerExtension, keymapRegistry };
+window.FlyntEditorCompat = { install, attachView, changeHandlerExtension, keymapRegistry, commandRegistry, dispatchEditorCommand };
 
 export {};

@@ -351,6 +351,17 @@ fn execute_command(
                 }
             }
         }
+        "editor-bold" | "editor-italic" | "editor-link" | "editor-wikilink" | "editor-code" | "editor-h1" | "editor-h2" | "editor-h3" | "editor-bullet" | "editor-task" | "editor-quote" | "editor-codeblock" | "editor-table" | "editor-hr" => {
+            if *active_route.read() != Route::Notes {
+                *active_route.write() = Route::Notes;
+            }
+            let editor_command = id.strip_prefix("editor-").unwrap_or(id);
+            let js = format!(
+                "if(window.FlyntEditor){{window.FlyntEditor.executeCommand({cmd});}}",
+                cmd = serde_json::to_string(editor_command).unwrap_or_default()
+            );
+            document::eval(&js);
+        }
         "insert-drawing" => {
             // Only works when CM6 editor is active (Notes view with a note open)
             if *active_route.read() != Route::Notes {
@@ -362,7 +373,7 @@ fn execute_command(
             if let Ok(_path) = crate::views::excalidraw::create_drawing(&project.root, &name) {
                 let embed = format!("![[{name}.excalidraw]]");
                 let js = format!(
-                    "if(window.FlyntEditor){{window.FlyntEditor.replaceSelection({escaped});}}else{{alert('Open a note first to insert a drawing.')}}",
+                    "if(window.FlyntEditor){{window.FlyntEditor.executeCommand('insert-text', {{ text: {escaped} }});}}else{{alert('Open a note first to insert a drawing.')}}",
                     escaped = serde_json::to_string(&embed).unwrap_or_default()
                 );
                 document::eval(&js);
@@ -721,6 +732,20 @@ pub fn CommandPalette(mut open: Signal<bool>, mode: Signal<PaletteMode>) -> Elem
                 label: "Insert Drawing Here".into(),
                 category: "Create".into(),
             },
+            Cmd { id: "editor-bold".into(), label: "Editor: Bold".into(), category: "Editor".into() },
+            Cmd { id: "editor-italic".into(), label: "Editor: Italic".into(), category: "Editor".into() },
+            Cmd { id: "editor-link".into(), label: "Editor: Insert Markdown Link".into(), category: "Editor".into() },
+            Cmd { id: "editor-wikilink".into(), label: "Editor: Insert Wikilink".into(), category: "Editor".into() },
+            Cmd { id: "editor-code".into(), label: "Editor: Inline Code".into(), category: "Editor".into() },
+            Cmd { id: "editor-h1".into(), label: "Editor: Heading 1".into(), category: "Editor".into() },
+            Cmd { id: "editor-h2".into(), label: "Editor: Heading 2".into(), category: "Editor".into() },
+            Cmd { id: "editor-h3".into(), label: "Editor: Heading 3".into(), category: "Editor".into() },
+            Cmd { id: "editor-bullet".into(), label: "Editor: Bullet List".into(), category: "Editor".into() },
+            Cmd { id: "editor-task".into(), label: "Editor: Task Checkbox".into(), category: "Editor".into() },
+            Cmd { id: "editor-quote".into(), label: "Editor: Quote".into(), category: "Editor".into() },
+            Cmd { id: "editor-codeblock".into(), label: "Editor: Code Block".into(), category: "Editor".into() },
+            Cmd { id: "editor-table".into(), label: "Editor: Table".into(), category: "Editor".into() },
+            Cmd { id: "editor-hr".into(), label: "Editor: Horizontal Rule".into(), category: "Editor".into() },
             Cmd {
                 id: "toggle-agent".into(),
                 label: "Toggle Agent Panel".into(),

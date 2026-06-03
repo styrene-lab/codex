@@ -1408,66 +1408,17 @@ fn cm6_init_js(content: &str) -> String {
             }};
         }})();
 
-    // Context menu action dispatcher
+    // Context menu action dispatcher — delegates to the centralized editor command registry.
     window._flyntCtxAction = function(id, view) {{
-        const sel = view.state.selection.main;
-        const selected = view.state.sliceDoc(sel.from, sel.to);
-        const line = view.state.doc.lineAt(sel.head);
-
-        function wrap(before, after) {{
-            if (selected.startsWith(before) && selected.endsWith(after)) {{
-                view.dispatch({{ changes: {{ from: sel.from, to: sel.to, insert: selected.slice(before.length, -after.length) }} }});
-            }} else {{
-                view.dispatch({{ changes: {{ from: sel.from, to: sel.to, insert: before + selected + after }} }});
-            }}
+        if (window.FlyntEditor && typeof window.FlyntEditor.executeCommand === 'function') {{
+            window.FlyntEditor.executeCommand(id);
+            return;
         }}
-
-        function insertAtLineStart(prefix) {{
-            const text = line.text;
-            // If line already has this prefix, remove it
-            if (text.startsWith(prefix)) {{
-                view.dispatch({{ changes: {{ from: line.from, to: line.from + prefix.length, insert: '' }} }});
-            }} else {{
-                // Remove any existing heading prefix first
-                const hm = text.match(/^#{{1,6}}\s/);
-                const remove = hm ? hm[0].length : 0;
-                view.dispatch({{ changes: {{ from: line.from, to: line.from + remove, insert: prefix }} }});
-            }}
-        }}
-
-        function insertBlock(text) {{
-            // Insert at end of current line with newlines
-            const pos = line.to;
-            view.dispatch({{ changes: {{ from: pos, insert: '\n' + text + '\n' }}, selection: {{ anchor: pos + 1 + text.length }} }});
-        }}
-
-        switch (id) {{
-            case 'bold':      wrap('**', '**'); break;
-            case 'italic':    wrap('*', '*'); break;
-            case 'code':      wrap('`', '`'); break;
-            case 'strike':    wrap('~~', '~~'); break;
-            case 'link':      view.dispatch({{ changes: {{ from: sel.from, to: sel.to, insert: '[' + selected + '](url)' }} }}); break;
-            case 'wikilink':  wrap('[[', ']]'); break;
-            case 'h1':        insertAtLineStart('# '); break;
-            case 'h2':        insertAtLineStart('## '); break;
-            case 'h3':        insertAtLineStart('### '); break;
-            case 'bullet':    insertAtLineStart('- '); break;
-            case 'task':      insertAtLineStart('- [ ] '); break;
-            case 'quote':     insertAtLineStart('> '); break;
-            case 'codeblock': insertBlock('```\n\n```'); break;
-            case 'table':     insertBlock('| Column 1 | Column 2 | Column 3 |\n| --- | --- | --- |\n|  |  |  |'); break;
-            case 'hr':        insertBlock('---'); break;
+        if (window.FlyntEditorCompat && typeof window.FlyntEditorCompat.dispatchEditorCommand === 'function') {{
+            window.FlyntEditorCompat.dispatchEditorCommand(id);
+            return;
         }}
         view.focus();
-        // Notify edit
-        clearTimeout(saveTimer);
-        clearTimeout(editTimer);
-        editTimer = setTimeout(() => {{
-            if (window._flyntCM) window._flyntNotify('edit', window._flyntCM.state.doc.toString());
-        }}, 300);
-        saveTimer = setTimeout(() => {{
-            if (window._flyntCM) window._flyntNotify('autosave', window._flyntCM.state.doc.toString());
-        }}, 1500);
     }};
 
     const docText = {escaped};
