@@ -747,13 +747,125 @@ pub(crate) fn cm6_fast_swap_js(content: &str) -> String {
     )
 }
 
-fn cm6_init_js(content: &str) -> String {
+
+fn embed_slug(value: &str) -> String {
+    value
+        .trim()
+        .to_lowercase()
+        .replace([' ', '_'], "-")
+}
+
+fn insert_embed_resolution(
+    map: &mut serde_json::Map<String, serde_json::Value>,
+    key: impl AsRef<str>,
+    resolution: serde_json::Value,
+) {
+    let key = key.as_ref();
+    if key.trim().is_empty() {
+        return;
+    }
+    map.insert(key.to_string(), resolution.clone());
+    map.insert(embed_slug(key), resolution);
+}
+
+fn build_embed_index_json(ctx: &AppContext) -> String {
+    let project = ctx.project();
+    let mut map = serde_json::Map::new();
+
+    if let Ok(docs) = project.store.list_documents() {
+        for doc in docs {
+            let path = doc.path.to_string_lossy().to_string();
+            let title = doc.title.clone();
+            let resolution = serde_json::json!({
+                "status": "resolved",
+                "ref": title,
+                "canonicalPath": path,
+                "title": doc.title,
+                "kind": "note",
+                "surface": "note",
+                "icon": "✎",
+                "label": doc.title,
+            });
+            insert_embed_resolution(&mut map, &title, resolution.clone());
+            insert_embed_resolution(&mut map, &path, resolution);
+        }
+    }
+
+    let root = ctx.project_root();
+    let mut artifacts = Vec::new();
+    artifacts.extend(flynt_core::visual_artifacts::discover_excalidraw_artifacts(&root));
+    artifacts.extend(flynt_core::visual_artifacts::discover_design_board_artifacts(&root));
+    artifacts.extend(flynt_core::visual_artifacts::discover_flow_artifacts(&root));
+
+    for artifact in artifacts {
+        let source = artifact.source_path.to_string_lossy().to_string();
+        let wrapper = artifact
+            .wrapper_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string());
+        let (kind, surface, icon) = match artifact.kind {
+            flynt_core::visual_artifacts::VisualArtifactKind::ExcalidrawDrawing => {
+                ("drawing", "drawing", "📐")
+            }
+            flynt_core::visual_artifacts::VisualArtifactKind::DesignBoard => {
+                ("canvas", "canvas", "▦")
+            }
+            flynt_core::visual_artifacts::VisualArtifactKind::Flow => ("flow", "flow", "⛓"),
+            flynt_core::visual_artifacts::VisualArtifactKind::D2Diagram => {
+                ("asset", "asset-preview", "◆")
+            }
+        };
+        let title = artifact.title.clone();
+        let resolution = serde_json::json!({
+            "status": "resolved",
+            "ref": title,
+            "canonicalPath": wrapper.as_deref().unwrap_or(&source),
+            "sourcePath": source,
+            "title": artifact.title,
+            "kind": kind,
+            "surface": surface,
+            "icon": icon,
+            "label": artifact.title,
+        });
+        insert_embed_resolution(&mut map, &title, resolution.clone());
+        insert_embed_resolution(&mut map, &source, resolution.clone());
+        if let Some(wrapper) = wrapper {
+            insert_embed_resolution(&mut map, &wrapper, resolution);
+        }
+    }
+
+    serde_json::Value::Object(map).to_string()
+}
+
+fn cm6_init_js(content: &str, embed_index_json: &str) -> String {
     let escaped = serde_json::to_string(content).unwrap_or_else(|_| "\"\"".into());
+    let embed_index = if embed_index_json.trim().is_empty() {
+        "{}"
+    } else {
+        embed_index_json
+    };
     format!(
         r#"
 (function() {{
     function _initCM() {{
     const container = document.getElementById('flynt-cm-editor');
+    window._flyntEmbedIndex = {embed_index};
+    if (!window.FlyntEmbedResolver) {{
+        window.FlyntEmbedResolver = {{
+            resolve(ref) {{
+                const cleaned = String(ref || '').trim();
+                const key = cleaned.toLowerCase().replace(/\s+/g, '-');
+                const index = window._flyntEmbedIndex || {{}};
+                return index[cleaned] || index[key] || {{ status: 'missing', ref: cleaned, kind: 'unknown', surface: 'unknown', icon: '?', label: cleaned }};
+            }},
+            imageUrls(resolution) {{
+                const ref = resolution.canonicalPath || resolution.ref;
+                const encoded = encodeURIComponent(ref).replace(/%2F/g, '/');
+                return ['project://localhost/' + encoded, 'project://localhost/assets/' + encoded, 'project://localhost/images/' + encoded, 'project://localhost/drawings/' + encoded];
+            }},
+            open(resolution) {{ window._flyntNotify('editor.embed.open', JSON.stringify(resolution)); }}
+        }};
+    }}
     if (!container) {{ setTimeout(_initCM, 16); return; }}
 
     console.time('cm6-total');
@@ -1260,33 +1372,7 @@ fn cm6_init_js(content: &str) -> String {
         return Decoration.set(decorations);
     }});
 
-    const flyntEmbedResolver = {{
-        resolve(ref) {{
-            const cleaned = String(ref || '').trim();
-            // Registry-backed resolution will replace these fallbacks. Extension
-            // matching lives in Flynt policy, not in the generic editor bridge.
-            if (cleaned.endsWith('.excalidraw')) {{
-                return {{ status: 'resolved', ref: cleaned, canonicalPath: cleaned, kind: 'drawing', surface: 'drawing', icon: '📐', label: cleaned.replace(/\.excalidraw$/i, '') }};
-            }}
-            if (/\.(png|jpg|jpeg|gif|svg|webp)$/i.test(cleaned)) {{
-                return {{ status: 'resolved', ref: cleaned, canonicalPath: cleaned, kind: 'image', surface: 'asset-preview', icon: '🖼', label: cleaned }};
-            }}
-            return {{ status: 'missing', ref: cleaned, kind: 'unknown', surface: 'unknown', icon: '?', label: cleaned }};
-        }},
-        imageUrls(resolution) {{
-            const ref = resolution.canonicalPath || resolution.ref;
-            const encoded = encodeURIComponent(ref).replace(/%2F/g, '/');
-            return [
-                'project://localhost/' + encoded,
-                'project://localhost/assets/' + encoded,
-                'project://localhost/images/' + encoded,
-                'project://localhost/drawings/' + encoded,
-            ];
-        }},
-        open(resolution) {{
-            window._flyntNotify('editor.embed.open', JSON.stringify(resolution));
-        }}
-    }};
+    const flyntEmbedResolver = window.FlyntEmbedResolver;
 
     // Save on blur / visibility change — never lose content
     document.addEventListener('visibilitychange', () => {{
@@ -2620,6 +2706,7 @@ pub fn NotesView() -> Element {
     // Also subscribes to `mode` so toggling Source → Live re-fires the
     // init (calling cm6_init_js's swap path with the latest content).
     let is_drawing_mode = use_context::<Signal<bool>>();
+    let init_ctx = ctx.clone();
     use_effect(move || {
         let source = cm6_load_source.read().clone();
         let Some((doc_id, body)) = source else { return };
@@ -2634,7 +2721,8 @@ pub fn NotesView() -> Element {
             doc_id,
             body.len()
         );
-        document::eval(&cm6_init_js(&body));
+        let embed_index_json = build_embed_index_json(&init_ctx);
+        document::eval(&cm6_init_js(&body, &embed_index_json));
     });
 
     // Autosave for Source mode (textarea path). CM6 already has its own
