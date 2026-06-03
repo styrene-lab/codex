@@ -71,6 +71,7 @@ interface FlyntEditorCompatApi {
   baseExtensions(modules: EditorCompatModules, localExtensions?: unknown[]): unknown[];
   mountEditor(modules: EditorCompatModules, container: HTMLElement, content: string, cursorPos?: number, localExtensions?: unknown[], theme?: unknown): FlyntEditorApi;
   contextMenuExtension(EditorView: { domEventHandlers(handlers: Record<string, unknown>): unknown }): unknown;
+  embedExtension(modules: EditorCompatModules, resolver: EmbedResolver): unknown | null;
   commandRegistry(): EditorCommandRegistry;
   dispatchEditorCommand(id: string, payload?: { text?: string }): BridgeResult;
 }
@@ -167,6 +168,91 @@ interface EditorCompatModules {
   keymap: { of(bindings: unknown[]): unknown };
 }
 
+
+
+interface EmbedResolution {
+  status: "resolved" | "missing" | "ambiguous";
+  ref: string;
+  canonicalPath?: string;
+  title?: string;
+  kind?: string;
+  surface?: string;
+  icon?: string;
+  label?: string;
+}
+
+interface EmbedResolver {
+  resolve(ref: string): EmbedResolution;
+  imageUrls?(resolution: EmbedResolution): string[];
+  open(resolution: EmbedResolution): void;
+}
+
+function embedExtension(modules: EditorCompatModules, resolver: EmbedResolver): unknown | null {
+  if (!modules.EditorView.decorations || !modules.Decoration || !modules.WidgetType) return null;
+  const Decoration = modules.Decoration;
+  const BaseWidget = modules.WidgetType;
+
+  class EmbedWidget extends BaseWidget {
+    private resolution: EmbedResolution;
+    constructor(resolution: EmbedResolution) {
+      super();
+      this.resolution = resolution;
+    }
+    eq(other: unknown): boolean {
+      return other instanceof EmbedWidget
+        && other.resolution.ref === this.resolution.ref
+        && other.resolution.status === this.resolution.status
+        && other.resolution.canonicalPath === this.resolution.canonicalPath;
+    }
+    toDOM(): HTMLElement {
+      const resolution = this.resolution;
+      if (resolution.kind === "image" || resolution.surface === "asset-preview") {
+        const img = document.createElement("img");
+        img.className = "cm-embed-image";
+        img.alt = resolution.title || resolution.ref;
+        const urls = resolver.imageUrls?.(resolution) ?? [];
+        let index = 0;
+        const tryNext = () => {
+          if (index >= urls.length) {
+            const missing = document.createElement("span");
+            missing.className = "cm-embed-chip cm-embed-missing";
+            missing.textContent = `Missing image: ${resolution.label || resolution.ref}`;
+            img.replaceWith(missing);
+            return;
+          }
+          img.src = urls[index++];
+        };
+        img.onerror = tryNext;
+        tryNext();
+        return img;
+      }
+
+      const chip = document.createElement("span");
+      chip.className = `cm-embed-chip cm-embed-${resolution.kind || "unknown"}`;
+      const icon = resolution.icon || (resolution.status === "missing" ? "?" : "◈");
+      const label = resolution.label || resolution.title || resolution.ref;
+      chip.textContent = `${icon} ${label}`;
+      chip.title = resolution.status === "ambiguous" ? "Ambiguous embed reference" : "Open embedded artifact";
+      chip.onclick = () => resolver.open(resolution);
+      return chip;
+    }
+  }
+
+  return modules.EditorView.decorations.compute(["doc", "selection"], (state) => {
+    const decorations: unknown[] = [];
+    const selection = (state as unknown as { selection?: { main?: { from: number; to: number } } }).selection?.main;
+    for (let i = 1; i <= state.doc.lines; i += 1) {
+      const line = state.doc.line(i);
+      const text = line.text.trim();
+      const match = text.match(/^!\[\[(.+?)\]\]$/);
+      if (!match) continue;
+      if (selection && selection.from >= line.from && selection.to <= line.from + line.text.length) continue;
+      const resolution = resolver.resolve(match[1] ?? "");
+      decorations.push(Decoration.replace({ widget: new EmbedWidget(resolution) }).range(line.from, line.from + line.text.length));
+    }
+    return Decoration.set(decorations);
+  });
+}
 
 function taskListExtension(modules: EditorCompatModules): unknown | null {
   if (!modules.EditorView.decorations || !modules.Decoration || !modules.WidgetType) return null;
@@ -546,6 +632,6 @@ function install(initialContent = ""): FlyntEditorApi {
   return api;
 }
 
-window.FlyntEditorCompat = { install, attachView, changeHandlerExtension, keymapRegistry, baseExtensions, mountEditor, contextMenuExtension, commandRegistry, dispatchEditorCommand };
+window.FlyntEditorCompat = { install, attachView, changeHandlerExtension, keymapRegistry, baseExtensions, mountEditor, contextMenuExtension, embedExtension, commandRegistry, dispatchEditorCommand };
 
 export {};

@@ -1260,60 +1260,34 @@ fn cm6_init_js(content: &str) -> String {
         return Decoration.set(decorations);
     }});
 
-    // Embed plugin: render ![[file.excalidraw]] and ![[image.png]] as widgets
-    class EmbedWidget extends WidgetType {{
-        constructor(ref, type) {{ super(); this._ref = ref; this._type = type; }}
-        eq(o) {{ return this._ref === o._ref; }}
-        toDOM() {{
-            const d = document.createElement('span');
-            if (this._type === 'drawing') {{
-                d.className = 'cm-embed-chip cm-embed-drawing';
-                d.textContent = '\u{{1f4d0}} ' + this._ref.replace('.excalidraw', '');
-                d.title = 'Click to open drawing';
-                d.onclick = () => window._flyntNotify('open-drawing', this._ref);
-            }} else {{
-                // Image — try to render inline
-                const img = document.createElement('img');
-                img.className = 'cm-embed-image';
-                img.src = 'project://localhost/' + encodeURIComponent(this._ref).replace(/%2F/g, '/');
-                img.alt = this._ref;
-                img.onerror = () => {{
-                    // Try common subdirs
-                    const dirs = ['assets/', 'images/', 'drawings/'];
-                    let tried = 0;
-                    function tryNext() {{
-                        if (tried >= dirs.length) {{ img.replaceWith(document.createTextNode('[Image: ' + img.alt + ']')); return; }}
-                        img.src = 'project://localhost/' + dirs[tried++] + encodeURIComponent(img.alt).replace(/%2F/g, '/');
-                    }}
-                    img.onerror = tryNext;
-                    tryNext();
-                }};
-                d.appendChild(img);
+    const flyntEmbedResolver = {{
+        resolve(ref) {{
+            const cleaned = String(ref || '').trim();
+            // Registry-backed resolution will replace these fallbacks. Extension
+            // matching lives in Flynt policy, not in the generic editor bridge.
+            if (cleaned.endsWith('.excalidraw')) {{
+                return {{ status: 'resolved', ref: cleaned, canonicalPath: cleaned, kind: 'drawing', surface: 'drawing', icon: '📐', label: cleaned.replace(/\.excalidraw$/i, '') }};
             }}
-            return d;
-        }}
-    }}
-    const embedPlugin = EditorView.decorations.compute(['doc'], (state) => {{
-        const decs = [];
-        for (let i = 1; i <= state.doc.lines; i++) {{
-            const line = state.doc.line(i);
-            const text = line.text.trim();
-            // Skip if cursor is on this line (let user edit the raw text)
-            const m = text.match(/^!\[\[(.+?)\]\]$/);
-            if (m) {{
-                const ref = m[1];
-                let type = 'other';
-                if (ref.endsWith('.excalidraw')) type = 'drawing';
-                else if (/\.(png|jpg|jpeg|gif|svg|webp)$/i.test(ref)) type = 'image';
-                if (type !== 'other') {{
-                    decs.push(Decoration.replace({{
-                        widget: new EmbedWidget(ref, type),
-                    }}).range(line.from, line.to));
-                }}
+            if (/\.(png|jpg|jpeg|gif|svg|webp)$/i.test(cleaned)) {{
+                return {{ status: 'resolved', ref: cleaned, canonicalPath: cleaned, kind: 'image', surface: 'asset-preview', icon: '🖼', label: cleaned }};
             }}
+            return {{ status: 'missing', ref: cleaned, kind: 'unknown', surface: 'unknown', icon: '?', label: cleaned }};
+        }},
+        imageUrls(resolution) {{
+            const ref = resolution.canonicalPath || resolution.ref;
+            const encoded = encodeURIComponent(ref).replace(/%2F/g, '/');
+            return [
+                'project://localhost/' + encoded,
+                'project://localhost/assets/' + encoded,
+                'project://localhost/images/' + encoded,
+                'project://localhost/drawings/' + encoded,
+            ];
+        }},
+        open(resolution) {{
+            window._flyntNotify('editor.embed.open', JSON.stringify(resolution));
+            if (resolution.surface === 'drawing') window._flyntNotify('open-drawing', resolution.canonicalPath || resolution.ref);
         }}
-        return Decoration.set(decs);
-    }});
+    }};
 
     // Save on blur / visibility change — never lose content
     document.addEventListener('visibilitychange', () => {{
@@ -1383,6 +1357,7 @@ fn cm6_init_js(content: &str) -> String {
     const flyntLocalExtensions = [
                 livePreview,
                 blockRenderPlugin,
+                window.FlyntEditorCompat.embedExtension({{ EditorView, Decoration, WidgetType }}, flyntEmbedResolver),
                 window.FlyntEditorCompat.contextMenuExtension(EditorView),
                 // Click wikilink to navigate; uses document text at click position
                 EditorView.domEventHandlers({{
