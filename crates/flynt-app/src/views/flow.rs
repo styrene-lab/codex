@@ -165,6 +165,8 @@ pub fn FlowView(path: PathBuf) -> Element {
                 if (mc) { mc.style.overflow = 'hidden'; mc.style.display = 'flex'; mc.style.flexDirection = 'column'; }
                 var np = document.querySelector('.notes-pane');
                 if (np) { np.style.overflow = 'hidden'; np.style.padding = '0'; np.style.display = 'flex'; np.style.flexDirection = 'column'; np.style.flex = '1'; np.style.minHeight = '0'; }
+                var ns = document.querySelector('.notes-scroll');
+                if (ns) { ns.style.overflow = 'hidden'; ns.style.padding = '0'; ns.style.display = 'flex'; ns.style.flexDirection = 'column'; ns.style.flex = '1'; ns.style.minHeight = '0'; }
                 requestAnimationFrame(function() { window.dispatchEvent(new Event('resize')); });
                 setTimeout(function() { window.dispatchEvent(new Event('resize')); }, 200);
             })();
@@ -178,6 +180,8 @@ pub fn FlowView(path: PathBuf) -> Element {
                 if (mc) { mc.style.overflow = ''; mc.style.display = ''; mc.style.flexDirection = ''; }
                 var np = document.querySelector('.notes-pane');
                 if (np) { np.style.overflow = ''; np.style.padding = ''; np.style.display = ''; np.style.flexDirection = ''; np.style.flex = ''; np.style.minHeight = ''; }
+                var ns = document.querySelector('.notes-scroll');
+                if (ns) { ns.style.overflow = ''; ns.style.padding = ''; ns.style.display = ''; ns.style.flexDirection = ''; ns.style.flex = ''; ns.style.minHeight = ''; }
             };
             "#,
         );

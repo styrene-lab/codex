@@ -746,6 +746,14 @@
   flex-direction: column;
 }
 
+/* Flow view fills the viewport — no scroll, no padding */
+.notes-scroll:has(.flow-pane) {
+  padding:        0;
+  overflow:       hidden;
+  display:        flex;
+  flex-direction: column;
+}
+
 .notes-pane > .doc-title,
 .notes-topbar .doc-title {
   font-size:     var(--font-size-lg, 18px);

@@ -262,14 +262,14 @@ function FlyntNode({ data }: { data: NodePayload }) {
     <div
       style={{
         padding: "8px 12px",
-        background: "transparent",
-        border: "0",
+        background: "#0e1622",
+        border: "1px solid #1a3448",
         borderRadius: 6,
         color: "#e2e8f0",
         fontSize: 12,
         minWidth: 150,
         position: "relative",
-        boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+        boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
       }}
     >
       <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5 }}>
@@ -562,7 +562,7 @@ function FlowCanvas({
 
 
   return (
-    <div style={{ width: "100%", height: "100%", position: "relative" }}>
+    <div style={{ width: "100%", flex: 1, minHeight: 0, position: "relative" }}>
       <div className="flynt-flow-canvas">
         <ReactFlow
           nodes={nodes}
@@ -705,6 +705,7 @@ const api: FlyntFlowGlobal = {
     }
     parsed.nodes = Array.isArray(parsed.nodes) ? parsed.nodes : [];
     parsed.edges = Array.isArray(parsed.edges) ? parsed.edges : [];
+
     const nodeIds = new Set(parsed.nodes.map((n) => n.id));
     parsed.edges = parsed.edges.filter(
       (e) =>
