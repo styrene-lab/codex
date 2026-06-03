@@ -161,6 +161,7 @@ interface EditorCompatModules {
   markdownLanguage: unknown;
   GFM: unknown;
   languages: unknown;
+  createFrontmatterHider?: () => unknown;
   keymap: { of(bindings: unknown[]): unknown };
 }
 
@@ -191,6 +192,7 @@ function baseExtensions(modules: EditorCompatModules, localExtensions: unknown[]
     flyntKeymaps.save,
     flyntKeymaps.formatting,
     changeHandlerExtension(modules.EditorView),
+    ...(modules.createFrontmatterHider ? [modules.createFrontmatterHider()] : []),
     ...localExtensions,
     modules.EditorView.lineWrapping,
   ];

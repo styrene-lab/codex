@@ -811,7 +811,6 @@ fn cm6_init_js(content: &str) -> String {
 
     const livePreview = createLivePreview();
     const blockRenderPlugin = createBlockRender();
-    const frontmatterPlugin = createFrontmatterHider();
 
     class TableWidget extends WidgetType {{
         constructor(html) {{ super(); this._html = html; }}
@@ -1433,7 +1432,6 @@ fn cm6_init_js(content: &str) -> String {
     const flyntLocalExtensions = [
                 livePreview,
                 blockRenderPlugin,
-                frontmatterPlugin,
                 window.FlyntEditorCompat.contextMenuExtension(EditorView),
                 // Click wikilink to navigate; uses document text at click position
                 EditorView.domEventHandlers({{
@@ -1538,6 +1536,7 @@ fn cm6_init_js(content: &str) -> String {
         markdownLanguage,
         GFM,
         languages,
+        createFrontmatterHider,
         keymap,
     }}, container, docText, cursorPos, flyntLocalExtensions, flyntTheme);
 
