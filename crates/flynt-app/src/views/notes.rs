@@ -8,7 +8,7 @@ use crate::{
 };
 use comrak::{Options, markdown_to_html};
 use dioxus::prelude::*;
-use flynt_core::models::{DocumentMeta, Frontmatter, PublicationConfig, PublicationVisibility};
+use flynt_core::models::{DocumentId, DocumentMeta, Frontmatter, PublicationConfig, PublicationVisibility};
 use flynt_core::parser::parse_document_source;
 use flynt_core::store::ProjectStore;
 use flynt_store::sync::git::{FileHistoryEntry, FileSnapshot, GitSync};
@@ -989,7 +989,8 @@ fn build_embed_index_json(ctx: &AppContext) -> String {
     serde_json::Value::Object(map).to_string()
 }
 
-fn cm6_init_js(content: &str, embed_index_json: &str) -> String {
+fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> String {
+    let doc_id_json = serde_json::to_string(&doc_id.0.to_string()).unwrap_or_else(|_| "null".into());
     let escaped = serde_json::to_string(content).unwrap_or_else(|_| "\"\"".into());
     let embed_index = if embed_index_json.trim().is_empty() {
         "{}"
@@ -1001,6 +1002,7 @@ fn cm6_init_js(content: &str, embed_index_json: &str) -> String {
 (function() {{
     function _initCM() {{
     const container = document.getElementById('flynt-cm-editor');
+    window._flyntActiveDocId = {doc_id_json};
     window._flyntEmbedIndex = {embed_index};
     if (!window.FlyntEmbedResolver) {{
         window.FlyntEmbedResolver = {{
@@ -1606,7 +1608,7 @@ const BRIDGE_JS: &str = r#"
 if (!window._flyntQueue) {
     window._flyntQueue = [];
     window._flyntNotify = function(type, data) {
-        window._flyntQueue.push(JSON.stringify({type: type, data: data}));
+        window._flyntQueue.push(JSON.stringify({type: type, data: data, doc_id: window._flyntActiveDocId || null}));
     };
 }
 
@@ -2750,7 +2752,7 @@ pub fn NotesView() -> Element {
             body.len()
         );
         let embed_index_json = build_embed_index_json(&init_ctx);
-        document::eval(&cm6_init_js(&body, &embed_index_json));
+        document::eval(&cm6_init_js(&doc_id, &body, &embed_index_json));
     });
 
     // Autosave for Source mode (textarea path). CM6 already has its own
@@ -2838,9 +2840,19 @@ pub fn NotesView() -> Element {
                 };
                 let msg_type = msg["type"].as_str().unwrap_or("");
                 let data = msg["data"].as_str().unwrap_or("");
+                let msg_doc_id = msg["doc_id"]
+                    .as_str()
+                    .and_then(|s| uuid::Uuid::parse_str(s).ok())
+                    .map(DocumentId);
+                let active_doc_id = ts_link.read().active_id().cloned();
+                let message_matches_active = msg_doc_id.as_ref() == active_doc_id.as_ref();
 
                 match msg_type {
                     "edit" => {
+                        if !message_matches_active {
+                            tracing::warn!(?msg_doc_id, ?active_doc_id, "dropping stale editor edit message");
+                            continue;
+                        }
                         // Keep edit_body in sync with CM6's live content.
                         // The CM6 div has a stable id (`flynt-cm-editor`), so
                         // Dioxus reconciles it as the same element on re-render
@@ -2856,48 +2868,50 @@ pub fn NotesView() -> Element {
                         *save_state.write() = SaveState::Dirty;
                     }
                     "save" | "autosave" => {
+                        if !message_matches_active {
+                            tracing::warn!(?msg_doc_id, ?active_doc_id, "dropping stale editor save message");
+                            continue;
+                        }
                         let content = data.to_string();
-                        // peek — do NOT subscribe reactively
-                        if let Some(Some((p, _, disk_body, _, _))) = &*rendered.peek() {
-                            let path = p.clone();
-                            let frontmatter = doc_data
-                                .peek()
-                                .as_ref()
-                                .map(|(_, _, _, _, fm)| fm.clone())
-                                .unwrap_or_default();
-                            if crate::visual_artifact_surface::resolve_wrapper_surface(
-                                &c.project_root(),
-                                &path,
-                                disk_body,
-                                &frontmatter,
-                            )
-                            .is_some()
-                            {
-                                *save_err.write() = Some("Visual artifact wrappers are protected; use the artifact editor/source command instead.".into());
-                                continue;
+                        let Some((doc_id, path, _title, disk_body, frontmatter)) = doc_data.peek().clone() else {
+                            tracing::warn!(?msg_doc_id, "dropping editor save with no loaded doc_data");
+                            continue;
+                        };
+                        if Some(&doc_id) != msg_doc_id.as_ref() {
+                            tracing::warn!(?msg_doc_id, ?doc_id, "dropping editor save for non-loaded doc");
+                            continue;
+                        }
+                        if crate::visual_artifact_surface::resolve_wrapper_surface(
+                            &c.project_root(),
+                            &path,
+                            &disk_body,
+                            &frontmatter,
+                        )
+                        .is_some()
+                        {
+                            *save_err.write() = Some("Visual artifact wrappers are protected; use the artifact editor/source command instead.".into());
+                            continue;
+                        }
+                        let project = c.project();
+                        let content_for_save = content.clone();
+                        match tokio::task::spawn_blocking(move || {
+                            project.save_document_content(&path, &content_for_save)
+                        })
+                        .await
+                        {
+                            Ok(Ok(())) => {
+                                let saved_content = serde_json::to_string(&content)
+                                    .unwrap_or_else(|_| "\"\"".into());
+                                document::eval(&format!(
+                                    "document.querySelectorAll('.save-status').forEach(e => {{ e.textContent = 'saved'; e.className = 'save-status saved'; }}); if (window.FlyntEditor) window.FlyntEditor.markSaved(undefined, {});",
+                                    saved_content
+                                ));
                             }
-                            let project = c.project();
-                            let content_for_save = content.clone();
-                            match tokio::task::spawn_blocking(move || {
-                                project.save_document_content(&path, &content_for_save)
-                            })
-                            .await
-                            {
-                                Ok(Ok(())) => {
-                                    // Update save indicator via DOM — no signal write
-                                    let saved_content = serde_json::to_string(&content)
-                                        .unwrap_or_else(|_| "\"\"".into());
-                                    document::eval(&format!(
-                                        "document.querySelectorAll('.save-status').forEach(e => {{ e.textContent = 'saved'; e.className = 'save-status saved'; }}); if (window.FlyntEditor) window.FlyntEditor.markSaved(undefined, {});",
-                                        saved_content
-                                    ));
-                                }
-                                Ok(Err(e)) => {
-                                    *save_err.write() = Some(format!("Could not save — {e}"))
-                                }
-                                Err(e) => {
-                                    *save_err.write() = Some(format!("Save interrupted — {e}"))
-                                }
+                            Ok(Err(e)) => {
+                                *save_err.write() = Some(format!("Could not save — {e}"))
+                            }
+                            Err(e) => {
+                                *save_err.write() = Some(format!("Save interrupted — {e}"))
                             }
                         }
                     }
