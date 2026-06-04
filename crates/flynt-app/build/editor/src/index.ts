@@ -71,6 +71,7 @@ interface FlyntEditorCompatApi {
   baseExtensions(modules: EditorCompatModules, localExtensions?: unknown[]): unknown[];
   mountEditor(modules: EditorCompatModules, container: HTMLElement, content: string, cursorPos?: number, localExtensions?: unknown[], theme?: unknown): FlyntEditorApi;
   contextMenuExtension(EditorView: { domEventHandlers(handlers: Record<string, unknown>): unknown }): unknown;
+  wikilinkInteractionExtension(EditorView: { domEventHandlers(handlers: Record<string, unknown>): unknown }): unknown;
   embedExtension(modules: EditorCompatModules, resolver: EmbedResolver): unknown | null;
   commandRegistry(): EditorCommandRegistry;
   dispatchEditorCommand(id: string, payload?: { text?: string }): BridgeResult;
@@ -85,6 +86,8 @@ declare global {
     CM?: { EditorView?: { scrollIntoView(pos: number, options: unknown): unknown } };
     FlyntEditor?: FlyntEditorApi;
     FlyntEditorCompat?: FlyntEditorCompatApi;
+    _flyntCmPreviewTimer?: number;
+    _flyntCmPreviewTarget?: string | null;
   }
 }
 
@@ -351,6 +354,65 @@ function baseExtensions(modules: EditorCompatModules, localExtensions: unknown[]
 }
 
 
+
+
+function extractWikilinkAt(view: LegacyEditorView, clientX: number, clientY: number): string | null {
+  const pos = (view as unknown as { posAtCoords(coords: { x: number; y: number }): number | null }).posAtCoords({ x: clientX, y: clientY });
+  if (pos === null) return null;
+  const line = view.state.doc.lineAt(pos);
+  const text = line.text;
+  let index = 0;
+  while ((index = text.indexOf("[[", index)) !== -1) {
+    const end = text.indexOf("]]", index + 2);
+    if (end <= index) break;
+    const from = line.from + index;
+    const to = line.from + end + 2;
+    if (pos >= from && pos <= to) {
+      const inner = text.substring(index + 2, end);
+      const pipe = inner.indexOf("|");
+      return (pipe >= 0 ? inner.substring(0, pipe) : inner).trim();
+    }
+    index = end + 2;
+  }
+  return null;
+}
+
+function wikilinkInteractionExtension(EditorView: { domEventHandlers(handlers: Record<string, unknown>): unknown }): unknown {
+  return EditorView.domEventHandlers({
+    click(event: MouseEvent, view: LegacyEditorView) {
+      document.getElementById("flynt-ctx-menu")?.remove();
+      const target = extractWikilinkAt(view, event.clientX, event.clientY);
+      if (!target) return false;
+      window._flyntNotify?.("nav", target);
+      return true;
+    },
+    mousemove(event: MouseEvent, view: LegacyEditorView) {
+      const target = extractWikilinkAt(view, event.clientX, event.clientY);
+      if (!target) {
+        if (window._flyntCmPreviewTimer) clearTimeout(window._flyntCmPreviewTimer);
+        window._flyntCmPreviewTarget = null;
+        window._flyntNotify?.("preview-clear", "");
+        return;
+      }
+      if (window._flyntCmPreviewTarget === target) return;
+      if (window._flyntCmPreviewTimer) clearTimeout(window._flyntCmPreviewTimer);
+      window._flyntCmPreviewTarget = target;
+      window._flyntCmPreviewTimer = window.setTimeout(() => {
+        if (window._flyntCmPreviewTarget !== target) return;
+        window._flyntNotify?.("preview-note", JSON.stringify({
+          slug: target,
+          x: event.clientX,
+          y: event.clientY,
+        }));
+      }, 450);
+    },
+    mouseleave() {
+      if (window._flyntCmPreviewTimer) clearTimeout(window._flyntCmPreviewTimer);
+      window._flyntCmPreviewTarget = null;
+      window._flyntNotify?.("preview-clear", "");
+    },
+  });
+}
 
 function contextMenuExtension(EditorView: { domEventHandlers(handlers: Record<string, unknown>): unknown }): unknown {
   return EditorView.domEventHandlers({
@@ -644,6 +706,6 @@ function install(initialContent = ""): FlyntEditorApi {
   return api;
 }
 
-window.FlyntEditorCompat = { install, attachView, changeHandlerExtension, keymapRegistry, baseExtensions, mountEditor, contextMenuExtension, embedExtension, commandRegistry, dispatchEditorCommand };
+window.FlyntEditorCompat = { install, attachView, changeHandlerExtension, keymapRegistry, baseExtensions, mountEditor, contextMenuExtension, wikilinkInteractionExtension, embedExtension, commandRegistry, dispatchEditorCommand };
 
 export {};
