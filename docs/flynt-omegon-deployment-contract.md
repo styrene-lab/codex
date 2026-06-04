@@ -158,7 +158,7 @@ Required shape:
   "protocol_version": 2,
   "extension_info": {
     "name": "flynt",
-    "version": "0.11.2",
+    "version": "0.12.0",
     "sdk_version": "0.x.y",
     "sdk_repo": "omegon-extension-sdk",
     "runtime_min_version": "0.x.y",
@@ -408,8 +408,8 @@ Compatibility matrix:
 
 ```json
 {
-  "flynt_app": "0.11.2",
-  "flynt_agent": "0.11.2",
+  "flynt_app": "0.12.0",
+  "flynt_agent": "0.12.0",
   "extension_sdk": "0.x.y",
   "omegon_runtime_min": "0.x.y",
   "contract_version": 1
@@ -482,7 +482,7 @@ Example manifest:
 
 ```toml
 name = "flynt"
-version = "0.11.2"
+version = "0.12.0"
 sdk_version = "0.x.y"
 runtime_min_version = "0.x.y"
 scope = "project"

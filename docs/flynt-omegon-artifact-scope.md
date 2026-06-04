@@ -43,9 +43,9 @@ Closer scope wins. The ACP panel must show artifact provenance.
 Example visible state:
 
 ```text
-Profile: flynt-agent@0.11.2 (Flynt bundled)
-Extension: flynt@0.11.2 (project scoped)
-Skills: vault@1.2.0 (user), flynt-design@0.11.2 (bundled)
+Profile: flynt-agent@0.12.0 (Flynt bundled)
+Extension: flynt@0.12.0 (project scoped)
+Skills: vault@1.2.0 (user), flynt-design@0.12.0 (bundled)
 Memory: project
 Contract: v1
 ```
@@ -92,7 +92,7 @@ Example Flynt design skill:
 type = "skill"
 id = "dev.styrene.flynt.design"
 name = "Flynt Design"
-version = "0.11.2"
+version = "0.12.0"
 
 [skill]
 guidance = "SKILL.md"
@@ -111,7 +111,7 @@ Example Flynt profile:
 [agent]
 id = "styrene.flynt-agent"
 name = "Flynt Agent"
-version = "0.11.2"
+version = "0.12.0"
 domain = "knowledge"
 
 [persona]

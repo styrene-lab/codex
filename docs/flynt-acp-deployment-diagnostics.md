@@ -80,7 +80,7 @@ Use blocked when continuing would violate the contract:
 Example OK:
 
 ```text
-Flynt ACP ready — flynt-agent profile, project memory, flynt extension v0.11.2, contract v1.
+Flynt ACP ready — flynt-agent profile, project memory, flynt extension v0.12.0, contract v1.
 ```
 
 Example warning:
