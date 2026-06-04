@@ -1050,8 +1050,12 @@ fn cm6_init_js(content: &str, embed_index_json: &str) -> String {
             console.timeEnd('cm6-total');
             return;
         }} else {{
-            try {{ cm.destroy(); }} catch(e) {{}}
-            window._flyntCM = null;
+            if (window.FlyntEditor && typeof window.FlyntEditor.unmount === 'function') {{
+                window.FlyntEditor.unmount();
+            }} else {{
+                try {{ cm.destroy(); }} catch(e) {{}}
+                window._flyntCM = null;
+            }}
             // fall through to full init
         }}
     }}
@@ -1475,13 +1479,13 @@ fn cm6_init_js(content: &str, embed_index_json: &str) -> String {
 
     // Save on blur / visibility change — never lose content
     document.addEventListener('visibilitychange', () => {{
-        if (document.hidden && window._flyntCM) {{
-            window._flyntNotify('autosave', window._flyntCM.state.doc.toString());
+        if (document.hidden && window.FlyntEditor) {{
+            window._flyntNotify('autosave', window.FlyntEditor.getDocument().content);
         }}
     }});
     window.addEventListener('blur', () => {{
-        if (window._flyntCM) {{
-            window._flyntNotify('autosave', window._flyntCM.state.doc.toString());
+        if (window.FlyntEditor) {{
+            window._flyntNotify('autosave', window.FlyntEditor.getDocument().content);
         }}
     }});
 
@@ -1545,6 +1549,9 @@ fn cm6_init_js(content: &str, embed_index_json: &str) -> String {
                 window.FlyntEditorCompat.wikilinkInteractionExtension(EditorView),
             ];
 
+    if (!window.FlyntEditorCompat || typeof window.FlyntEditorCompat.mountEditor !== 'function') {{
+        throw new Error('Editor bridge bundle unavailable: FlyntEditorCompat.mountEditor missing');
+    }}
     window.FlyntEditorCompat.mountEditor({{
         EditorState,
         EditorView,
