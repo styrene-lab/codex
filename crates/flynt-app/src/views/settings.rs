@@ -4,6 +4,7 @@ use crate::omegon_deployment_diagnostics::{
 };
 use crate::self_update::UpdateChannel;
 use crate::{
+    acp::AcpSession,
     bootstrap::{AppContext, OmegonRuntimeContext, PendingProjectSetup},
     components::daemon_settings::DaemonSettingsSection,
     components::identity_settings::IdentitySettingsSection,
@@ -13,6 +14,7 @@ use crate::{
     views::{IndexingScopesEditor, PublicationRulesEditor},
 };
 use dioxus::prelude::*;
+use std::rc::Rc;
 use flynt_core::models::{
     AppearanceConfig, FlyntOperatorSettings, FontSizePreset, IndexingConfig, LocalRuntimeConfig,
     OmegonProfile, ProjectConfig, SyncConfig, VisualizationConfig,
@@ -162,6 +164,7 @@ pub fn SettingsView() -> Element {
     let publish_msg = use_signal(|| Option::<(&'static str, String)>::None);
 
     let mut active_page = use_context::<Signal<SettingsPage>>();
+    let shared_session = use_context::<Signal<Option<Rc<AcpSession>>>>();
 
     let project = ctx.project();
     let omegon = ctx.omegon();
@@ -392,6 +395,9 @@ pub fn SettingsView() -> Element {
             }
 
             div { class: "settings-scroll",
+                if active_page.read().requires_live_omegon_session() && shared_session.read().is_none() {
+                    LiveOmegonSessionRequired { page: *active_page.read() }
+                } else {
 
                 // ════════════════════════════════════════════════════════════
                 // General → Appearance: theme + font size
@@ -1234,6 +1240,7 @@ pub fn SettingsView() -> Element {
                 }
 
                 } // end Advanced
+                } // end live-Omegon session guard
 
                 // ── Save bar ─────────────────────────────────────────────────
                 div { class: "settings-save-bar",
@@ -1276,6 +1283,19 @@ fn string_from_input(raw: &str) -> Option<String> {
         None
     } else {
         Some(trimmed.to_string())
+    }
+}
+
+#[component]
+fn LiveOmegonSessionRequired(page: SettingsPage) -> Element {
+    rsx! {
+        SettingsSection { heading: "Omegon session required",
+            div { class: "settings-row",
+                div { class: "settings-hint muted",
+                    "{page.label()} uses live Omegon extension APIs. Start or reconnect the agent session before managing this page."
+                }
+            }
+        }
     }
 }
 

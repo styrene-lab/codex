@@ -103,6 +103,7 @@ pub fn ExtensionManagerSection() -> Element {
         .unwrap_or_default();
 
     let mut action_msg: Signal<Option<(&'static str, String)>> = use_signal(|| None);
+    let mut action_pending: Signal<Option<&'static str>> = use_signal(|| None);
     let mut install_uri = use_signal(String::new);
     let mut show_install = use_signal(|| false);
 
@@ -252,10 +253,13 @@ pub fn ExtensionManagerSection() -> Element {
                 }
                 button {
                     class: "btn btn-ghost",
+                    disabled: *action_pending.read() == Some("update"),
                     onclick: {
                         let sess = shared_session.read().clone();
                         move |_| {
                             let sess = sess.clone();
+                            *action_pending.write() = Some("update");
+                            *action_msg.write() = Some(("ok", "Updating extensions…".into()));
                             spawn(async move {
                                 if let Some(s) = sess {
                                     match s.extensions_update(None).await {
@@ -265,11 +269,18 @@ pub fn ExtensionManagerSection() -> Element {
                                         }
                                         Err(e) => *action_msg.write() = Some(("err", format!("Update failed: {e}"))),
                                     }
+                                } else {
+                                    *action_msg.write() = Some(("err", "Update failed: Omegon session is not connected".into()));
                                 }
+                                *action_pending.write() = None;
                             });
                         }
                     },
-                    "Update all"
+                    if *action_pending.read() == Some("update") {
+                        "Updating…"
+                    } else {
+                        "Update all"
+                    }
                 }
                 if let Some((kind, msg)) = &*action_msg.read() {
                     span {
@@ -289,12 +300,18 @@ pub fn ExtensionManagerSection() -> Element {
                     }
                     button {
                         class: "btn btn-primary btn-sm",
+                        disabled: action_pending.read().is_some(),
                         onclick: {
                             let sess = shared_session.read().clone();
                             move |_| {
                                 let uri = install_uri.read().clone();
                                 let sess = sess.clone();
-                                if uri.trim().is_empty() { return; }
+                                if uri.trim().is_empty() {
+                                    *action_msg.write() = Some(("err", "Install failed: enter a local path, git URL, or .tar.gz archive".into()));
+                                    return;
+                                }
+                                *action_pending.write() = Some("install");
+                                *action_msg.write() = Some(("ok", format!("Installing from {uri}…")));
                                 spawn(async move {
                                     if let Some(s) = sess {
                                         match s.extensions_install(&uri).await {
@@ -306,11 +323,18 @@ pub fn ExtensionManagerSection() -> Element {
                                             }
                                             Err(e) => *action_msg.write() = Some(("err", format!("Install failed: {e}"))),
                                         }
+                                    } else {
+                                        *action_msg.write() = Some(("err", "Install failed: Omegon session is not connected".into()));
                                     }
+                                    *action_pending.write() = None;
                                 });
                             }
                         },
-                        "Install"
+                        if *action_pending.read() == Some("install") {
+                            "Installing…"
+                        } else {
+                            "Install"
+                        }
                     }
                     span { class: "settings-hint muted", "Accepts local paths, git URLs (https/ssh), or .tar.gz archives" }
                 }

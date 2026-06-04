@@ -159,6 +159,13 @@ impl SettingsPage {
         }
     }
 
+    pub fn requires_live_omegon_session(self) -> bool {
+        matches!(
+            self,
+            Self::OmegonProfile | Self::OmegonExtensions | Self::OmegonArmory
+        )
+    }
+
     pub fn category(self) -> SettingsCategory {
         match self {
             Self::GeneralAppearance
