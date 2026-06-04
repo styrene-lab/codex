@@ -1074,7 +1074,6 @@ fn cm6_init_js(content: &str, embed_index_json: &str) -> String {
     }} = CM;
 
     const livePreview = createLivePreview();
-    const blockRenderPlugin = createBlockRender();
 
     class TableWidget extends WidgetType {{
         constructor(html) {{ super(); this._html = html; }}
@@ -1541,7 +1540,6 @@ fn cm6_init_js(content: &str, embed_index_json: &str) -> String {
     }}
     const flyntLocalExtensions = [
                 livePreview,
-                blockRenderPlugin,
                 window.FlyntEditorCompat.embedExtension({{ EditorView, Decoration, WidgetType }}, flyntEmbedResolver),
                 window.FlyntEditorCompat.contextMenuExtension(EditorView),
                 window.FlyntEditorCompat.wikilinkInteractionExtension(EditorView),
@@ -1570,6 +1568,7 @@ fn cm6_init_js(content: &str, embed_index_json: &str) -> String {
         GFM,
         languages,
         createFrontmatterHider,
+        createBlockRender,
         Decoration,
         WidgetType,
         keymap,
