@@ -2324,6 +2324,10 @@ fn looks_like_code_repo(root: &Path) -> bool {
         "mix.exs",
         "flake.nix",
         "deno.json",
+        // Omegon/Armory package workspaces are source repos, not Flynt-managed vaults.
+        // Opening them in Flynt must index without injecting frontmatter.
+        "plugin.toml",
+        "manifest.toml",
     ];
     BUILD_MANIFESTS.iter().any(|m| root.join(m).exists())
 }
