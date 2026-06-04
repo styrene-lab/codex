@@ -313,8 +313,11 @@ function taskListExtension(modules: EditorCompatModules): unknown | null {
       if (!match) continue;
       const prefixLength = match[1]?.length ?? 0;
       const checked = match[2] !== " ";
-      decorations.push(Decoration.replace({ widget: new TaskCheckWidget(checked, line.from) }).range(line.from + prefixLength, line.from + prefixLength + 3));
+      // CM6 RangeSet construction requires ranges sorted by `from` and
+      // `startSide`. Add the prefix replacement before the checkbox widget;
+      // the previous reverse order crashed on indented task-list lines.
       if (prefixLength > 0) decorations.push(Decoration.replace({}).range(line.from, line.from + prefixLength));
+      decorations.push(Decoration.replace({ widget: new TaskCheckWidget(checked, line.from) }).range(line.from + prefixLength, line.from + prefixLength + 3));
     }
     return Decoration.set(decorations);
   });
