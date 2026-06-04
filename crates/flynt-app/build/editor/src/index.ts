@@ -68,6 +68,7 @@ interface FlyntEditorCompatApi {
   attachView(view: LegacyEditorView, initialContent?: string): FlyntEditorApi;
   changeHandlerExtension(EditorView: { updateListener: { of(callback: (update: { docChanged?: boolean }) => void): unknown } }): unknown;
   keymapRegistry(keymap: { of(bindings: Array<{ key: string; run(view: LegacyEditorView): boolean }>): unknown }): { save: unknown; formatting: unknown; all: unknown[] };
+  themeExtension(EditorView: { theme(spec: unknown, options?: unknown): unknown }): unknown;
   baseExtensions(modules: EditorCompatModules, localExtensions?: unknown[]): unknown[];
   mountEditor(modules: EditorCompatModules, container: HTMLElement, content: string, cursorPos?: number, localExtensions?: unknown[], theme?: unknown): FlyntEditorApi;
   contextMenuExtension(EditorView: { domEventHandlers(handlers: Record<string, unknown>): unknown }): unknown;
@@ -316,6 +317,63 @@ function taskListExtension(modules: EditorCompatModules): unknown | null {
     }
     return Decoration.set(decorations);
   });
+}
+
+
+function themeExtension(EditorView: { theme(spec: unknown, options?: unknown): unknown }): unknown {
+  return EditorView.theme({
+    '&': {
+      backgroundColor: 'var(--background)',
+      color: 'var(--prose-body, #d7e0ea)',
+      fontSize: 'var(--font-size-md, 15px)',
+    },
+    '.cm-content': {
+      caretColor: 'var(--ring, #2ab4c8)',
+      padding: '0',
+      fontFamily: 'var(--font-sans)',
+      lineHeight: 'var(--line-height, 1.7)',
+    },
+    '.cm-cursor': {
+      borderLeftColor: 'var(--ring, #2ab4c8)',
+      borderLeftWidth: '2px',
+    },
+    '.cm-activeLine': {
+      backgroundColor: 'rgba(255,255,255,0.03)',
+    },
+    '.cm-selectionBackground, ::selection': {
+      backgroundColor: 'rgba(42, 180, 200, 0.2) !important',
+    },
+    '.cm-gutters': { display: 'none' },
+    '.cm-scroller': {
+      overflow: 'auto',
+      padding: 'var(--space-8, 32px) var(--space-10, 40px)',
+    },
+    '.cm-line': { padding: '0 4px' },
+    '.cm-codeblock-line': {
+      backgroundColor: 'var(--prose-pre-bg, rgba(15, 23, 42, 0.8))',
+      fontFamily: 'var(--font-mono)',
+      fontSize: 'var(--font-size-sm, 13px)',
+      lineHeight: '1.5',
+      borderLeft: '3px solid var(--prose-pre-border, #1e293b)',
+      paddingLeft: '12px !important',
+    },
+    '.cm-codeblock-fence': {
+      backgroundColor: 'var(--prose-pre-bg, rgba(15, 23, 42, 0.8))',
+      fontFamily: 'var(--font-mono)',
+      fontSize: 'var(--font-size-xs, 11px)',
+      color: 'var(--muted-foreground, #475569)',
+      borderLeft: '3px solid var(--prose-pre-border, #1e293b)',
+      paddingLeft: '12px !important',
+    },
+    '.cm-codeblock-first': {
+      borderTopLeftRadius: '6px', borderTopRightRadius: '6px',
+      paddingTop: '8px !important',
+    },
+    '.cm-codeblock-last': {
+      borderBottomLeftRadius: '6px', borderBottomRightRadius: '6px',
+      paddingBottom: '8px !important',
+    },
+  }, { dark: true });
 }
 
 function baseExtensions(modules: EditorCompatModules, localExtensions: unknown[] = []): unknown[] {
@@ -706,6 +764,6 @@ function install(initialContent = ""): FlyntEditorApi {
   return api;
 }
 
-window.FlyntEditorCompat = { install, attachView, changeHandlerExtension, keymapRegistry, baseExtensions, mountEditor, contextMenuExtension, wikilinkInteractionExtension, embedExtension, commandRegistry, dispatchEditorCommand };
+window.FlyntEditorCompat = { install, attachView, changeHandlerExtension, keymapRegistry, themeExtension, baseExtensions, mountEditor, contextMenuExtension, wikilinkInteractionExtension, embedExtension, commandRegistry, dispatchEditorCommand };
 
 export {};
