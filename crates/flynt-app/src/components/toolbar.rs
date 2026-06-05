@@ -343,6 +343,17 @@ pub fn Toolbar(
     let build_label = format!("v{app_version} {build_hash}");
     let project_root = ctx.project_root();
     let omegon = ctx.omegon();
+    let omegon_icon_class = if omegon_launch_error.read().is_some() {
+        "nav-icon nav-icon-img omegon-icon error"
+    } else if omegon_child.read().is_some() {
+        if *show_agent.read() {
+            "nav-icon nav-icon-img omegon-icon running"
+        } else {
+            "nav-icon nav-icon-img omegon-icon active"
+        }
+    } else {
+        "nav-icon nav-icon-img omegon-icon idle"
+    };
     let auto_status = ctx
         .runtime
         .read()
@@ -721,7 +732,7 @@ pub fn Toolbar(
                         }
                         *show_agent.write() = opening;
                     },
-                    span { class: "nav-icon", dangerous_inner_html: crate::icons::ICON_OMEGON }
+                    img { class: "{omegon_icon_class}", src: asset!("/assets/images/omega-s.png"), alt: "Omegon" }
                 }
             }
         }
