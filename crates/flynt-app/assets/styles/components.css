@@ -137,6 +137,24 @@
   margin: -2px 0 -2px var(--space-2);
 }
 
+.file-tree-sort-select {
+  min-width: 108px;
+  height: 24px;
+  margin-left: auto;
+  border: 1px solid var(--sidebar-border);
+  border-radius: var(--radius-sm);
+  background: var(--sidebar-item-hover);
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold);
+}
+
+.file-tree-sort-select:hover,
+.file-tree-sort-select:focus {
+  color: var(--sidebar-fg);
+  border-color: var(--primary-muted);
+}
+
 .sidebar-lane-switcher {
   display: grid;
   grid-template-columns: 1fr 1fr;

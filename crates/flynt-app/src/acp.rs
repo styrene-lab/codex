@@ -642,7 +642,7 @@ impl AcpSession {
             .conn
             .ext_method(req)
             .await
-            .map_err(|e| anyhow::anyhow!("ext_method failed: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("ext_method {method} failed: {e}"))?;
         let value: serde_json::Value = serde_json::from_str(resp.0.get())?;
         if let Some(err) = value["error"].as_str() {
             anyhow::bail!("{err}");
@@ -870,6 +870,47 @@ impl AcpSession {
     }
 
     // ── Discovery ──────────────────────────────────────────────
+
+    /// Browse the Armory for available extensions using Omegon's current ACP standard.
+    pub async fn armory_search_extensions(
+        &self,
+        query: Option<&str>,
+    ) -> Result<serde_json::Value> {
+        let mut params = serde_json::json!({ "kind": "extensions" });
+        if let Some(q) = query {
+            params["query"] = serde_json::Value::String(q.into());
+        }
+        self.ext_call("armory/search", params).await
+    }
+
+    /// Install an item from the Armory registry.
+    pub async fn armory_install_extension(&self, target: &str) -> Result<serde_json::Value> {
+        self.ext_call(
+            "armory/install",
+            serde_json::json!({
+                "target": target,
+                "kind": "extensions",
+            }),
+        )
+        .await
+    }
+
+    /// Install a package through Omegon's package substrate. Supports git URLs,
+    /// local paths, Armory refs, extension manifests, and plugin.toml skill packages.
+    pub async fn packages_install(
+        &self,
+        source: &str,
+        kind_hint: &str,
+    ) -> Result<serde_json::Value> {
+        self.ext_call(
+            "packages/install",
+            serde_json::json!({
+                "source": source,
+                "kind_hint": kind_hint,
+            }),
+        )
+        .await
+    }
 
     /// Search the armory registry for available extensions.
     pub async fn extensions_search(&self, query: Option<&str>) -> Result<serde_json::Value> {

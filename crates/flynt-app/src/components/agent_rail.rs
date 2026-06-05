@@ -166,12 +166,7 @@ pub fn resolve_acp_agent_id(
         return Some(agent_id);
     }
 
-    let profile = omegon.load_deployment_manifest().deployment.profile;
-    let catalog_path = omegon
-        .home_dir
-        .join("catalog")
-        .join(format!("{profile}.toml"));
-    catalog_path.exists().then_some(profile)
+    Some(omegon.load_deployment_manifest().deployment.profile)
 }
 
 pub fn deployment_agent_id(ctx: &AppContext) -> Option<String> {
@@ -201,6 +196,7 @@ fn reconnect_acp_session(
     available_commands: Signal<Vec<SlashCommand>>,
     config_options: Signal<Vec<ConfigOption>>,
     session_title: Signal<Option<String>>,
+    deployment_metadata: Signal<Option<serde_json::Value>>,
 ) {
     let mut items = items;
     let mut agent_status = agent_status;
@@ -254,6 +250,7 @@ fn reconnect_acp_session(
                     session_title,
                     session,
                     shared_session,
+                    deployment_metadata,
                     TerminalManager::new(ctx.project_root(), 34, 120),
                 );
                 items.write().push(ChatItem::Message {
@@ -330,6 +327,7 @@ fn start_event_loop(
     session_title: Signal<Option<String>>,
     session: Signal<Option<Rc<AcpSession>>>,
     shared_session: Signal<Option<Rc<AcpSession>>>,
+    deployment_metadata: Signal<Option<serde_json::Value>>,
     terminal_manager: TerminalManager,
 ) {
     let mut items = items;
@@ -368,6 +366,7 @@ fn start_event_loop(
                             &mut session_title,
                             session,
                             shared_session,
+                            deployment_metadata,
                             terminal_manager.clone(),
                         );
                         saw_event = true;
@@ -550,8 +549,9 @@ pub fn AgentRail() -> Element {
 
     let mut input = use_signal(String::new);
     let mut items: Signal<Vec<ChatItem>> = use_signal(Vec::new);
-    let mut agent_status = use_signal(|| AgentStatus::Connecting);
+    let mut agent_status = use_signal(|| AgentStatus::Idle);
     let mut session: Signal<Option<Rc<AcpSession>>> = use_signal(|| None);
+    let deployment_metadata: Signal<Option<serde_json::Value>> = use_signal(|| None);
     let mut shared_session = use_context::<Signal<Option<Rc<AcpSession>>>>();
     let available_commands: Signal<Vec<SlashCommand>> = use_signal(Vec::new);
     // Session title pushed by omegon via SessionInfoUpdate (typically derived
@@ -573,7 +573,7 @@ pub fn AgentRail() -> Element {
     let loaded_deployment = load_deployment_for_agent_rail(&ctx.omegon());
     let deployment_diagnostic = classify_loaded_deployment(
         &loaded_deployment,
-        ctx.deployment_metadata().as_ref(),
+        deployment_metadata.read().as_ref(),
         &ctx.project_root(),
     );
     let cli_probe = ctx.omegon_cli_probe();
@@ -593,6 +593,13 @@ pub fn AgentRail() -> Element {
     // ── Eager connect on mount + apply saved config ─────────
     use_effect(move || {
         let _ = setup_refresh.0.read();
+        if session.read().is_some()
+            || shared_session.read().is_some()
+            || *agent_status.read() == AgentStatus::Connecting
+        {
+            return;
+        }
+        *agent_status.write() = AgentStatus::Connecting;
         let binary = match find_omegon_binary_from_ctx(&ctx) {
             Some(b) => {
                 tracing::info!("Omegon binary resolved: {}", b.display());
@@ -640,6 +647,7 @@ pub fn AgentRail() -> Element {
                         session_title,
                         session,
                         shared_session,
+                        deployment_metadata,
                         terminal_manager_for_loop,
                     );
                     *agent_status.write() = AgentStatus::Idle;
@@ -657,6 +665,8 @@ pub fn AgentRail() -> Element {
                 }
                 Err(e) => {
                     tracing::error!("ACP connect failed: {e}");
+                    *session.write() = None;
+                    *shared_session.write() = None;
                     *agent_status.write() = AgentStatus::Idle;
                 }
             }
@@ -1191,6 +1201,7 @@ pub fn AgentRail() -> Element {
                                                 session_title,
                                                 session,
                                                 shared_session,
+                                                deployment_metadata,
                                                 use_context::<TerminalManager>(),
                                             );
                                             items.write().push(ChatItem::Message {
@@ -1408,10 +1419,12 @@ fn handle_acp_event(
     session_title: &mut Signal<Option<String>>,
     session: Signal<Option<Rc<AcpSession>>>,
     shared_session: Signal<Option<Rc<AcpSession>>>,
+    mut deployment_metadata: Signal<Option<serde_json::Value>>,
     _terminal_manager: TerminalManager,
 ) {
     match event {
         AcpEvent::DeploymentMetadata(ref meta) => {
+            deployment_metadata.set(Some(meta.clone()));
             ctx.set_deployment_metadata(meta.clone());
             let manifest = ctx.omegon().load_deployment_manifest();
             let diagnostic = crate::omegon_deployment_diagnostics::classify_deployment(
@@ -1559,6 +1572,7 @@ fn handle_acp_event(
                     *commands,
                     *config,
                     *session_title,
+                    deployment_metadata,
                 );
             }
         }
@@ -1665,6 +1679,7 @@ fn handle_acp_event(
                     *commands,
                     *config,
                     *session_title,
+                    deployment_metadata,
                 );
                 return;
             }

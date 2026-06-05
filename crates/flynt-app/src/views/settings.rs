@@ -38,6 +38,8 @@ pub fn SettingsView() -> Element {
         None,
     );
     let custom_skill_id = use_signal(String::new);
+    let mut package_source = use_signal(String::new);
+    let mut package_installing = use_signal(|| false);
     let mut armory_install_msg = use_signal(|| Option::<String>::None);
     let mut armory_install_refresh = use_signal(|| 0u64);
     let _ = armory_install_refresh.read();
@@ -984,6 +986,68 @@ pub fn SettingsView() -> Element {
                                 extensions_dir: ctx.omegon().extensions_dir.clone(),
                                 skills_dir: ctx.omegon().home_dir.join("skills"),
                             }
+                            SettingsSection { heading: "Project skill activation",
+                                ArmorySkillsDiagnosticCard {
+                                    report: armory_report.clone(),
+                                    message: armory_install_msg.read().clone(),
+                                    custom_skill_id,
+                                    package_source,
+                                    package_installing: *package_installing.read(),
+                                    session: shared_session,
+                                    on_activate: move |skill_id: String| {
+                                        let mut manifest = load_deployment_for_settings(&ctx.omegon()).manifest;
+                                        if crate::omegon_activation::activate_skill(&mut manifest, &skill_id) {
+                                            match crate::omegon_activation::save_manifest(&ctx.omegon(), &manifest) {
+                                                Ok(()) => {
+                                                    armory_install_msg.set(Some(format!("Activated {skill_id} for this project")));
+                                                    armory_install_refresh += 1;
+                                                }
+                                                Err(error) => armory_install_msg.set(Some(format!("Activation failed: {error}"))),
+                                            }
+                                        }
+                                    },
+                                    on_deactivate: move |skill_id: String| {
+                                        let mut manifest = load_deployment_for_settings(&ctx.omegon()).manifest;
+                                        if crate::omegon_activation::deactivate_skill(&mut manifest, &skill_id) {
+                                            match crate::omegon_activation::save_manifest(&ctx.omegon(), &manifest) {
+                                                Ok(()) => {
+                                                    armory_install_msg.set(Some(format!("Deactivated {skill_id} for this project")));
+                                                    armory_install_refresh += 1;
+                                                }
+                                                Err(error) => armory_install_msg.set(Some(format!("Deactivation failed: {error}"))),
+                                            }
+                                        } else {
+                                            armory_install_msg.set(Some(format!("{skill_id} is required by Flynt and cannot be deactivated here")));
+                                        }
+                                    },
+                                    on_install: move |_| {
+                                        let source = package_source.read().trim().to_string();
+                                        if source.is_empty() {
+                                            armory_install_msg.set(Some("Enter a package Git URL or local path".into()));
+                                            return;
+                                        }
+                                        let sess = shared_session.read().clone();
+                                        package_installing.set(true);
+                                        armory_install_msg.set(Some(format!("Installing package from {source}…")));
+                                        spawn(async move {
+                                            let Some(s) = sess else {
+                                                armory_install_msg.set(Some("Install failed: Omegon session is not connected".into()));
+                                                package_installing.set(false);
+                                                return;
+                                            };
+                                            match s.packages_install(&source, "skill").await {
+                                                Ok(_) => {
+                                                    armory_install_msg.set(Some(format!("Installed package from {source}")));
+                                                    package_source.set(String::new());
+                                                    armory_install_refresh += 1;
+                                                }
+                                                Err(error) => armory_install_msg.set(Some(format!("Install failed: {error}"))),
+                                            }
+                                            package_installing.set(false);
+                                        });
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1001,54 +1065,9 @@ pub fn SettingsView() -> Element {
                 if *active_page.read() == SettingsPage::OmegonRuntime {
                     SettingsSection { heading: "Runtime",
                         DeploymentDiagnosticCard { diagnostic: deployment_diagnostic.clone() }
-                        ArmorySkillsDiagnosticCard {
+                        ArmorySkillsRuntimeDiagnosticCard {
                             report: armory_report.clone(),
-                            message: armory_install_msg.read().clone(),
-                            custom_skill_id,
-                            on_activate: move |skill_id: String| {
-                                let mut manifest = load_deployment_for_settings(&ctx.omegon()).manifest;
-                                if crate::omegon_activation::activate_skill(&mut manifest, &skill_id) {
-                                    match crate::omegon_activation::save_manifest(&ctx.omegon(), &manifest) {
-                                        Ok(()) => {
-                                            armory_install_msg.set(Some(format!("Activated {skill_id} for this project")));
-                                            armory_install_refresh += 1;
-                                        }
-                                        Err(error) => armory_install_msg.set(Some(format!("Activation failed: {error}"))),
-                                    }
-                                }
-                            },
-                            on_deactivate: move |skill_id: String| {
-                                let mut manifest = load_deployment_for_settings(&ctx.omegon()).manifest;
-                                if crate::omegon_activation::deactivate_skill(&mut manifest, &skill_id) {
-                                    match crate::omegon_activation::save_manifest(&ctx.omegon(), &manifest) {
-                                        Ok(()) => {
-                                            armory_install_msg.set(Some(format!("Deactivated {skill_id} for this project")));
-                                            armory_install_refresh += 1;
-                                        }
-                                        Err(error) => armory_install_msg.set(Some(format!("Deactivation failed: {error}"))),
-                                    }
-                                } else {
-                                    armory_install_msg.set(Some(format!("{skill_id} is required by Flynt and cannot be deactivated here")));
-                                }
-                            },
-                            on_install: move |_| {
-                                let Some(src) = rfd::FileDialog::new()
-                                    .set_title("Select Armory skill package")
-                                    .pick_folder()
-                                else { return; };
-                                let omegon_home = ctx.omegon().home_dir.clone();
-                                match crate::armory_install::install_user_skill_package(&src, &omegon_home) {
-                                    Ok(installed) => {
-                                        armory_install_msg.set(Some(format!(
-                                            "Installed {} to {}",
-                                            installed.id,
-                                            installed.destination.display()
-                                        )));
-                                        armory_install_refresh += 1;
-                                    }
-                                    Err(error) => armory_install_msg.set(Some(format!("Install failed: {error}"))),
-                                }
-                            }
+                            on_manage_skills: move |_| *active_page.write() = SettingsPage::OmegonSkills,
                         }
                         CliProbeDiagnosticCard { probe: cli_probe.clone() }
                         SettingsRow {
@@ -1435,10 +1454,64 @@ fn DeploymentDiagnosticCard(diagnostic: DeploymentDiagnostic) -> Element {
 }
 
 #[component]
+fn ArmorySkillsRuntimeDiagnosticCard(
+    report: crate::armory_resolution::ArmoryResolutionReport,
+    on_manage_skills: EventHandler<()>,
+) -> Element {
+    let missing = report.missing_required_skills();
+    let status = if missing.is_empty() { "Ready" } else { "Warning" };
+    let summary = if missing.is_empty() {
+        "All required Flynt skills resolve from project overrides, user Armory, or bundled fallbacks.".to_string()
+    } else {
+        format!("{} required Flynt skill(s) are not installed.", missing.len())
+    };
+    let class = if missing.is_empty() {
+        "deployment-diagnostic ok"
+    } else {
+        "deployment-diagnostic warning"
+    };
+
+    rsx! {
+        div { class: "settings-row",
+            span { class: "settings-label", "Required skills" }
+            div { class: "settings-control",
+                div { class: "{class}",
+                    div { class: "deployment-diagnostic-head",
+                        span { class: "deployment-diagnostic-status", "{status}" }
+                        span { class: "deployment-diagnostic-summary", "{summary}" }
+                    }
+                    ul { class: "deployment-diagnostic-details",
+                        for skill in report.skills.iter() {
+                            li {
+                                strong { "{skill.name}" }
+                                " — {skill.source.label()}"
+                                if let Some(path) = skill.path.as_ref() {
+                                    " ({path.display()})"
+                                }
+                            }
+                        }
+                    }
+                    div { class: "deployment-diagnostic-actions",
+                        button {
+                            class: "btn btn-ghost btn-xs",
+                            onclick: move |_| on_manage_skills.call(()),
+                            "Manage skills"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
 fn ArmorySkillsDiagnosticCard(
     report: crate::armory_resolution::ArmoryResolutionReport,
     message: Option<String>,
     custom_skill_id: Signal<String>,
+    package_source: Signal<String>,
+    package_installing: bool,
+    session: Signal<Option<Rc<AcpSession>>>,
     on_activate: EventHandler<String>,
     on_deactivate: EventHandler<String>,
     on_install: EventHandler<()>,
@@ -1503,6 +1576,20 @@ fn ArmorySkillsDiagnosticCard(
                     div { class: "deployment-diagnostic-actions",
                         input {
                             class: "settings-input skill-activation-input",
+                            placeholder: "Git URL or local package path",
+                            value: "{package_source.read()}",
+                            oninput: move |event| package_source.set(event.value()),
+                        }
+                        button {
+                            class: "btn btn-ghost btn-xs",
+                            disabled: package_installing,
+                            onclick: move |_| on_install.call(()),
+                            if package_installing { "Installing…" } else { "Install package" }
+                        }
+                    }
+                    div { class: "deployment-diagnostic-actions",
+                        input {
+                            class: "settings-input skill-activation-input",
                             placeholder: "skill-id to activate",
                             value: "{custom_skill_id.read()}",
                             oninput: move |event| custom_skill_id.set(event.value()),
@@ -1516,11 +1603,6 @@ fn ArmorySkillsDiagnosticCard(
                                 }
                             },
                             "Activate skill"
-                        }
-                        button {
-                            class: "btn btn-ghost btn-xs",
-                            onclick: move |_| on_install.call(()),
-                            "Install skill package…"
                         }
                     }
                 }

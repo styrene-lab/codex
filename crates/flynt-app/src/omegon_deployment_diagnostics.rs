@@ -155,7 +155,7 @@ pub fn classify_deployment(
 
     match extension_initialize {
         Some(init) => {
-            let info = &init["extension_info"];
+            let info = flynt_extension_info(init);
             if info["required_profile"].as_str() != Some(FLYNT_DEPLOYMENT_PROFILE) {
                 status = DeploymentStatus::Blocked;
                 details
@@ -207,6 +207,26 @@ pub fn classify_deployment(
     }
 }
 
+fn flynt_extension_info(metadata: &Value) -> &Value {
+    metadata
+        .get("extension_info")
+        .or_else(|| metadata.get("metadata").and_then(|value| value.get("extension_info")))
+        .or_else(|| metadata.get("flynt").and_then(|value| value.get("extension_info")))
+        .or_else(|| {
+            metadata
+                .get("omegon/extensions")
+                .and_then(|value| value.get("flynt"))
+                .and_then(|value| value.get("extension_info"))
+        })
+        .or_else(|| {
+            metadata
+                .get("_meta")
+                .and_then(|value| value.get("flynt"))
+                .and_then(|value| value.get("extension_info"))
+        })
+        .unwrap_or(&Value::Null)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -248,6 +268,45 @@ mod tests {
             &DeploymentManifestSource::Loaded,
         );
         assert_eq!(diagnostic.status, DeploymentStatus::Unknown);
+    }
+
+    #[test]
+    fn wrapped_extension_metadata_is_ok() {
+        let tmp = TempDir::new().unwrap();
+        let manifest = OmegonDeploymentManifest::default();
+        let diagnostic = classify_deployment(
+            &manifest,
+            Some(&json!({ "metadata": init(tmp.path()) })),
+            tmp.path(),
+            &DeploymentManifestSource::Loaded,
+        );
+        assert_eq!(diagnostic.status, DeploymentStatus::Ok);
+    }
+
+    #[test]
+    fn acp_flynt_alias_metadata_is_ok() {
+        let tmp = TempDir::new().unwrap();
+        let manifest = OmegonDeploymentManifest::default();
+        let diagnostic = classify_deployment(
+            &manifest,
+            Some(&json!({ "flynt": init(tmp.path()) })),
+            tmp.path(),
+            &DeploymentManifestSource::Loaded,
+        );
+        assert_eq!(diagnostic.status, DeploymentStatus::Ok);
+    }
+
+    #[test]
+    fn acp_namespaced_extension_metadata_is_ok() {
+        let tmp = TempDir::new().unwrap();
+        let manifest = OmegonDeploymentManifest::default();
+        let diagnostic = classify_deployment(
+            &manifest,
+            Some(&json!({ "omegon/extensions": { "flynt": init(tmp.path()) } })),
+            tmp.path(),
+            &DeploymentManifestSource::Loaded,
+        );
+        assert_eq!(diagnostic.status, DeploymentStatus::Ok);
     }
 
     #[test]

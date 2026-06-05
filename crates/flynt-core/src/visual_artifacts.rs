@@ -505,7 +505,9 @@ fn content_without_frontmatter(content: &str) -> &str {
     let Some(end) = rest.find("\n+++") else {
         return content;
     };
-    &rest[end + 5..]
+
+    let after_closing_delimiter = end + "\n+++".len();
+    rest.get(after_closing_delimiter..).unwrap_or("")
 }
 
 fn single_embed_target(body: &str) -> Option<PathBuf> {
@@ -527,6 +529,27 @@ mod tests {
     use std::thread;
     use std::time::Duration;
     use tempfile::TempDir;
+
+    #[test]
+    fn content_without_frontmatter_handles_frontmatter_only_note() {
+        let content = "+++\nid = \"af1853be-836c-4c2a-b8cd-d4968ec29b60\"\ntags = []\naliases = []\nimported_reference = false\n\n[publication]\nenabled = false\nvisibility = \"private\"\n+++";
+
+        assert_eq!(content_without_frontmatter(content), "");
+    }
+
+    #[test]
+    fn content_without_frontmatter_returns_body_after_closing_delimiter() {
+        let content = "+++\ntitle = \"Map\"\n+++\n\n![[map.excalidraw]]\n";
+
+        assert_eq!(content_without_frontmatter(content), "\n\n![[map.excalidraw]]\n");
+    }
+
+    #[test]
+    fn content_without_frontmatter_leaves_regular_markdown_unchanged() {
+        let content = "# Title\n\nBody";
+
+        assert_eq!(content_without_frontmatter(content), content);
+    }
 
     #[test]
     fn missing_render_is_missing() {

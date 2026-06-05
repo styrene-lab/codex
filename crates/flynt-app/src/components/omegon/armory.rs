@@ -28,11 +28,17 @@ impl ArmoryEntry {
     fn from_json(v: &serde_json::Value) -> Option<Self> {
         // Required: a name + an install URI. Without those the entry
         // is unactionable.
-        let name = v.get("name").and_then(|n| n.as_str())?.to_string();
+        let name = v
+            .get("name")
+            .or_else(|| v.get("id"))
+            .and_then(|n| n.as_str())?
+            .to_string();
         let uri = v
             .get("uri")
             .or_else(|| v.get("install_uri"))
             .or_else(|| v.get("repo"))
+            .or_else(|| v.get("source"))
+            .or_else(|| v.get("id"))
             .and_then(|u| u.as_str())?
             .to_string();
         Some(Self {
@@ -67,10 +73,12 @@ impl ArmoryEntry {
 }
 
 fn parse_search_response(v: &serde_json::Value) -> Vec<ArmoryEntry> {
-    // The omegon RPC may return either a bare array or `{ results: [..] }`.
-    // Defensive: try both shapes before giving up.
+    // The current Omegon ACP standard returns `{ items: [ArmoryItem...] }`.
+    // Older extension-only calls returned a bare array, `{ results: [...] }`,
+    // or `{ extensions: [...] }`.
     let arr = v
         .as_array()
+        .or_else(|| v.get("items").and_then(|r| r.as_array()))
         .or_else(|| v.get("results").and_then(|r| r.as_array()))
         .or_else(|| v.get("extensions").and_then(|r| r.as_array()));
     let Some(arr) = arr else { return Vec::new() };
@@ -113,7 +121,7 @@ pub fn ArmorySection() -> Element {
             } else {
                 Some(q.as_str())
             };
-            match s.extensions_search(query).await {
+            match s.armory_search_extensions(query).await {
                 Ok(v) => Ok(parse_search_response(&v)),
                 Err(e) => Err(e.to_string()),
             }
@@ -303,7 +311,7 @@ pub fn ArmorySection() -> Element {
                                                     install_state.set(Some(("err", "no agent session — start omegon".into())));
                                                     return;
                                                 };
-                                                match s.extensions_install(&uri).await {
+                                                match s.armory_install_extension(&uri).await {
                                                     Ok(_) => {
                                                         install_state.set(Some(("ok", format!("Installed {name}. See Extensions to configure."))));
                                                     }

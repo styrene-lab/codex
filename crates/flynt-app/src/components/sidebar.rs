@@ -60,7 +60,12 @@ pub fn Sidebar(mut active_route: Signal<Route>) -> Element {
                 && !path.starts_with("ai/memory/")
                 && !path.starts_with("references/comms/")
         });
-        list.sort_by(|a, b| a.path.cmp(&b.path));
+        list.sort_by(|a, b| {
+            a.title
+                .to_lowercase()
+                .cmp(&b.title.to_lowercase())
+                .then_with(|| a.path.cmp(&b.path))
+        });
         *docs.write() = Some(list);
 
         match ProjectRegistry::discover(ctx.project_root(), project.store.as_ref()) {
@@ -290,6 +295,60 @@ enum SidebarLane {
     Surfaces,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TreeSortMode {
+    TitleAsc,
+    TitleDesc,
+    PathAsc,
+    PathDesc,
+    UpdatedNewest,
+    UpdatedOldest,
+}
+
+impl TreeSortMode {
+    fn label(self) -> &'static str {
+        match self {
+            Self::TitleAsc => "Title A→Z",
+            Self::TitleDesc => "Title Z→A",
+            Self::PathAsc => "Path A→Z",
+            Self::PathDesc => "Path Z→A",
+            Self::UpdatedNewest => "Updated newest",
+            Self::UpdatedOldest => "Updated oldest",
+        }
+    }
+
+    fn from_value(value: &str) -> Self {
+        match value {
+            "title-desc" => Self::TitleDesc,
+            "path-asc" => Self::PathAsc,
+            "path-desc" => Self::PathDesc,
+            "updated-newest" => Self::UpdatedNewest,
+            "updated-oldest" => Self::UpdatedOldest,
+            _ => Self::TitleAsc,
+        }
+    }
+
+    fn value(self) -> &'static str {
+        match self {
+            Self::TitleAsc => "title-asc",
+            Self::TitleDesc => "title-desc",
+            Self::PathAsc => "path-asc",
+            Self::PathDesc => "path-desc",
+            Self::UpdatedNewest => "updated-newest",
+            Self::UpdatedOldest => "updated-oldest",
+        }
+    }
+}
+
+const TREE_SORT_MODES: [TreeSortMode; 6] = [
+    TreeSortMode::TitleAsc,
+    TreeSortMode::TitleDesc,
+    TreeSortMode::PathAsc,
+    TreeSortMode::PathDesc,
+    TreeSortMode::UpdatedNewest,
+    TreeSortMode::UpdatedOldest,
+];
+
 #[component]
 fn DualLaneTree(
     projection: SidebarProjection,
@@ -300,10 +359,12 @@ fn DualLaneTree(
     mut new_name: Signal<String>,
     mut create_err: Signal<Option<String>>,
 ) -> Element {
+    let mut tree_sort = use_signal(|| TreeSortMode::TitleAsc);
     let doc_by_id: BTreeMap<_, _> = docs
         .into_iter()
         .map(|doc| (doc.id.0.to_string(), doc))
         .collect();
+    let current_sort = *tree_sort.read();
     rsx! {
         div { class: "sidebar-lane-switcher",
             button {
@@ -324,6 +385,19 @@ fn DualLaneTree(
                 section { class: "sidebar-lane sidebar-lane-notes",
                     div { class: "file-tree-section-title file-tree-section-title-row",
                         span { title: "Ordinary project text files", "Files" }
+                        select {
+                            class: "file-tree-sort-select",
+                            title: "Sort files",
+                            value: "{current_sort.value()}",
+                            onchange: move |e: Event<FormData>| tree_sort.set(TreeSortMode::from_value(&e.value())),
+                            for mode in TREE_SORT_MODES {
+                                option {
+                                    value: "{mode.value()}",
+                                    selected: current_sort == mode,
+                                    "{mode.label()}"
+                                }
+                            }
+                        }
                         button {
                             class: "file-tree-new-btn file-tree-section-action",
                             title: "New file (⌘N)",
@@ -341,7 +415,7 @@ fn DualLaneTree(
                     if projection.text_files.is_empty() {
                         div { class: "tree-empty", "No text files" }
                     } else {
-                        { build_text_file_tree(&projection.text_files, &doc_by_id) }
+                        { build_text_file_tree(&projection.text_files, &doc_by_id, current_sort) }
                     }
                 }
             },
@@ -372,6 +446,7 @@ fn DualLaneTree(
 fn build_text_file_tree(
     items: &[TextFileNavItem],
     doc_by_id: &BTreeMap<String, DocumentMeta>,
+    sort_mode: TreeSortMode,
 ) -> Element {
     let mut root: BTreeMap<String, TreeNode> = BTreeMap::new();
     for item in items {
@@ -381,12 +456,16 @@ fn build_text_file_tree(
         let Some(doc) = doc_by_id.get(&id.0.to_string()) else {
             continue;
         };
-        insert_document_tree_node(&mut root, doc);
+        insert_document_tree_node(&mut root, doc, sort_mode);
     }
     rsx! { { render_tree_level(&root, 0, "") } }
 }
 
-fn insert_document_tree_node(root: &mut BTreeMap<String, TreeNode>, doc: &DocumentMeta) {
+fn insert_document_tree_node(
+    root: &mut BTreeMap<String, TreeNode>,
+    doc: &DocumentMeta,
+    sort_mode: TreeSortMode,
+) {
     let components: Vec<_> = doc
         .path
         .components()
@@ -397,7 +476,7 @@ fn insert_document_tree_node(root: &mut BTreeMap<String, TreeNode>, doc: &Docume
             .last()
             .cloned()
             .unwrap_or_else(|| doc.title.clone());
-        root.entry(format!("~{filename}"))
+        root.entry(tree_file_sort_key(doc, &filename, sort_mode))
             .or_insert(TreeNode::File(doc.clone()));
         return;
     }
@@ -420,8 +499,30 @@ fn insert_document_tree_node(root: &mut BTreeMap<String, TreeNode>, doc: &Docume
         .cloned()
         .unwrap_or_else(|| doc.title.clone());
     current
-        .entry(format!("~{filename}"))
+        .entry(tree_file_sort_key(doc, &filename, sort_mode))
         .or_insert(TreeNode::File(doc.clone()));
+}
+
+fn tree_file_sort_key(doc: &DocumentMeta, filename: &str, sort_mode: TreeSortMode) -> String {
+    let title = doc.title.to_lowercase();
+    let filename = filename.to_lowercase();
+    let path = doc.path.to_string_lossy().to_lowercase();
+    let updated = doc.updated_at.timestamp_millis();
+    match sort_mode {
+        TreeSortMode::TitleAsc => format!("~{title}\u{0}{filename}"),
+        TreeSortMode::TitleDesc => format!("~{}\u{0}{filename}", invert_sort_text(&title)),
+        TreeSortMode::PathAsc => format!("~{path}\u{0}{title}"),
+        TreeSortMode::PathDesc => format!("~{}\u{0}{title}", invert_sort_text(&path)),
+        TreeSortMode::UpdatedNewest => format!("~{:020}\u{0}{title}", i64::MAX - updated),
+        TreeSortMode::UpdatedOldest => format!("~{:020}\u{0}{title}", updated - i64::MIN),
+    }
+}
+
+fn invert_sort_text(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| char::from_u32(char::MAX as u32 - ch as u32).unwrap_or(ch))
+        .collect()
 }
 
 #[component]
