@@ -1,5 +1,5 @@
 use crate::{
-    bootstrap::{AppContext, OmegonRuntimeContext},
+    bootstrap::AppContext,
     state::{Route, SyncActivityState, SyncRunOutcome, SyncStatus, TabState},
 };
 use dioxus::prelude::*;
@@ -8,7 +8,6 @@ use flynt_store::sync::{
     AutoSyncStatus,
     git::{GitSync, SyncDiagnostic},
 };
-use rfd::FileDialog;
 
 #[derive(Clone)]
 struct SearchGroup {
@@ -586,16 +585,6 @@ pub fn Toolbar(
                         },
                         crate::self_update::UpdateState::Current { .. } => rsx! {},
                     }
-                }
-                button {
-                    class: "btn btn-ghost",
-                    title: "Open another project in a new window",
-                    onclick: move |_| {
-                        let _ = FileDialog::new()
-                            .pick_folder()
-                            .and_then(|path| OmegonRuntimeContext::spawn_new_instance_for_project(&path).ok());
-                    },
-                    span { class: "nav-icon", dangerous_inner_html: crate::icons::ICON_SCROLL }
                 }
                 if *sync_status.read() != SyncStatus::Idle || matches!(ctx.project().config.sync, flynt_core::models::SyncConfig::Git { .. }) {
                     button {

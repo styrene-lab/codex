@@ -1320,7 +1320,7 @@ pub fn AgentRail() -> Element {
                     class: "agent-textarea",
                     placeholder: if *agent_stopped_by_operator.read() { "Agent stopped — Start agent to continue" } else if session.read().is_none() { "Starting Omegon…" } else if binary_found { "Ask Omegon… (type / for commands)" } else { "Omegon binary not found" },
                     value: "{input}",
-                    disabled: !binary_found || preflight_blocked || session.read().is_none() || *agent_stopped_by_operator.read(),
+                    disabled: !binary_found || preflight_blocked || session.read().is_none() || *agent_stopped_by_operator.read() || agent_status.read().is_busy(),
                     oninput: move |e| {
                         *input.write() = e.value();
                         *history_idx.write() = None;
@@ -1401,6 +1401,14 @@ pub fn AgentRail() -> Element {
                             spawn(async move {
                                 let sess = session.read().clone().unwrap();
 
+                                if agent_status.read().is_busy() {
+                                    items.write().push(ChatItem::Message {
+                                        role: ChatRole::Assistant,
+                                        content: "A turn is still running. Wait for completion or use Stop agent to interrupt it.".into(),
+                                    });
+                                    return;
+                                }
+
                                 let trimmed = prompt.trim();
                                 if trimmed == "/login" || trimmed.starts_with("/login ") {
                                     let provider = trimmed.strip_prefix("/login").unwrap().trim();
@@ -1476,7 +1484,7 @@ pub fn AgentRail() -> Element {
                             // only a WARN log (no ACP Error event), leaving the client stuck. After
                             // 45s with no follow-up events we surface the failure ourselves.
                             if !is_login {
-                                let mut watchdog_status = agent_status;
+                                let watchdog_status = agent_status;
                                 let mut watchdog_items = items;
                                 spawn(async move {
                                     tokio::time::sleep(std::time::Duration::from_secs(45)).await;
@@ -1486,9 +1494,8 @@ pub fn AgentRail() -> Element {
                                         tracing::warn!("Watchdog: no agent activity 45s after prompt — assuming silent provider failure");
                                         watchdog_items.write().push(ChatItem::Message {
                                             role: ChatRole::Assistant,
-                                            content: "⚠ No response after 45 s. The selected model may have no executable provider, or the upstream agent failed silently. Pick a different model in the dropdown below — entries marked **(unavailable)** can't be served by the current Omegon install.".into(),
+                                            content: "⚠ No response after 45 s. The current turn is still running. Wait for completion or use Stop agent to interrupt the transport before sending another prompt.".into(),
                                         });
-                                        *watchdog_status.write() = AgentStatus::Idle;
                                     }
                                 });
                             }
