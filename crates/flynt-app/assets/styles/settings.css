@@ -1588,7 +1588,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--card);
-  padding: var(--space-2);
+  padding: var(--space-3);
   min-width: min(520px, 100%);
 }
 
@@ -1636,6 +1636,42 @@
   margin-top: var(--space-2);
   display: flex;
   gap: var(--space-2);
+  align-items: center;
+}
+
+.package-install-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.package-install-head {
+  align-items: flex-start;
+}
+
+.package-install-head .deployment-diagnostic-summary {
+  max-width: 760px;
+  line-height: 1.45;
+}
+
+.package-install-actions {
+  margin-top: 0;
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) auto;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.package-install-input {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+}
+
+.package-install-button {
+  white-space: nowrap;
+  align-self: stretch;
 }
 
 .inline-skill-action {

@@ -40,6 +40,7 @@ pub fn SettingsView() -> Element {
     let custom_skill_id = use_signal(String::new);
     let mut package_source = use_signal(String::new);
     let mut package_installing = use_signal(|| false);
+    let package_install_msg = use_signal(|| Option::<String>::None);
     let mut armory_install_msg = use_signal(|| Option::<String>::None);
     let mut armory_install_refresh = use_signal(|| 0u64);
     let _ = armory_install_refresh.read();
@@ -1035,9 +1036,9 @@ pub fn SettingsView() -> Element {
                                                 package_installing.set(false);
                                                 return;
                                             };
-                                            match s.packages_install(&source, "skill").await {
-                                                Ok(_) => {
-                                                    armory_install_msg.set(Some(format!("Installed package from {source}")));
+                                            match s.packages_install(&source, "auto").await {
+                                                Ok(report) => {
+                                                    armory_install_msg.set(Some(package_install_summary(&source, &report)));
                                                     package_source.set(String::new());
                                                     armory_install_refresh += 1;
                                                 }
@@ -1064,6 +1065,13 @@ pub fn SettingsView() -> Element {
                 // ════════════════════════════════════════════════════════════
                 if *active_page.read() == SettingsPage::OmegonRuntime {
                     SettingsSection { heading: "Runtime",
+                        PackageInstallCard {
+                            source: package_source,
+                            installing: package_installing,
+                            message: package_install_msg,
+                            session: shared_session,
+                            refresh: armory_install_refresh,
+                        }
                         DeploymentDiagnosticCard { diagnostic: deployment_diagnostic.clone() }
                         ArmorySkillsRuntimeDiagnosticCard {
                             report: armory_report.clone(),
@@ -1446,6 +1454,101 @@ fn DeploymentDiagnosticCard(diagnostic: DeploymentDiagnostic) -> Element {
                                 li { "{detail}" }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+pub(crate) fn package_install_summary(source: &str, report: &serde_json::Value) -> String {
+    let mut parts = vec![format!("Installed package from {source}")];
+    if let Some(contributions) = report.get("contributions").and_then(|value| value.as_array()) {
+        let labels: Vec<String> = contributions
+            .iter()
+            .filter_map(|item| {
+                let kind = item.get("kind").and_then(|value| value.as_str())?;
+                let label = item
+                    .get("id")
+                    .or_else(|| item.get("name"))
+                    .or_else(|| item.get("path"))
+                    .and_then(|value| value.as_str())
+                    .unwrap_or(kind);
+                Some(format!("{kind}: {label}"))
+            })
+            .collect();
+        if !labels.is_empty() {
+            parts.push(format!("Contributions: {}", labels.join(", ")));
+        }
+    }
+    parts.join(" — ")
+}
+
+#[component]
+fn PackageInstallCard(
+    source: Signal<String>,
+    installing: Signal<bool>,
+    message: Signal<Option<String>>,
+    session: Signal<Option<Rc<AcpSession>>>,
+    refresh: Signal<u64>,
+) -> Element {
+    let mut source = source;
+    let mut installing = installing;
+    let mut message = message;
+    let mut refresh = refresh;
+    rsx! {
+        div { class: "settings-row",
+            span { class: "settings-label", "Install package" }
+            div { class: "settings-control",
+                div { class: "deployment-diagnostic package-install-card",
+                    div { class: "deployment-diagnostic-head package-install-head",
+                        span { class: "deployment-diagnostic-status", "Package" }
+                        span { class: "deployment-diagnostic-summary",
+                            "Install a package once; Omegon detects whether it contributes skills, extensions, agents, personas, tones, or a mixed collection."
+                        }
+                    }
+                    div { class: "deployment-diagnostic-actions package-install-actions",
+                        input {
+                            class: "settings-input package-install-input",
+                            placeholder: "Git URL, local path, Armory ref, or archive",
+                            value: "{source.read()}",
+                            oninput: move |event| source.set(event.value()),
+                        }
+                        button {
+                            class: "btn btn-primary btn-sm package-install-button",
+                            disabled: *installing.read(),
+                            onclick: move |_| {
+                                let package_source = source.read().trim().to_string();
+                                if package_source.is_empty() {
+                                    message.set(Some("Enter a package URL, local path, Armory ref, or archive".into()));
+                                    return;
+                                }
+                                let sess = session.read().clone();
+                                installing.set(true);
+                                message.set(Some(format!("Installing package from {package_source}…")));
+                                spawn(async move {
+                                    let Some(s) = sess else {
+                                        message.set(Some("Install failed: Omegon session is not connected".into()));
+                                        installing.set(false);
+                                        return;
+                                    };
+                                    match s.packages_install(&package_source, "auto").await {
+                                        Ok(report) => {
+                                            message.set(Some(package_install_summary(&package_source, &report)));
+                                            source.set(String::new());
+                                            refresh += 1;
+                                        }
+                                        Err(error) => message.set(Some(format!("Install failed: {error}"))),
+                                    }
+                                    installing.set(false);
+                                });
+                            },
+                            if *installing.read() { "Installing…" } else { "Install package" }
+                        }
+                    }
+                    if let Some(text) = message.read().as_ref() {
+                        div { class: "deployment-diagnostic-summary", "{text}" }
                     }
                 }
             }

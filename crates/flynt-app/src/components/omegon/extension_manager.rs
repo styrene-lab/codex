@@ -105,6 +105,7 @@ pub fn ExtensionManagerSection() -> Element {
     let mut action_msg: Signal<Option<(&'static str, String)>> = use_signal(|| None);
     let mut action_pending: Signal<Option<&'static str>> = use_signal(|| None);
     let mut install_uri = use_signal(String::new);
+    let mut package_uri = use_signal(String::new);
     let mut show_install = use_signal(|| false);
 
     // For the empty-state CTA — clicking "Browse the Armory" should
@@ -249,7 +250,7 @@ pub fn ExtensionManagerSection() -> Element {
                         let v = *show_install.read();
                         *show_install.write() = !v;
                     },
-                    if *show_install.read() { "Cancel" } else { "Install extension" }
+                    if *show_install.read() { "Cancel" } else { "Install extension package" }
                 }
                 button {
                     class: "btn btn-ghost",
@@ -288,6 +289,50 @@ pub fn ExtensionManagerSection() -> Element {
                         "{msg}"
                     }
                 }
+            }
+            // ── Generic package install ──
+            div { class: "extension-install-form",
+                input {
+                    class: "input settings-input",
+                    r#type: "text",
+                    placeholder: "Git URL, local path, Armory ref, or archive",
+                    value: "{package_uri}",
+                    oninput: move |e| *package_uri.write() = e.value(),
+                }
+                button {
+                    class: "btn btn-primary btn-sm",
+                    disabled: action_pending.read().is_some(),
+                    onclick: {
+                        let sess = shared_session.read().clone();
+                        move |_| {
+                            let uri = package_uri.read().trim().to_string();
+                            let sess = sess.clone();
+                            if uri.is_empty() {
+                                *action_msg.write() = Some(("err", "Package install failed: enter a package URL, local path, Armory ref, or archive".into()));
+                                return;
+                            }
+                            *action_pending.write() = Some("package");
+                            *action_msg.write() = Some(("ok", format!("Installing package from {uri}…")));
+                            spawn(async move {
+                                if let Some(s) = sess {
+                                    match s.packages_install(&uri, "auto").await {
+                                        Ok(report) => {
+                                            *action_msg.write() = Some(("ok", crate::views::settings::package_install_summary(&uri, &report)));
+                                            *package_uri.write() = String::new();
+                                            *refresh.write() += 1;
+                                        }
+                                        Err(e) => *action_msg.write() = Some(("err", format!("Package install failed: {e}"))),
+                                    }
+                                } else {
+                                    *action_msg.write() = Some(("err", "Package install failed: Omegon session is not connected".into()));
+                                }
+                                *action_pending.write() = None;
+                            });
+                        }
+                    },
+                    if *action_pending.read() == Some("package") { "Installing…" } else { "Install package" }
+                }
+                span { class: "settings-hint muted", "Use this for mixed packages and skill collections such as recro-omegon. Flynt lets Omegon detect whether the package contributes skills, extensions, agents, personas, tones, or a collection." }
             }
             if *show_install.read() {
                 div { class: "extension-install-form",

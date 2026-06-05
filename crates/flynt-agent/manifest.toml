@@ -1,8 +1,8 @@
 [extension]
 name        = "flynt"
-version     = "0.1.0"
+version     = "0.12.0"
 description = "Project document and task tools — search, read, write, and manage kanban boards from Flynt."
-sdk_version = "0.15"
+sdk_version = "0.25"
 
 [runtime]
 type   = "native"

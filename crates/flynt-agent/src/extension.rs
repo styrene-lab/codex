@@ -12,8 +12,8 @@ use std::sync::Arc;
 use crate::forge_tools::{self, SecretBag};
 use crate::{drawing_tools, flow_tools};
 
-const EXTENSION_SDK_VERSION: &str = "0.16.0";
-const RUNTIME_MIN_VERSION: &str = "0.16.0";
+const EXTENSION_SDK_VERSION: &str = "0.25";
+const RUNTIME_MIN_VERSION: &str = "0.26.4";
 const REQUIRED_PROFILE: &str = "flynt-agent";
 const SURFACE_GUIDE_VERSION: u32 = 1;
 const CAPABILITY_CONTRACT_VERSION: u32 = 1;
