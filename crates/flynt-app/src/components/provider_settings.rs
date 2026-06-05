@@ -1,18 +1,70 @@
-use crate::bootstrap::AppContext;
+use crate::{acp::AcpSession, bootstrap::AppContext};
 use dioxus::prelude::*;
 use flynt_core::providers::{self, AuthMethod, CredentialStatus, ProviderInfo};
+use std::{collections::HashMap, rc::Rc};
+
+fn parse_live_provider_status(text: &str) -> HashMap<String, CredentialStatus> {
+    text.lines()
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.splitn(3, ':').collect();
+            if parts.len() < 2 { return None; }
+            let id = parts[0].trim().to_string();
+            let status = match parts[1].trim() {
+                "ok" | "authenticated" | "available" | "configured" => CredentialStatus::Authenticated {
+                    source: parts.get(2).map(|s| s.trim()).filter(|s| !s.is_empty()).unwrap_or("omegon").to_string(),
+                },
+                "expired" => CredentialStatus::Expired,
+                _ => CredentialStatus::Missing,
+            };
+            Some((id, status))
+        })
+        .collect()
+}
+
+async fn live_provider_status_for(sess: Rc<AcpSession>, provider_id: &str) -> Option<CredentialStatus> {
+    let resp = sess.provider_status().await.ok()?;
+    let text = resp["text"].as_str()?;
+    parse_live_provider_status(text).remove(provider_id)
+}
+
+async fn wait_for_authenticated_provider(sess: Rc<AcpSession>, provider_id: &str) -> bool {
+    for _ in 0..10 {
+        if matches!(
+            live_provider_status_for(sess.clone(), provider_id).await,
+            Some(CredentialStatus::Authenticated { .. })
+        ) {
+            return true;
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    }
+    false
+}
 
 #[component]
 pub fn ProviderSettingsSection() -> Element {
+    let shared_session = use_context::<Signal<Option<Rc<AcpSession>>>>();
     let mut refresh = use_signal(|| 0u64);
 
-    // Probe providers off the main thread
     let statuses = use_resource(move || {
         let _ = refresh.read();
+        let sess = shared_session.read().clone();
         async move {
-            tokio::task::spawn_blocking(providers::probe_all)
+            let mut local = tokio::task::spawn_blocking(providers::probe_all)
                 .await
-                .unwrap_or_default()
+                .unwrap_or_default();
+            if let Some(sess) = sess {
+                if let Ok(resp) = sess.provider_status().await {
+                    if let Some(text) = resp["text"].as_str() {
+                        let live = parse_live_provider_status(text);
+                        for (provider, status) in local.iter_mut() {
+                            if let Some(live_status) = live.get(provider.id) {
+                                *status = live_status.clone();
+                            }
+                        }
+                    }
+                }
+            }
+            local
         }
     });
 
@@ -24,6 +76,7 @@ pub fn ProviderSettingsSection() -> Element {
                     ProviderRow {
                         provider,
                         status: status.clone(),
+                        session: shared_session,
                         on_change: move |_| *refresh.write() += 1,
                     }
                 }
@@ -36,18 +89,18 @@ pub fn ProviderSettingsSection() -> Element {
 fn ProviderRow(
     provider: &'static ProviderInfo,
     status: CredentialStatus,
+    session: Signal<Option<Rc<AcpSession>>>,
     on_change: EventHandler<()>,
 ) -> Element {
     let ctx = use_context::<AppContext>();
     let mut editing = use_signal(|| false);
     let mut key_input = use_signal(String::new);
     let mut error_msg: Signal<Option<String>> = use_signal(|| None);
+    let mut action_msg: Signal<Option<String>> = use_signal(|| None);
+    let mut logging_in = use_signal(|| false);
 
     let (status_class, status_text) = match &status {
-        CredentialStatus::Authenticated { source } => (
-            "provider-status authenticated",
-            format!("Authenticated ({source})"),
-        ),
+        CredentialStatus::Authenticated { source } => ("provider-status authenticated", format!("Authenticated ({source})")),
         CredentialStatus::Expired => ("provider-status expired", "Expired".to_string()),
         CredentialStatus::Missing => ("provider-status missing", "Not configured".to_string()),
     };
@@ -65,7 +118,6 @@ fn ProviderRow(
                 }
 
                 if *editing.read() {
-                    // API key entry form
                     div { class: "provider-key-form",
                         input {
                             class: "input settings-input",
@@ -93,11 +145,10 @@ fn ProviderRow(
                                             *editing.write() = false;
                                             *key_input.write() = String::new();
                                             *error_msg.write() = None;
+                                            *action_msg.write() = Some("Credential saved. Refreshing provider status…".into());
                                             on_change.call(());
                                         }
-                                        Err(e) => {
-                                            *error_msg.write() = Some(format!("{e}"));
-                                        }
+                                        Err(e) => *error_msg.write() = Some(format!("{e}")),
                                     }
                                 },
                                 "Save"
@@ -116,7 +167,6 @@ fn ProviderRow(
                         }
                     }
                 } else {
-                    // Action buttons
                     div { class: "row gap-2",
                         if is_api_key {
                             button {
@@ -125,22 +175,39 @@ fn ProviderRow(
                                 if is_authenticated { "Update key" } else { "Add key" }
                             }
                         } else {
-                            // OAuth provider — launch browser flow
                             button {
                                 class: "btn btn-ghost btn-sm",
+                                disabled: *logging_in.read(),
                                 onclick: move |_| {
-                                    let runtime_cfg = ctx.project().config.local_runtime.clone();
-                                    let (bin, args) = providers::oauth_login_command(&runtime_cfg, provider.id);
+                                    let Some(sess) = session.read().clone() else {
+                                        *action_msg.write() = Some("Login requires a connected Omegon session.".into());
+                                        return;
+                                    };
+                                    let binary = ctx.omegon().resolve_binary();
+                                    let provider_id = provider.id.to_string();
+                                    *logging_in.write() = true;
+                                    *action_msg.write() = Some(format!("Opening {} login…", provider.label));
                                     spawn(async move {
-                                        match tokio::process::Command::new(&bin).args(&args).spawn() {
-                                            Ok(_) => tracing::info!("OAuth login started for {}", args.last().unwrap_or(&String::new())),
-                                            Err(e) => tracing::warn!("OAuth login failed: {e}"),
+                                        match sess.login(&binary, &provider_id).await {
+                                            Ok(_) => {
+                                                *action_msg.write() = Some(format!("{} login returned successfully. Waiting for provider status…", provider.label));
+                                                on_change.call(());
+                                                if wait_for_authenticated_provider(sess.clone(), &provider_id).await {
+                                                    *action_msg.write() = Some(format!("{} authenticated.", provider.label));
+                                                } else {
+                                                    *action_msg.write() = Some(format!("{} login finished, but live provider status is not authenticated yet. Reopen this panel or reconnect Omegon if it remains stale.", provider.label));
+                                                }
+                                                on_change.call(());
+                                            }
+                                            Err(error) => {
+                                                *action_msg.write() = Some(format!("{} login failed: {error}", provider.label));
+                                            }
                                         }
+                                        *logging_in.write() = false;
                                     });
                                 },
-                                if is_authenticated { "Re-authenticate" } else { "Login" }
+                                if *logging_in.read() { "Logging in…" } else if is_authenticated { "Re-authenticate" } else { "Login" }
                             }
-                            // Also allow manual token entry for OAuth providers
                             button {
                                 class: "btn btn-ghost btn-sm",
                                 onclick: move |_| *editing.write() = true,
@@ -153,12 +220,16 @@ fn ProviderRow(
                                 class: "btn btn-ghost btn-sm provider-remove-btn",
                                 onclick: move |_| {
                                     let _ = providers::remove_credential(provider.id);
+                                    *action_msg.write() = Some("Credential removed. Refreshing provider status…".into());
                                     on_change.call(());
                                 },
                                 "Remove"
                             }
                         }
                     }
+                }
+                if let Some(msg) = action_msg.read().as_ref() {
+                    span { class: "settings-hint muted", "{msg}" }
                 }
             }
         }

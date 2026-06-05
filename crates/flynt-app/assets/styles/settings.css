@@ -1667,6 +1667,23 @@
   width: 100%;
   min-width: 0;
   max-width: none;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--input);
+  color: var(--foreground);
+  font: inherit;
+}
+
+.package-install-input::placeholder {
+  color: var(--muted-foreground);
+  opacity: 0.75;
+}
+
+.package-install-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 45%, transparent);
 }
 
 .package-install-button {

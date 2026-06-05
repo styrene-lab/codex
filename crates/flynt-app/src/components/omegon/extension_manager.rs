@@ -291,9 +291,9 @@ pub fn ExtensionManagerSection() -> Element {
                 }
             }
             // ── Generic package install ──
-            div { class: "extension-install-form",
+            div { class: "extension-install-form package-install-inline",
                 input {
-                    class: "input settings-input",
+                    class: "input settings-input package-install-input",
                     r#type: "text",
                     placeholder: "Git URL, local path, Armory ref, or archive",
                     value: "{package_uri}",

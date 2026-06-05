@@ -124,6 +124,12 @@ pub fn App() -> Element {
     });
     let mut tab_state = use_context::<Signal<TabState>>();
     let show_agent = use_signal(|| false);
+    let mut agent_has_opened = use_signal(|| false);
+    use_effect(move || {
+        if *show_agent.read() {
+            *agent_has_opened.write() = true;
+        }
+    });
     let mut sync_status = use_signal(|| SyncStatus::Idle);
     let mut sync_activity = use_context_provider(|| Signal::new(SyncActivityState::default()));
 
@@ -1123,9 +1129,12 @@ pub fn App() -> Element {
                     }
                 }
 
-                if show_agent() {
+                if *agent_has_opened.read() {
                     crate::components::PanelDivider {}
-                    AgentRail {}
+                    div {
+                        style: if show_agent() { "display: contents;" } else { "display: none;" },
+                        AgentRail {}
+                    }
                 }
             }
             WorkspaceFooter { active_route }
@@ -1212,21 +1221,21 @@ fn WorkspaceFooter(mut active_route: Signal<Route>) -> Element {
                     active: matches!(*active_route.read(), Route::Notes | Route::Lenses | Route::Graph),
                     label: "Project",
                     title: "Project — write, query, and explore project knowledge",
-                    icon: crate::icons::ICON_SCROLL,
+                    icon: WorkspaceFooterIcon::Project,
                     onclick: move |_| *active_route.write() = Route::Notes,
                 }
                 WorkspaceFooterButton {
                     active: *active_route.read() == Route::Design,
                     label: "Design",
                     title: "Design — create and manage visual surfaces",
-                    icon: crate::icons::ICON_PALETTE,
+                    icon: WorkspaceFooterIcon::Design,
                     onclick: move |_| *active_route.write() = Route::Design,
                 }
                 WorkspaceFooterButton {
                     active: *active_route.read() == Route::Kanban,
                     label: "Tasks",
                     title: "Tasks — manage boards and tasks",
-                    icon: crate::icons::ICON_BOARD,
+                    icon: WorkspaceFooterIcon::Tasks,
                     onclick: move |_| *active_route.write() = Route::Kanban,
                 }
             }
@@ -1235,7 +1244,7 @@ fn WorkspaceFooter(mut active_route: Signal<Route>) -> Element {
                 class: if *active_route.read() == Route::TerminalLab { "workspace-footer-btn active" } else { "workspace-footer-btn" },
                 title: "Terminal — run shell sessions",
                 onclick: move |_| *active_route.write() = Route::TerminalLab,
-                span { class: "workspace-footer-icon", "⌁" }
+                img { class: "workspace-footer-icon workspace-footer-img", src: asset!("/assets/images/terminal-s.png"), alt: "Terminal" }
                 span { class: "workspace-footer-label", "Terminal" }
             }
             button {
@@ -1249,12 +1258,19 @@ fn WorkspaceFooter(mut active_route: Signal<Route>) -> Element {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WorkspaceFooterIcon {
+    Project,
+    Design,
+    Tasks,
+}
+
 #[component]
 fn WorkspaceFooterButton(
     active: bool,
     label: &'static str,
     title: &'static str,
-    icon: &'static str,
+    icon: WorkspaceFooterIcon,
     onclick: EventHandler<MouseEvent>,
 ) -> Element {
     rsx! {
@@ -1262,7 +1278,11 @@ fn WorkspaceFooterButton(
             class: if active { "workspace-footer-btn active" } else { "workspace-footer-btn" },
             title,
             onclick: move |event| onclick.call(event),
-            span { class: "workspace-footer-icon", dangerous_inner_html: icon }
+            match icon {
+                WorkspaceFooterIcon::Project => rsx! { span { class: "workspace-footer-icon", dangerous_inner_html: crate::icons::ICON_SCROLL } },
+                WorkspaceFooterIcon::Design => rsx! { img { class: "workspace-footer-icon workspace-footer-img", src: asset!("/assets/images/design-s.png"), alt: "{label}" } },
+                WorkspaceFooterIcon::Tasks => rsx! { img { class: "workspace-footer-icon workspace-footer-img", src: asset!("/assets/images/tasks-s.png"), alt: "{label}" } },
+            }
             span { class: "workspace-footer-label", "{label}" }
         }
     }

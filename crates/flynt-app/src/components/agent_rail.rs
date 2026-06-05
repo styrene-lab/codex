@@ -197,6 +197,7 @@ fn reconnect_acp_session(
     config_options: Signal<Vec<ConfigOption>>,
     session_title: Signal<Option<String>>,
     deployment_metadata: Signal<Option<serde_json::Value>>,
+    mut transport_generation: Signal<u64>,
 ) {
     let mut items = items;
     let mut agent_status = agent_status;
@@ -240,6 +241,8 @@ fn reconnect_acp_session(
 
                 session.set(Some(sess.clone()));
                 shared_session.set(Some(sess));
+                let generation = *transport_generation.peek() + 1;
+                transport_generation.set(generation);
                 start_event_loop(
                     rx,
                     ctx.clone(),
@@ -251,6 +254,8 @@ fn reconnect_acp_session(
                     session,
                     shared_session,
                     deployment_metadata,
+                    transport_generation,
+                    generation,
                     TerminalManager::new(ctx.project_root(), 34, 120),
                 );
                 items.write().push(ChatItem::Message {
@@ -328,6 +333,8 @@ fn start_event_loop(
     session: Signal<Option<Rc<AcpSession>>>,
     shared_session: Signal<Option<Rc<AcpSession>>>,
     deployment_metadata: Signal<Option<serde_json::Value>>,
+    transport_generation: Signal<u64>,
+    generation: u64,
     terminal_manager: TerminalManager,
 ) {
     let mut items = items;
@@ -340,6 +347,10 @@ fn start_event_loop(
         let mut last_flush = std::time::Instant::now();
 
         loop {
+            if *transport_generation.read() != generation {
+                tracing::warn!(generation, "stale ACP event loop exiting");
+                return;
+            }
             let mut saw_event = false;
             loop {
                 match rx.try_recv() {
@@ -367,6 +378,7 @@ fn start_event_loop(
                             session,
                             shared_session,
                             deployment_metadata,
+                            transport_generation,
                             terminal_manager.clone(),
                         );
                         saw_event = true;
@@ -510,6 +522,32 @@ enum ChatItem {
     Plan(Vec<crate::acp::PlanItem>),
 }
 
+
+fn parse_session_history(value: &serde_json::Value) -> Vec<(String, String)> {
+    value
+        .get("sessions")
+        .and_then(|sessions| sessions.as_array())
+        .map(|sessions| {
+            sessions
+                .iter()
+                .filter_map(|session| {
+                    let id = session
+                        .get("sessionId")
+                        .or_else(|| session.get("session_id"))
+                        .and_then(|value| value.as_str())?
+                        .to_string();
+                    let cwd = session
+                        .get("cwd")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    Some((id, cwd))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum AgentStatus {
     Idle,
@@ -567,6 +605,11 @@ pub fn AgentRail() -> Element {
     // Input history (up/down arrow)
     let mut history: Signal<Vec<String>> = use_signal(Vec::new);
     let mut history_idx: Signal<Option<usize>> = use_signal(|| None);
+    let mut session_history_open = use_signal(|| false);
+    let session_history: Signal<Vec<(String, String)>> = use_signal(Vec::new);
+    let mut session_lifecycle_msg: Signal<Option<String>> = use_signal(|| None);
+    let mut transport_generation: Signal<u64> = use_signal(|| 0);
+    let mut agent_stopped_by_operator = use_signal(|| false);
 
     let omegon_binary = find_omegon_binary_from_ctx(&ctx);
     let binary_found = omegon_binary.is_some();
@@ -596,6 +639,7 @@ pub fn AgentRail() -> Element {
         if session.read().is_some()
             || shared_session.read().is_some()
             || *agent_status.read() == AgentStatus::Connecting
+            || *agent_stopped_by_operator.read()
         {
             return;
         }
@@ -637,6 +681,9 @@ pub fn AgentRail() -> Element {
 
                     *session.write() = Some(sess.clone());
                     *shared_session.write() = Some(sess.clone());
+                    *session_lifecycle_msg.write() = None;
+                    let generation = *transport_generation.peek() + 1;
+                    transport_generation.set(generation);
                     start_event_loop(
                         rx,
                         ctx.clone(),
@@ -648,6 +695,8 @@ pub fn AgentRail() -> Element {
                         session,
                         shared_session,
                         deployment_metadata,
+                        transport_generation,
+                        generation,
                         terminal_manager_for_loop,
                     );
                     *agent_status.write() = AgentStatus::Idle;
@@ -820,6 +869,189 @@ pub fn AgentRail() -> Element {
             // ── Inline session status ──────────────────────────────
             if session.read().is_some() {
                 crate::components::omegon::session_status::InlineSessionStatus {}
+            }
+            // ── Session lifecycle controls ──────────────────────────
+            if let Some(sess) = session.read().clone() {
+                div { class: "agent-session-controls",
+                    button {
+                        class: "btn btn-ghost btn-xs",
+                        disabled: *agent_status.read() == AgentStatus::Connecting,
+                        onclick: {
+                            let sess = sess.clone();
+                            let mut items = items;
+                            let mut session_title = session_title;
+                            let mut agent_status = agent_status;
+                            let mut session_lifecycle_msg = session_lifecycle_msg;
+                            let project_root = ctx.project_root();
+                            move |_| {
+                                *agent_stopped_by_operator.write() = false;
+                                *agent_status.write() = AgentStatus::Connecting;
+                                *session_lifecycle_msg.write() = Some("Starting a new Omegon session…".into());
+                                let sess = sess.clone();
+                                let project_root = project_root.clone();
+                                spawn(async move {
+                                    match sess.new_session(project_root).await {
+                                        Ok(_) => {
+                                            items.write().clear();
+                                            *session_history_open.write() = false;
+                                            *session_title.write() = None;
+                                            *session_lifecycle_msg.write() = Some(format!(
+                                                "New session started: {}",
+                                                sess.current_session_id().0
+                                            ));
+                                        }
+                                        Err(error) => {
+                                            *session_lifecycle_msg.write() = Some(format!("New session failed: {error}"));
+                                        }
+                                    }
+                                    *agent_status.write() = AgentStatus::Idle;
+                                });
+                            }
+                        },
+                        "New session"
+                    }
+                    button {
+                        class: "btn btn-ghost btn-xs",
+                        onclick: {
+                            let sess = sess.clone();
+                            let project_root = ctx.project_root();
+                            let mut session_history = session_history;
+                            let mut session_history_open = session_history_open;
+                            let mut session_lifecycle_msg = session_lifecycle_msg;
+                            move |_| {
+                                *session_lifecycle_msg.write() = Some("Loading session history…".into());
+                                let sess = sess.clone();
+                                let project_root = project_root.clone();
+                                spawn(async move {
+                                    match sess.list_sessions(Some(project_root)).await {
+                                        Ok(value) => {
+                                            let sessions = parse_session_history(&value);
+                                            let count = sessions.len();
+                                            *session_history.write() = sessions;
+                                            *session_history_open.write() = true;
+                                            *session_lifecycle_msg.write() = Some(format!("Loaded {count} session(s)."));
+                                        }
+                                        Err(error) => {
+                                            *session_lifecycle_msg.write() = Some(format!("Session history failed: {error}"));
+                                        }
+                                    }
+                                });
+                            }
+                        },
+                        "History"
+                    }
+                    button {
+                        class: "btn btn-ghost btn-xs",
+                        onclick: {
+                            let mut session = session;
+                            let mut shared_session = shared_session;
+                            let mut available_commands = available_commands;
+                            let mut config_options = config_options;
+                            let mut session_title = session_title;
+                            let mut items = items;
+                            let mut agent_status = agent_status;
+                            let mut session_lifecycle_msg = session_lifecycle_msg;
+                            let mut transport_generation = transport_generation;
+                            let mut agent_stopped_by_operator = agent_stopped_by_operator;
+                            move |_| {
+                                let was_busy = agent_status.read().is_busy();
+                                *agent_stopped_by_operator.write() = true;
+                                if was_busy {
+                                    items.write().push(ChatItem::Message {
+                                        role: ChatRole::Assistant,
+                                        content: "Response interrupted by Stop agent.".into(),
+                                    });
+                                }
+                                let generation = *transport_generation.peek() + 1;
+                                transport_generation.set(generation);
+                                session.set(None);
+                                shared_session.set(None);
+                                available_commands.write().clear();
+                                config_options.write().clear();
+                                *session_title.write() = None;
+                                items.write().push(ChatItem::Message {
+                                    role: ChatRole::Assistant,
+                                    content: "Stopped the Omegon agent transport. Use Start agent to reconnect.".into(),
+                                });
+                                *session_lifecycle_msg.write() = Some("Agent transport stopped.".into());
+                                *agent_status.write() = AgentStatus::Idle;
+                            }
+                        },
+                        "Stop agent"
+                    }
+                    if let Some(msg) = session_lifecycle_msg.read().as_ref() {
+                        span { class: "agent-session-lifecycle-msg", "{msg}" }
+                    }
+                }
+                if *session_history_open.read() {
+                    div { class: "agent-session-history",
+                        div { class: "agent-session-history-head",
+                            span { "Session history" }
+                            button { class: "btn btn-ghost btn-xs", onclick: move |_| *session_history_open.write() = false, "Close" }
+                        }
+                        if session_history.read().is_empty() {
+                            div { class: "muted", "No saved sessions reported by Omegon." }
+                        }
+                        for (session_id, cwd) in session_history.read().iter() {
+                            div { class: "agent-session-history-row",
+                                div {
+                                    code { "{session_id}" }
+                                    div { class: "muted", "{cwd}" }
+                                }
+                                button {
+                                    class: "btn btn-ghost btn-xs",
+                                    onclick: {
+                                        let sess = sess.clone();
+                                        let sid = session_id.clone();
+                                        let cwd = std::path::PathBuf::from(cwd.clone());
+                                        let mut items = items;
+                                        let mut session_title = session_title;
+                                        let mut session_lifecycle_msg = session_lifecycle_msg;
+                                        let mut agent_status = agent_status;
+                                        move |_| {
+                                            *agent_status.write() = AgentStatus::Connecting;
+                                            *session_lifecycle_msg.write() = Some(format!("Resuming session {sid}…"));
+                                            let sess = sess.clone();
+                                            let sid_for_load = sid.clone();
+                                            let cwd = cwd.clone();
+                                            spawn(async move {
+                                                let session_id = agent_client_protocol::SessionId::new(sid_for_load.clone());
+                                                match sess.load_session(session_id, cwd).await {
+                                                    Ok(_) => {
+                                                        items.write().clear();
+                                                        *session_history_open.write() = false;
+                                                        *session_title.write() = Some(sid_for_load.clone());
+                                                        *session_lifecycle_msg.write() = Some(format!("Resumed session {sid_for_load}."));
+                                                    }
+                                                    Err(error) => {
+                                                        *session_lifecycle_msg.write() = Some(format!("Resume failed: {error}"));
+                                                    }
+                                                }
+                                                *agent_status.write() = AgentStatus::Idle;
+                                            });
+                                        }
+                                    },
+                                    "Resume"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+
+            if session.read().is_none() && *agent_stopped_by_operator.read() {
+                div { class: "agent-session-controls",
+                    button {
+                        class: "btn btn-primary btn-xs",
+                        onclick: move |_| {
+                            *agent_stopped_by_operator.write() = false;
+                            *session_lifecycle_msg.write() = Some("Starting Omegon agent…".into());
+                        },
+                        "Start agent"
+                    }
+                    span { class: "agent-session-lifecycle-msg", "Agent stopped by operator." }
+                }
             }
 
             // ── Launch/connection error (only if no active session) ──
@@ -1086,9 +1318,9 @@ pub fn AgentRail() -> Element {
             div { class: "agent-input-area",
                 textarea {
                     class: "agent-textarea",
-                    placeholder: if binary_found { "Ask Omegon… (type / for commands)" } else { "Omegon binary not found" },
+                    placeholder: if *agent_stopped_by_operator.read() { "Agent stopped — Start agent to continue" } else if session.read().is_none() { "Starting Omegon…" } else if binary_found { "Ask Omegon… (type / for commands)" } else { "Omegon binary not found" },
                     value: "{input}",
-                    disabled: !binary_found || preflight_blocked,
+                    disabled: !binary_found || preflight_blocked || session.read().is_none() || *agent_stopped_by_operator.read(),
                     oninput: move |e| {
                         *input.write() = e.value();
                         *history_idx.write() = None;
@@ -1174,7 +1406,17 @@ pub fn AgentRail() -> Element {
                                     let provider = trimmed.strip_prefix("/login").unwrap().trim();
                                     let project = use_context::<AppContext>().project_root();
                                     *agent_status.write() = AgentStatus::Thinking;
-                                    sess.login(&binary, provider).await;
+                                    match sess.login(&binary, provider).await {
+                                        Ok(_) => {}
+                                        Err(error) => {
+                                            items.write().push(ChatItem::Message {
+                                                role: ChatRole::Assistant,
+                                                content: format!("Login failed: {error}"),
+                                            });
+                                            *agent_status.write() = AgentStatus::Idle;
+                                            return;
+                                        }
+                                    }
 
                                     // Reconnect with new credentials
                                     *agent_status.write() = AgentStatus::Connecting;
@@ -1191,6 +1433,9 @@ pub fn AgentRail() -> Element {
                                             }
                                             *session.write() = Some(new_sess.clone());
                                             *shared_session.write() = Some(new_sess);
+                                            *session_lifecycle_msg.write() = None;
+                                            let generation = *transport_generation.peek() + 1;
+                                            transport_generation.set(generation);
                                             start_event_loop(
                                                 rx,
                                                 use_context::<AppContext>(),
@@ -1202,6 +1447,8 @@ pub fn AgentRail() -> Element {
                                                 session,
                                                 shared_session,
                                                 deployment_metadata,
+                                                transport_generation,
+                                                generation,
                                                 use_context::<TerminalManager>(),
                                             );
                                             items.write().push(ChatItem::Message {
@@ -1420,6 +1667,7 @@ fn handle_acp_event(
     session: Signal<Option<Rc<AcpSession>>>,
     shared_session: Signal<Option<Rc<AcpSession>>>,
     mut deployment_metadata: Signal<Option<serde_json::Value>>,
+    transport_generation: Signal<u64>,
     _terminal_manager: TerminalManager,
 ) {
     match event {
@@ -1573,6 +1821,7 @@ fn handle_acp_event(
                     *config,
                     *session_title,
                     deployment_metadata,
+                    transport_generation,
                 );
             }
         }
@@ -1680,6 +1929,7 @@ fn handle_acp_event(
                     *config,
                     *session_title,
                     deployment_metadata,
+                    transport_generation,
                 );
                 return;
             }

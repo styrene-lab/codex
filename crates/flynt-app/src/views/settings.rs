@@ -987,6 +987,7 @@ pub fn SettingsView() -> Element {
                                 extensions_dir: ctx.omegon().extensions_dir.clone(),
                                 skills_dir: ctx.omegon().home_dir.join("skills"),
                             }
+                            InstalledPackagesCard { plugins_dir: ctx.omegon().home_dir.join("plugins") }
                             SettingsSection { heading: "Project skill activation",
                                 ArmorySkillsDiagnosticCard {
                                     report: armory_report.clone(),
@@ -1042,7 +1043,15 @@ pub fn SettingsView() -> Element {
                                                     package_source.set(String::new());
                                                     armory_install_refresh += 1;
                                                 }
-                                                Err(error) => armory_install_msg.set(Some(format!("Install failed: {error}"))),
+                                                Err(error) => {
+                                                    let text = error.to_string();
+                                                    if text.contains("already exists") || text.contains("already installed") {
+                                                        armory_install_msg.set(Some(format!("Package already installed: {source}")));
+                                                        armory_install_refresh += 1;
+                                                    } else {
+                                                        armory_install_msg.set(Some(format!("Install failed: {error}")));
+                                                    }
+                                                }
                                             }
                                             package_installing.set(false);
                                         });
@@ -1510,7 +1519,7 @@ fn PackageInstallCard(
                     }
                     div { class: "deployment-diagnostic-actions package-install-actions",
                         input {
-                            class: "settings-input package-install-input",
+                            class: "input settings-input package-install-input",
                             placeholder: "Git URL, local path, Armory ref, or archive",
                             value: "{source.read()}",
                             oninput: move |event| source.set(event.value()),
@@ -1607,6 +1616,88 @@ fn ArmorySkillsRuntimeDiagnosticCard(
     }
 }
 
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct InstalledPackageSummary {
+    id: String,
+    name: String,
+    kind: String,
+    path: std::path::PathBuf,
+}
+
+fn installed_package_summaries(plugins_dir: &std::path::Path) -> Vec<InstalledPackageSummary> {
+    let mut packages = Vec::new();
+    let Ok(entries) = std::fs::read_dir(plugins_dir) else { return packages; };
+    for entry in entries.flatten() {
+        let dir = entry.path();
+        if !dir.is_dir() { continue; }
+        let manifest = dir.join("plugin.toml");
+        if !manifest.exists() { continue; }
+        let Ok(raw) = std::fs::read_to_string(&manifest) else { continue; };
+        let value_for = |key: &str| -> Option<String> {
+            raw.lines()
+                .map(str::trim)
+                .find_map(|line| {
+                    let (left, right) = line.split_once('=')?;
+                    (left.trim() == key).then(|| right.trim().trim_matches('"').to_string())
+                })
+                .filter(|value| !value.is_empty())
+        };
+        let fallback = dir.file_name().unwrap_or_default().to_string_lossy().to_string();
+        packages.push(InstalledPackageSummary {
+            id: value_for("id").unwrap_or_else(|| fallback.clone()),
+            name: value_for("name").unwrap_or_else(|| fallback.clone()),
+            kind: value_for("type").unwrap_or_else(|| "plugin".into()),
+            path: dir,
+        });
+    }
+    packages.sort_by(|a, b| a.name.cmp(&b.name));
+    packages
+}
+
+#[component]
+fn InstalledPackagesCard(plugins_dir: std::path::PathBuf) -> Element {
+    let packages = use_resource(move || {
+        let plugins_dir = plugins_dir.clone();
+        async move {
+            tokio::task::spawn_blocking(move || installed_package_summaries(&plugins_dir))
+                .await
+                .unwrap_or_default()
+        }
+    });
+
+    let current = packages.read();
+    let items = current.as_ref().cloned().unwrap_or_default();
+    if items.is_empty() {
+        return rsx! {};
+    }
+
+    rsx! {
+        SettingsSection { heading: "Installed packages",
+            div { class: "settings-row",
+                span { class: "settings-label", "Packages" }
+                div { class: "settings-control",
+                    div { class: "deployment-diagnostic ok installed-packages-card",
+                        div { class: "deployment-diagnostic-head",
+                            span { class: "deployment-diagnostic-status", "Installed" }
+                            span { class: "deployment-diagnostic-summary", "Packages already present in the local Omegon plugin store." }
+                        }
+                        ul { class: "deployment-diagnostic-details installed-packages-list",
+                            for package in items.iter() {
+                                li {
+                                    strong { "{package.name}" }
+                                    " — {package.kind} · {package.id}"
+                                    div { class: "settings-hint muted", "{package.path.display()}" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[component]
 fn ArmorySkillsDiagnosticCard(
     report: crate::armory_resolution::ArmoryResolutionReport,
@@ -1676,15 +1767,15 @@ fn ArmorySkillsDiagnosticCard(
                     if let Some(message) = message.as_ref() {
                         div { class: "deployment-diagnostic-summary", "{message}" }
                     }
-                    div { class: "deployment-diagnostic-actions",
+                    div { class: "deployment-diagnostic-actions package-install-actions",
                         input {
-                            class: "settings-input skill-activation-input",
-                            placeholder: "Git URL or local package path",
+                            class: "input settings-input package-install-input",
+                            placeholder: "Git URL, local path, Armory ref, or archive",
                             value: "{package_source.read()}",
                             oninput: move |event| package_source.set(event.value()),
                         }
                         button {
-                            class: "btn btn-ghost btn-xs",
+                            class: "btn btn-primary btn-sm package-install-button",
                             disabled: package_installing,
                             onclick: move |_| on_install.call(()),
                             if package_installing { "Installing…" } else { "Install package" }

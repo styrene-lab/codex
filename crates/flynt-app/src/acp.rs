@@ -10,9 +10,9 @@ use std::rc::Rc;
 
 use crate::omegon_cli_contract::OmegonCliContract;
 use agent_client_protocol::{
-    Agent, Client, ClientCapabilities, ClientSideConnection, ContentBlock, ExtRequest,
-    InitializeRequest, NewSessionRequest, PermissionOption, PermissionOptionId,
-    PermissionOptionKind, PromptRequest, RequestPermissionOutcome, RequestPermissionRequest,
+    Agent, Client, ClientCapabilities, ClientSideConnection, ContentBlock,
+    ExtRequest, InitializeRequest, ListSessionsRequest, LoadSessionRequest, NewSessionRequest,
+    PermissionOption, PermissionOptionId, PermissionOptionKind, PromptRequest, RequestPermissionOutcome, RequestPermissionRequest,
     RequestPermissionResponse, SelectedPermissionOutcome, SessionConfigId, SessionConfigKind,
     SessionConfigOption, SessionConfigSelectOptions, SessionConfigValueId, SessionId,
     SessionNotification, SessionUpdate, SetSessionConfigOptionRequest, TextContent,
@@ -433,7 +433,7 @@ impl Client for FlyntAcpClient {
 /// A live ACP session connected to an Omegon child process.
 pub struct AcpSession {
     conn: Rc<ClientSideConnection>,
-    session_id: SessionId,
+    session_id: Rc<RefCell<SessionId>>,
     tx: std::sync::mpsc::Sender<AcpEvent>,
     #[allow(dead_code)]
     auth_method_id: Option<String>,
@@ -534,7 +534,7 @@ impl AcpSession {
         Ok((
             Self {
                 conn,
-                session_id: session_resp.session_id,
+                session_id: Rc::new(RefCell::new(session_resp.session_id)),
                 tx: done_tx,
                 auth_method_id,
                 _child: child,
@@ -544,8 +544,8 @@ impl AcpSession {
     }
 
     /// Trigger OAuth login by spawning `omegon auth login [provider]`.
-    /// This opens the browser for the OAuth flow.
-    pub async fn login(&self, omegon_binary: &PathBuf, provider: &str) {
+    /// This opens the browser for the OAuth flow and resolves only after the CLI exits.
+    pub async fn login(&self, omegon_binary: &PathBuf, provider: &str) -> Result<String> {
         let provider = if provider.is_empty() {
             "anthropic"
         } else {
@@ -556,42 +556,61 @@ impl AcpSession {
             .send(AcpEvent::TextDelta(format!("Opening {provider} login…\n")));
 
         let contract = OmegonCliContract::current();
-        let result = tokio::process::Command::new(omegon_binary)
+        let output = tokio::process::Command::new(omegon_binary)
             .args(contract.auth_login_args(provider))
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .output()
-            .await;
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to run omegon auth login: {e}"))?;
 
-        match result {
-            Ok(output) if output.status.success() => {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let msg = if stdout.trim().is_empty() {
-                    format!("Logged in to {provider}.")
-                } else {
-                    stdout.trim().to_string()
-                };
-                let _ = self.tx.send(AcpEvent::TextDelta(msg));
-            }
-            Ok(output) => {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let msg = if !stderr.trim().is_empty() {
-                    stderr.trim().to_string()
-                } else if !stdout.trim().is_empty() {
-                    stdout.trim().to_string()
-                } else {
-                    format!("Login to {provider} failed (exit code {})", output.status)
-                };
-                let _ = self.tx.send(AcpEvent::Error(msg));
-            }
-            Err(e) => {
-                let _ = self.tx.send(AcpEvent::Error(format!(
-                    "Failed to run omegon auth login: {e}"
-                )));
-            }
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let msg = if stdout.trim().is_empty() {
+                format!("Logged in to {provider}.")
+            } else {
+                stdout.trim().to_string()
+            };
+            let _ = self.tx.send(AcpEvent::TextDelta(msg.clone()));
+            Ok(msg)
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let msg = if !stderr.trim().is_empty() {
+                stderr.trim().to_string()
+            } else if !stdout.trim().is_empty() {
+                stdout.trim().to_string()
+            } else {
+                format!("Login to {provider} failed (exit code {})", output.status)
+            };
+            let _ = self.tx.send(AcpEvent::Error(msg.clone()));
+            Err(anyhow::anyhow!(msg))
         }
     }
+
+    pub fn current_session_id(&self) -> SessionId {
+        self.session_id.borrow().clone()
+    }
+
+    pub async fn list_sessions(&self, cwd: Option<PathBuf>) -> Result<serde_json::Value> {
+        let req = ListSessionsRequest::new().cwd(cwd);
+        let resp = self.conn.list_sessions(req).await?;
+        Ok(serde_json::to_value(resp)?)
+    }
+
+    pub async fn load_session(&self, session_id: SessionId, cwd: PathBuf) -> Result<serde_json::Value> {
+        let req = LoadSessionRequest::new(session_id.clone(), cwd);
+        let resp = self.conn.load_session(req).await?;
+        *self.session_id.borrow_mut() = session_id;
+        Ok(serde_json::to_value(resp)?)
+    }
+
+    pub async fn new_session(&self, cwd: PathBuf) -> Result<serde_json::Value> {
+        let resp = self.conn.new_session(NewSessionRequest::new(cwd)).await?;
+        *self.session_id.borrow_mut() = resp.session_id.clone();
+        Ok(serde_json::to_value(resp)?)
+    }
+
 
     /// Send a user prompt.
     pub fn prompt(&self, text: &str) {
@@ -600,7 +619,7 @@ impl AcpSession {
             text.len()
         );
         let req = PromptRequest::new(
-            self.session_id.clone(),
+            self.session_id.borrow().clone(),
             vec![ContentBlock::Text(TextContent::new(text))],
         );
         let conn = self.conn.clone();
@@ -622,7 +641,7 @@ impl AcpSession {
     /// Change a config option (model, thinking, posture).
     pub async fn set_config(&self, config_id: &str, value: &str) {
         let req = SetSessionConfigOptionRequest::new(
-            self.session_id.clone(),
+            self.session_id.borrow().clone(),
             SessionConfigId::new(config_id),
             SessionConfigValueId::new(value),
         );
