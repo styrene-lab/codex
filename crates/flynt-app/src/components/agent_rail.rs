@@ -13,6 +13,7 @@ use crate::terminal::TerminalManager;
 use comrak::{Options, markdown_to_html};
 use dioxus::prelude::*;
 use std::path::{Path, PathBuf};
+use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::mpsc::TryRecvError;
 
@@ -198,6 +199,7 @@ fn reconnect_acp_session(
     session_title: Signal<Option<String>>,
     deployment_metadata: Signal<Option<serde_json::Value>>,
     mut transport_generation: Signal<u64>,
+    queued_prompts: Signal<VecDeque<String>>,
 ) {
     let mut items = items;
     let mut agent_status = agent_status;
@@ -256,6 +258,7 @@ fn reconnect_acp_session(
                     deployment_metadata,
                     transport_generation,
                     generation,
+                    queued_prompts,
                     TerminalManager::new(ctx.project_root(), 34, 120),
                 );
                 items.write().push(ChatItem::Message {
@@ -335,6 +338,7 @@ fn start_event_loop(
     deployment_metadata: Signal<Option<serde_json::Value>>,
     transport_generation: Signal<u64>,
     generation: u64,
+    queued_prompts: Signal<VecDeque<String>>,
     terminal_manager: TerminalManager,
 ) {
     let mut items = items;
@@ -379,6 +383,7 @@ fn start_event_loop(
                             shared_session,
                             deployment_metadata,
                             transport_generation,
+                            queued_prompts,
                             terminal_manager.clone(),
                         );
                         saw_event = true;
@@ -650,6 +655,7 @@ pub fn AgentRail() -> Element {
     // Input history (up/down arrow)
     let mut history: Signal<Vec<String>> = use_signal(Vec::new);
     let mut history_idx: Signal<Option<usize>> = use_signal(|| None);
+    let mut queued_prompts: Signal<VecDeque<String>> = use_signal(VecDeque::new);
     let mut session_history_open = use_signal(|| false);
     let session_history: Signal<Vec<(String, String)>> = use_signal(Vec::new);
     let mut session_lifecycle_msg: Signal<Option<String>> = use_signal(|| None);
@@ -742,6 +748,7 @@ pub fn AgentRail() -> Element {
                         deployment_metadata,
                         transport_generation,
                         generation,
+                        queued_prompts,
                         terminal_manager_for_loop,
                     );
                     *agent_status.write() = AgentStatus::Idle;
@@ -1359,6 +1366,33 @@ pub fn AgentRail() -> Element {
                 }
             }
 
+            if !queued_prompts.read().is_empty() {
+                div { class: "agent-queued-prompts",
+                    div { class: "agent-queued-head",
+                        span { "Queued" }
+                        span { class: "agent-queued-count", "{queued_prompts.read().len()}" }
+                    }
+                    for (idx, prompt) in queued_prompts.read().iter().enumerate() {
+                        div { class: "agent-queued-row",
+                            span { class: "agent-queued-index", "{idx + 1}" }
+                            span { class: "agent-queued-text", "{prompt}" }
+                            button {
+                                class: "agent-queued-remove",
+                                title: "Remove queued prompt",
+                                aria_label: "Remove queued prompt",
+                                onclick: move |_| {
+                                    let mut queue = queued_prompts.write();
+                                    if idx < queue.len() {
+                                        queue.remove(idx);
+                                    }
+                                },
+                                "×"
+                            }
+                        }
+                    }
+                }
+            }
+
             // ── Input ────────────────────────────────────────────
             div { class: "agent-input-area",
                 div { class: "agent-composer-wrap",
@@ -1366,7 +1400,7 @@ pub fn AgentRail() -> Element {
                     class: "agent-textarea",
                     placeholder: if *agent_stopped_by_operator.read() { "Agent stopped — Start agent to continue" } else if session.read().is_none() { "Starting Omegon…" } else if binary_found { "Ask Omegon… (type / for commands)" } else { "Omegon binary not found" },
                     value: "{input}",
-                    disabled: !binary_found || preflight_blocked || session.read().is_none() || *agent_stopped_by_operator.read() || agent_status.read().is_busy(),
+                    disabled: !binary_found || preflight_blocked || session.read().is_none() || *agent_stopped_by_operator.read(),
                     oninput: move |e| {
                         *input.write() = e.value();
                         *history_idx.write() = None;
@@ -1448,9 +1482,10 @@ pub fn AgentRail() -> Element {
                                 let sess = session.read().clone().unwrap();
 
                                 if agent_status.read().is_busy() {
+                                    queued_prompts.write().push_back(prompt.clone());
                                     items.write().push(ChatItem::Message {
                                         role: ChatRole::Assistant,
-                                        content: "A turn is still running. Wait for completion or use Stop agent to interrupt it.".into(),
+                                        content: format!("Queued message {}.", queued_prompts.read().len()),
                                     });
                                     return;
                                 }
@@ -1503,6 +1538,7 @@ pub fn AgentRail() -> Element {
                                                 deployment_metadata,
                                                 transport_generation,
                                                 generation,
+                                                queued_prompts,
                                                 use_context::<TerminalManager>(),
                                             );
                                             items.write().push(ChatItem::Message {
@@ -1742,6 +1778,7 @@ fn handle_acp_event(
     shared_session: Signal<Option<Rc<AcpSession>>>,
     mut deployment_metadata: Signal<Option<serde_json::Value>>,
     transport_generation: Signal<u64>,
+    mut queued_prompts: Signal<VecDeque<String>>,
     _terminal_manager: TerminalManager,
 ) {
     match event {
@@ -1783,6 +1820,7 @@ fn handle_acp_event(
                         *session_title,
                         deployment_metadata,
                         transport_generation,
+                        queued_prompts,
                     );
                 }
                 return;
@@ -1915,6 +1953,7 @@ fn handle_acp_event(
                     *session_title,
                     deployment_metadata,
                     transport_generation,
+                    queued_prompts,
                 );
             }
         }
@@ -2002,6 +2041,13 @@ fn handle_acp_event(
         AcpEvent::Done => {
             tracing::info!("ACP Done");
             *status.write() = AgentStatus::Idle;
+            if let Some(next) = queued_prompts.write().pop_front() {
+                items.write().push(ChatItem::Message { role: ChatRole::User, content: next.clone() });
+                *status.write() = AgentStatus::Thinking;
+                if let Some(sess) = session.read().clone() {
+                    sess.prompt(&next);
+                }
+            }
         }
         AcpEvent::ProviderRetry(ref value) => {
             let attempt = value.get("attempt").and_then(|v| v.as_u64()).unwrap_or(0);
@@ -2021,6 +2067,11 @@ fn handle_acp_event(
                 content: format!("✖ {provider} failed: {message}"),
             });
             *status.write() = AgentStatus::Idle;
+            if let Some(next) = queued_prompts.write().pop_front() {
+                items.write().push(ChatItem::Message { role: ChatRole::User, content: next.clone() });
+                *status.write() = AgentStatus::Thinking;
+                if let Some(sess) = session.read().clone() { sess.prompt(&next); }
+            }
         }
         AcpEvent::TurnCancelled(ref value) => {
             let reason = value.get("reason").and_then(|v| v.as_str()).unwrap_or("turn cancelled");
@@ -2029,6 +2080,11 @@ fn handle_acp_event(
                 content: format!("Turn cancelled: {reason}"),
             });
             *status.write() = AgentStatus::Idle;
+            if let Some(next) = queued_prompts.write().pop_front() {
+                items.write().push(ChatItem::Message { role: ChatRole::User, content: next.clone() });
+                *status.write() = AgentStatus::Thinking;
+                if let Some(sess) = session.read().clone() { sess.prompt(&next); }
+            }
         }
         AcpEvent::Error(ref msg) => {
             tracing::error!("ACP Error: {msg}");
@@ -2050,6 +2106,7 @@ fn handle_acp_event(
                     *session_title,
                     deployment_metadata,
                     transport_generation,
+                    queued_prompts,
                 );
                 return;
             }
