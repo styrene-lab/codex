@@ -407,7 +407,7 @@ impl AcpSession {
         let permission_tx = event_tx.clone();
         let session_tx = event_tx.clone();
         let ext_tx = event_tx.clone();
-        dioxus::prelude::spawn(async move {
+        tokio::spawn(async move {
             let result = agent_client_protocol::Client
                 .builder()
                 .on_receive_request(
