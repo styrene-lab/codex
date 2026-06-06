@@ -2825,3 +2825,43 @@
   .design-surface-grid,
   .design-component-preview-grid { grid-template-columns: 1fr; }
 }
+
+.agent-composer-wrap {
+  position: relative;
+}
+
+.agent-composer-wrap .agent-textarea {
+  padding-right: 44px;
+}
+
+.agent-turn-stop-btn {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid color-mix(in srgb, var(--warning) 55%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warning) 14%, var(--surface));
+  color: var(--warning);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease),
+              border-color var(--duration-fast) var(--ease),
+              color var(--duration-fast) var(--ease),
+              transform var(--duration-fast) var(--ease);
+}
+
+.agent-turn-stop-btn:hover {
+  border-color: var(--destructive);
+  background: color-mix(in srgb, var(--destructive) 18%, var(--surface));
+  color: var(--destructive);
+  transform: translateY(-1px);
+}
+
+.agent-turn-stop-icon {
+  font-size: 10px;
+  line-height: 1;
+}

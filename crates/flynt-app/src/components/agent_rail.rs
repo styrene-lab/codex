@@ -985,22 +985,6 @@ pub fn AgentRail() -> Element {
                         },
                         "History"
                     }
-                    if matches!(*agent_status.read(), AgentStatus::Thinking | AgentStatus::ToolRunning) {
-                        button {
-                            class: "btn btn-ghost btn-xs danger",
-                            onclick: {
-                                let sess = sess.clone();
-                                let mut session_lifecycle_msg = session_lifecycle_msg;
-                                move |_| {
-                                    match sess.cancel_current_turn() {
-                                        Ok(()) => *session_lifecycle_msg.write() = Some("Cancel requested for the current turn…".into()),
-                                        Err(error) => *session_lifecycle_msg.write() = Some(format!("Cancel request failed: {error}")),
-                                    }
-                                }
-                            },
-                            "Cancel turn"
-                        }
-                    }
                     button {
                         class: "btn btn-ghost btn-xs",
                         onclick: {
@@ -1377,6 +1361,7 @@ pub fn AgentRail() -> Element {
 
             // ── Input ────────────────────────────────────────────
             div { class: "agent-input-area",
+                div { class: "agent-composer-wrap",
                 textarea {
                     class: "agent-textarea",
                     placeholder: if *agent_stopped_by_operator.read() { "Agent stopped — Start agent to continue" } else if session.read().is_none() { "Starting Omegon…" } else if binary_found { "Ask Omegon… (type / for commands)" } else { "Omegon binary not found" },
@@ -1562,6 +1547,27 @@ pub fn AgentRail() -> Element {
                             }
                         }
                     },
+                }
+                if matches!(*agent_status.read(), AgentStatus::Thinking | AgentStatus::ToolRunning) {
+                    button {
+                        class: "agent-turn-stop-btn",
+                        title: "Cancel current turn",
+                        aria_label: "Cancel current turn",
+                        onclick: {
+                            let sess = session.read().clone();
+                            let mut session_lifecycle_msg = session_lifecycle_msg;
+                            move |_| {
+                                if let Some(sess) = sess.clone() {
+                                    match sess.cancel_current_turn() {
+                                        Ok(()) => *session_lifecycle_msg.write() = Some("Cancel requested for the current turn…".into()),
+                                        Err(error) => *session_lifecycle_msg.write() = Some(format!("Cancel request failed: {error}")),
+                                    }
+                                }
+                            }
+                        },
+                        span { class: "agent-turn-stop-icon", "■" }
+                    }
+                }
                 }
             }
 
