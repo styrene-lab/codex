@@ -25,6 +25,8 @@ use std::rc::Rc;
 #[component]
 pub fn SettingsView() -> Element {
     let ctx = use_context::<AppContext>();
+    let mut deployment_probe_refresh = use_signal(|| 0u64);
+    let _ = deployment_probe_refresh.read();
     let loaded_deployment = load_deployment_for_settings(&ctx.omegon());
     let deployment_diagnostic = classify_loaded_deployment(
         &loaded_deployment,
@@ -168,6 +170,42 @@ pub fn SettingsView() -> Element {
 
     let mut active_page = use_context::<Signal<SettingsPage>>();
     let shared_session = use_context::<Signal<Option<Rc<AcpSession>>>>();
+    let mut settings_deployment_probe_started = use_signal(|| false);
+    let probe_session = shared_session.read().clone();
+    let probe_ctx = ctx.clone();
+    use_effect(move || {
+        let _ = active_page.read();
+        if *settings_deployment_probe_started.read() {
+            return;
+        }
+        let Some(sess) = probe_session.clone() else {
+            return;
+        };
+        settings_deployment_probe_started.set(true);
+        let probe_ctx = probe_ctx.clone();
+        spawn(async move {
+            // Give Omegon's extension supervisor a short window to settle after
+            // ACP connect/config replay. Without this, Settings can cache an
+            // early not-callable extension snapshot just before the agent rail's
+            // deployment probe succeeds.
+            tokio::time::sleep(std::time::Duration::from_millis(750)).await;
+            if probe_ctx.deployment_metadata().is_some() {
+                return;
+            }
+            match sess.flynt_deployment_probe().await {
+                Ok(meta) if meta.get("flynt_probe").is_none() => {
+                    probe_ctx.set_deployment_metadata(meta);
+                    deployment_probe_refresh += 1;
+                }
+                Ok(meta) => {
+                    tracing::warn!(metadata = %meta, "Settings Flynt deployment probe returned diagnostics without initialize metadata");
+                }
+                Err(error) => {
+                    tracing::warn!("Settings Flynt deployment metadata probe failed: {error}");
+                }
+            }
+        });
+    });
 
     let project = ctx.project();
     let omegon = ctx.omegon();
@@ -1081,7 +1119,12 @@ pub fn SettingsView() -> Element {
                             session: shared_session,
                             refresh: armory_install_refresh,
                         }
-                        DeploymentDiagnosticCard { diagnostic: deployment_diagnostic.clone() }
+                        DeploymentDiagnosticCard {
+                            diagnostic: deployment_diagnostic.clone(),
+                            session: shared_session,
+                            refresh: deployment_probe_refresh,
+                        }
+
                         ArmorySkillsRuntimeDiagnosticCard {
                             report: armory_report.clone(),
                             on_manage_skills: move |_| *active_page.write() = SettingsPage::OmegonSkills,
@@ -1445,9 +1488,23 @@ fn load_deployment_for_settings(omegon: &OmegonRuntimeContext) -> LoadedDeployme
 }
 
 #[component]
-fn DeploymentDiagnosticCard(diagnostic: DeploymentDiagnostic) -> Element {
+fn DeploymentDiagnosticCard(
+    diagnostic: DeploymentDiagnostic,
+    session: Signal<Option<Rc<AcpSession>>>,
+    refresh: Signal<u64>,
+) -> Element {
+    let ctx = use_context::<AppContext>();
     let status = diagnostic.status;
     let class = format!("deployment-diagnostic {}", status.class());
+    let can_reenable_flynt = diagnostic.details.iter().any(|detail| {
+        detail.contains("flynt extension is installed but disabled")
+            || detail.contains("flynt extension is installed but is not callable")
+            || detail.contains("auto-disabled")
+            || detail.contains("Broken pipe")
+    });
+    let mut recovery_message = use_signal(|| Option::<String>::None);
+    let mut recovering = use_signal(|| false);
+    let mut refresh = refresh;
     rsx! {
         div { class: "settings-row",
             span { class: "settings-label", "Flynt ACP deployment" }
@@ -1463,6 +1520,53 @@ fn DeploymentDiagnosticCard(diagnostic: DeploymentDiagnostic) -> Element {
                                 li { "{detail}" }
                             }
                         }
+                    }
+                    if can_reenable_flynt {
+                        div { class: "deployment-diagnostic-actions",
+                            button {
+                                class: "btn btn-primary btn-xs",
+                                disabled: *recovering.read(),
+                                onclick: move |_| {
+                                    let Some(sess) = session.read().clone() else {
+                                        recovery_message.set(Some("Cannot re-enable: Omegon session is not connected.".into()));
+                                        return;
+                                    };
+                                    recovering.set(true);
+                                    recovery_message.set(Some("Re-enabling Flynt extension…".into()));
+                                    let ctx = ctx.clone();
+                                    spawn(async move {
+                                        match sess.extensions_enable("flynt").await {
+                                            Ok(_) => {
+                                                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                                                match sess.flynt_deployment_probe().await {
+                                                    Ok(meta) if meta.get("flynt_probe").is_none() => {
+                                                        ctx.set_deployment_metadata(meta);
+                                                        refresh += 1;
+                                                        recovery_message.set(Some("Flynt extension re-enabled and verified.".into()));
+                                                    }
+                                                    Ok(meta) => {
+                                                        recovery_message.set(Some(format!("Flynt extension re-enabled, but verification still reports diagnostics: {meta}")));
+                                                        refresh += 1;
+                                                    }
+                                                    Err(error) => {
+                                                        recovery_message.set(Some(format!("Flynt extension re-enabled, but verification failed: {error}")));
+                                                        refresh += 1;
+                                                    }
+                                                }
+                                            }
+                                            Err(error) => {
+                                                recovery_message.set(Some(format!("Re-enable failed: {error}")));
+                                            }
+                                        }
+                                        recovering.set(false);
+                                    });
+                                },
+                                if *recovering.read() { "Re-enabling…" } else { "Re-enable Flynt extension" }
+                            }
+                        }
+                    }
+                    if let Some(message) = recovery_message.read().as_ref() {
+                        div { class: "settings-hint muted", "{message}" }
                     }
                 }
             }
@@ -1893,13 +1997,15 @@ fn ArmorySkillsDiagnosticCard(
                         span { class: "deployment-diagnostic-status", "{status}" }
                         span { class: "deployment-diagnostic-summary", "{summary}" }
                     }
-                    ul { class: "deployment-diagnostic-details",
+                    div { class: "skill-diagnostic-list",
                         for skill in report.skills.iter() {
-                            li {
-                                strong { "{skill.name}" }
-                                " — {skill.source.label()}"
-                                if let Some(path) = skill.path.as_ref() {
-                                    " ({path.display()})"
+                            div { class: "skill-diagnostic-item",
+                                div { class: "skill-diagnostic-main",
+                                    strong { "{skill.name}" }
+                                    span { "{skill.source.label()}" }
+                                    if let Some(path) = skill.path.as_ref() {
+                                        small { "{path.display()}" }
+                                    }
                                 }
                                 if !flynt_core::omegon_deployment::OmegonDeploymentManifest::default()
                                     .activation
@@ -1921,36 +2027,44 @@ fn ArmorySkillsDiagnosticCard(
                     if let Some(message) = message.as_ref() {
                         div { class: "deployment-diagnostic-summary", "{message}" }
                     }
-                    div { class: "deployment-diagnostic-actions package-install-actions",
-                        input {
-                            class: "input settings-input package-install-input",
-                            placeholder: "Git URL, local path, Armory ref, or archive",
-                            value: "{package_source.read()}",
-                            oninput: move |event| package_source.set(event.value()),
-                        }
-                        button {
-                            class: "btn btn-primary btn-sm package-install-button",
-                            disabled: package_installing,
-                            onclick: move |_| on_install.call(()),
-                            if package_installing { "Installing…" } else { "Install package" }
-                        }
-                    }
-                    div { class: "deployment-diagnostic-actions",
-                        input {
-                            class: "settings-input skill-activation-input",
-                            placeholder: "skill-id to activate",
-                            value: "{custom_skill_id.read()}",
-                            oninput: move |event| custom_skill_id.set(event.value()),
-                        }
-                        button {
-                            class: "btn btn-ghost btn-xs",
-                            onclick: move |_| {
-                                let skill_id = custom_skill_id.read().trim().to_string();
-                                if !skill_id.is_empty() {
-                                    on_activate.call(skill_id);
+                    div { class: "skill-management-grid",
+                        div { class: "skill-management-group",
+                            label { class: "settings-hint muted", "Install a package" }
+                            div { class: "deployment-diagnostic-actions package-install-actions compact-package-install-actions",
+                                input {
+                                    class: "input settings-input package-install-input",
+                                    placeholder: "Git URL, local path, Armory ref, or archive",
+                                    value: "{package_source.read()}",
+                                    oninput: move |event| package_source.set(event.value()),
                                 }
-                            },
-                            "Activate skill"
+                                button {
+                                    class: "btn btn-primary btn-sm package-install-button",
+                                    disabled: package_installing,
+                                    onclick: move |_| on_install.call(()),
+                                    if package_installing { "Installing…" } else { "Install" }
+                                }
+                            }
+                        }
+                        div { class: "skill-management-group",
+                            label { class: "settings-hint muted", "Activate an installed skill" }
+                            div { class: "deployment-diagnostic-actions skill-activation-actions",
+                                input {
+                                    class: "input settings-input skill-activation-input",
+                                    placeholder: "skill id, e.g. flynt-design",
+                                    value: "{custom_skill_id.read()}",
+                                    oninput: move |event| custom_skill_id.set(event.value()),
+                                }
+                                button {
+                                    class: "btn btn-ghost btn-sm",
+                                    onclick: move |_| {
+                                        let skill_id = custom_skill_id.read().trim().to_string();
+                                        if !skill_id.is_empty() {
+                                            on_activate.call(skill_id);
+                                        }
+                                    },
+                                    "Activate"
+                                }
+                            }
                         }
                     }
                 }

@@ -16,6 +16,8 @@ impl OmegonCliContract {
             "--cwd".to_string(),
             cwd.to_string_lossy().to_string(),
             "-y".to_string(),
+            "--log-level".to_string(),
+            "error".to_string(),
         ];
         if let Some(agent_id) = agent_id.filter(|id| !id.is_empty()) {
             args.push("--agent".to_string());
@@ -51,7 +53,10 @@ mod tests {
     #[test]
     fn acp_args_include_project_scope_and_consent() {
         let args = OmegonCliContract::current().acp_args(Path::new("/tmp/project"), None);
-        assert_eq!(args, vec!["acp", "--cwd", "/tmp/project", "-y"]);
+        assert_eq!(
+            args,
+            vec!["acp", "--cwd", "/tmp/project", "-y", "--log-level", "error"]
+        );
     }
 
     #[test]
@@ -65,6 +70,8 @@ mod tests {
                 "--cwd",
                 "/tmp/project",
                 "-y",
+                "--log-level",
+                "error",
                 "--agent",
                 "flynt-agent"
             ]

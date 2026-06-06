@@ -10,16 +10,16 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use crate::omegon_cli_contract::OmegonCliContract;
-use agent_client_protocol::{Agent, ConnectionTo};
 use agent_client_protocol::schema::{
-    AgentNotification, CancelNotification, ClientCapabilities, ClientRequest, ContentBlock, ExtNotification, ExtRequest,
-    InitializeRequest, ListSessionsRequest, LoadSessionRequest, NewSessionRequest,
-    PermissionOption, PermissionOptionId, PermissionOptionKind, PromptRequest, ProtocolVersion,
-    RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
+    AgentNotification, CancelNotification, ClientCapabilities, ClientRequest, ContentBlock,
+    ExtNotification, ExtRequest, InitializeRequest, ListSessionsRequest, LoadSessionRequest,
+    NewSessionRequest, PermissionOption, PermissionOptionId, PermissionOptionKind, PromptRequest,
+    ProtocolVersion, RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
     SelectedPermissionOutcome, SessionConfigId, SessionConfigKind, SessionConfigOption,
     SessionConfigSelectOptions, SessionConfigValueId, SessionId, SessionNotification,
     SessionUpdate, SetSessionConfigOptionRequest, TextContent,
 };
+use agent_client_protocol::{Agent, ConnectionTo};
 use anyhow::Result;
 use tokio::sync::oneshot;
 
@@ -271,27 +271,38 @@ fn handle_session_notification(tx: &EventSender, args: SessionNotification) {
         }
         SessionUpdate::ToolCallUpdate(update) => {
             let mut terminal_ids = Vec::new();
-            let output = update.fields.content.as_ref().map(|blocks| {
-                let mut out = String::new();
-                for block in blocks {
-                    match block {
-                        agent_client_protocol::schema::ToolCallContent::Content(c) => {
-                            if let ContentBlock::Text(t) = &c.content {
-                                if !out.is_empty() { out.push('\n'); }
-                                out.push_str(&t.text);
+            let output = update
+                .fields
+                .content
+                .as_ref()
+                .map(|blocks| {
+                    let mut out = String::new();
+                    for block in blocks {
+                        match block {
+                            agent_client_protocol::schema::ToolCallContent::Content(c) => {
+                                if let ContentBlock::Text(t) = &c.content {
+                                    if !out.is_empty() {
+                                        out.push('\n');
+                                    }
+                                    out.push_str(&t.text);
+                                }
                             }
+                            agent_client_protocol::schema::ToolCallContent::Terminal(t) => {
+                                terminal_ids.push(t.terminal_id.to_string());
+                            }
+                            _ => {}
                         }
-                        agent_client_protocol::schema::ToolCallContent::Terminal(t) => {
-                            terminal_ids.push(t.terminal_id.to_string());
-                        }
-                        _ => {}
                     }
-                }
-                out
-            }).filter(|s| !s.is_empty());
+                    out
+                })
+                .filter(|s| !s.is_empty());
             let _ = tx_ref.send(AcpEvent::ToolCallUpdated {
                 id: update.tool_call_id.to_string(),
-                status: update.fields.status.map(|s| format!("{s:?}")).unwrap_or_default(),
+                status: update
+                    .fields
+                    .status
+                    .map(|s| format!("{s:?}"))
+                    .unwrap_or_default(),
                 title: update.fields.title,
                 output,
                 raw_output: update.fields.raw_output,
@@ -299,21 +310,35 @@ fn handle_session_notification(tx: &EventSender, args: SessionNotification) {
             });
         }
         SessionUpdate::Plan(plan) => {
-            let items = plan.entries.into_iter().map(|e| PlanItem {
-                content: e.content,
-                status: match e.status {
-                    agent_client_protocol::schema::PlanEntryStatus::Pending => PlanStatus::Pending,
-                    agent_client_protocol::schema::PlanEntryStatus::InProgress => PlanStatus::InProgress,
-                    agent_client_protocol::schema::PlanEntryStatus::Completed => PlanStatus::Completed,
-                    _ => PlanStatus::Pending,
-                },
-                priority: match e.priority {
-                    agent_client_protocol::schema::PlanEntryPriority::High => PlanPriority::High,
-                    agent_client_protocol::schema::PlanEntryPriority::Medium => PlanPriority::Medium,
-                    agent_client_protocol::schema::PlanEntryPriority::Low => PlanPriority::Low,
-                    _ => PlanPriority::Medium,
-                },
-            }).collect();
+            let items = plan
+                .entries
+                .into_iter()
+                .map(|e| PlanItem {
+                    content: e.content,
+                    status: match e.status {
+                        agent_client_protocol::schema::PlanEntryStatus::Pending => {
+                            PlanStatus::Pending
+                        }
+                        agent_client_protocol::schema::PlanEntryStatus::InProgress => {
+                            PlanStatus::InProgress
+                        }
+                        agent_client_protocol::schema::PlanEntryStatus::Completed => {
+                            PlanStatus::Completed
+                        }
+                        _ => PlanStatus::Pending,
+                    },
+                    priority: match e.priority {
+                        agent_client_protocol::schema::PlanEntryPriority::High => {
+                            PlanPriority::High
+                        }
+                        agent_client_protocol::schema::PlanEntryPriority::Medium => {
+                            PlanPriority::Medium
+                        }
+                        agent_client_protocol::schema::PlanEntryPriority::Low => PlanPriority::Low,
+                        _ => PlanPriority::Medium,
+                    },
+                })
+                .collect();
             let _ = tx_ref.send(AcpEvent::PlanUpdated(items));
         }
         SessionUpdate::SessionInfoUpdate(info) => {
@@ -322,18 +347,29 @@ fn handle_session_notification(tx: &EventSender, args: SessionNotification) {
                 Some(serde_json::Value::Null) => Some(None),
                 _ => None,
             };
-            if let Some(t) = title { let _ = tx_ref.send(AcpEvent::SessionTitleChanged(t)); }
+            if let Some(t) = title {
+                let _ = tx_ref.send(AcpEvent::SessionTitleChanged(t));
+            }
             if let Some(meta) = info.meta.as_ref().and_then(|meta| meta.get("flynt")) {
                 let _ = tx_ref.send(AcpEvent::DeploymentMetadata(meta.clone()));
             }
         }
         SessionUpdate::AvailableCommandsUpdate(cmds) => {
-            let commands = cmds.available_commands.into_iter().map(|c| SlashCommand { name: c.name, description: c.description }).collect();
+            let commands = cmds
+                .available_commands
+                .into_iter()
+                .map(|c| SlashCommand {
+                    name: c.name,
+                    description: c.description,
+                })
+                .collect();
             let _ = tx_ref.send(AcpEvent::CommandsAvailable(commands));
         }
         SessionUpdate::ConfigOptionUpdate(update) => {
             let opts = extract_config_options(&update.config_options);
-            if !opts.is_empty() { let _ = tx_ref.send(AcpEvent::ConfigChanged(opts)); }
+            if !opts.is_empty() {
+                let _ = tx_ref.send(AcpEvent::ConfigChanged(opts));
+            }
         }
         _ => {}
     }
@@ -345,25 +381,47 @@ async fn handle_request_permission(
     responder: agent_client_protocol::Responder<RequestPermissionResponse>,
 ) -> agent_client_protocol::Result<()> {
     let (decision_tx, decision_rx) = oneshot::channel();
-    let options = args.options.iter().map(|option| PermissionOptionView {
-        option_id: option.option_id.to_string(),
-        name: option.name.clone(),
-        kind: option.kind,
-    }).collect::<Vec<_>>();
+    let options = args
+        .options
+        .iter()
+        .map(|option| PermissionOptionView {
+            option_id: option.option_id.to_string(),
+            name: option.name.clone(),
+            kind: option.kind,
+        })
+        .collect::<Vec<_>>();
     let fallback = reject_response(&args.options);
     let request = PendingPermissionRequest {
         request_id: args.tool_call.tool_call_id.to_string(),
-        title: args.tool_call.fields.title.clone().unwrap_or_else(|| "Permission request".to_string()),
-        kind: args.tool_call.fields.kind.as_ref().map(|kind| format!("{kind:?}")).unwrap_or_else(|| "Tool".to_string()),
+        title: args
+            .tool_call
+            .fields
+            .title
+            .clone()
+            .unwrap_or_else(|| "Permission request".to_string()),
+        kind: args
+            .tool_call
+            .fields
+            .kind
+            .as_ref()
+            .map(|kind| format!("{kind:?}"))
+            .unwrap_or_else(|| "Tool".to_string()),
         raw_input: args.tool_call.fields.raw_input.clone(),
         options,
         responder: std::sync::Arc::new(std::sync::Mutex::new(Some(decision_tx))),
     };
-    if tx.lock().unwrap().send(AcpEvent::PermissionRequested(request)).is_err() {
+    if tx
+        .lock()
+        .unwrap()
+        .send(AcpEvent::PermissionRequested(request))
+        .is_err()
+    {
         return responder.respond(fallback);
     }
     match decision_rx.await {
-        Ok(PermissionDecision::Approve) => responder.respond(allow_response(&args.options).unwrap_or(fallback)),
+        Ok(PermissionDecision::Approve) => {
+            responder.respond(allow_response(&args.options).unwrap_or(fallback))
+        }
         Ok(PermissionDecision::Reject) | Err(_) => responder.respond(fallback),
     }
 }
@@ -388,15 +446,15 @@ impl AcpSession {
         let done_tx = tx.clone();
 
         let contract = OmegonCliContract::current();
-        let mut server = agent_client_protocol::schema::McpServerStdio::new(
-            "omegon",
-            omegon_binary.clone(),
-        );
+        let mut server =
+            agent_client_protocol::schema::McpServerStdio::new("omegon", omegon_binary.clone());
         server.args = contract.acp_args(&cwd, agent_id.as_deref());
-        server.env.push(agent_client_protocol::schema::EnvVariable::new(
-            "FLYNT_PROJECT",
-            cwd.to_string_lossy().to_string(),
-        ));
+        server
+            .env
+            .push(agent_client_protocol::schema::EnvVariable::new(
+                "FLYNT_PROJECT",
+                cwd.to_string_lossy().to_string(),
+            ));
         let agent = agent_client_protocol::AcpAgent::new(
             agent_client_protocol::schema::McpServer::Stdio(server),
         );
@@ -549,7 +607,11 @@ impl AcpSession {
         Ok(serde_json::to_value(resp)?)
     }
 
-    pub async fn load_session(&self, session_id: SessionId, cwd: PathBuf) -> Result<serde_json::Value> {
+    pub async fn load_session(
+        &self,
+        session_id: SessionId,
+        cwd: PathBuf,
+    ) -> Result<serde_json::Value> {
         let req = LoadSessionRequest::new(session_id.clone(), cwd);
         let resp = self.conn.send_request(req).block_task().await?;
         *self.session_id.borrow_mut() = session_id;
@@ -557,13 +619,18 @@ impl AcpSession {
     }
 
     pub async fn new_session(&self, cwd: PathBuf) -> Result<serde_json::Value> {
-        let resp = self.conn.send_request(NewSessionRequest::new(cwd)).block_task().await?;
+        let resp = self
+            .conn
+            .send_request(NewSessionRequest::new(cwd))
+            .block_task()
+            .await?;
         *self.session_id.borrow_mut() = resp.session_id.clone();
         Ok(serde_json::to_value(resp)?)
     }
 
     pub fn cancel_current_turn(&self) -> Result<()> {
-        self.conn.send_notification(CancelNotification::new(self.current_session_id()))?;
+        self.conn
+            .send_notification(CancelNotification::new(self.current_session_id()))?;
         Ok(())
     }
 
@@ -851,10 +918,7 @@ impl AcpSession {
     // ── Discovery ──────────────────────────────────────────────
 
     /// Browse the Armory for available extensions using Omegon's current ACP standard.
-    pub async fn armory_search_extensions(
-        &self,
-        query: Option<&str>,
-    ) -> Result<serde_json::Value> {
+    pub async fn armory_search_extensions(&self, query: Option<&str>) -> Result<serde_json::Value> {
         let mut params = serde_json::json!({ "kind": "extensions" });
         if let Some(q) = query {
             params["query"] = serde_json::Value::String(q.into());
@@ -889,6 +953,88 @@ impl AcpSession {
             }),
         )
         .await
+    }
+
+    /// Actively probe the Flynt extension deployment metadata after ACP connects.
+    ///
+    /// ACP readiness only proves transport/session health. Flynt still needs to
+    /// verify that Omegon's project extension is scoped to the same vault and is
+    /// speaking the expected Flynt contract.
+    pub async fn flynt_deployment_probe(&self) -> Result<serde_json::Value> {
+        let extensions = self.extensions_list().await?;
+        let flynt = extensions
+            .get("extensions")
+            .and_then(|value| value.as_array())
+            .and_then(|extensions| {
+                extensions.iter().find(|extension| {
+                    extension
+                        .get("id")
+                        .or_else(|| extension.get("name"))
+                        .and_then(|value| value.as_str())
+                        == Some("flynt")
+                })
+            });
+
+        let Some(flynt) = flynt else {
+            return Ok(serde_json::json!({
+                "flynt_probe": {
+                    "status": "missing",
+                    "message": "flynt extension is not installed"
+                }
+            }));
+        };
+
+        let enabled = flynt
+            .get("enabled")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(true);
+        let loaded = flynt
+            .get("loaded")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(enabled);
+        let callable = flynt
+            .get("callable")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(loaded);
+        if !enabled {
+            return Ok(serde_json::json!({
+                "flynt_probe": {
+                    "status": "disabled",
+                    "message": "flynt extension is installed but disabled",
+                    "enabled": enabled,
+                    "loaded": loaded,
+                    "callable": callable,
+                    "last_error": flynt.get("last_error").cloned().unwrap_or(serde_json::Value::Null),
+                    "extension": flynt,
+                }
+            }));
+        }
+
+        let call_result = self
+            .ext_call(
+                "extensions/call",
+                serde_json::json!({
+                    "extension": "flynt",
+                    "method": "initialize",
+                    "params": {},
+                }),
+            )
+            .await;
+
+        match call_result {
+            Ok(value) => Ok(value.get("result").cloned().unwrap_or(value)),
+            Err(error) => Ok(serde_json::json!({
+                "flynt_probe": {
+                    "status": if !loaded { "not_loaded" } else if !callable { "not_callable" } else { "call_failed" },
+                    "message": error.to_string(),
+                    "enabled": enabled,
+                    "loaded": loaded,
+                    "callable": callable,
+                    "last_error": flynt.get("last_error").cloned().unwrap_or(serde_json::Value::Null),
+                    "extension": flynt,
+                }
+            })),
+        }
     }
 
     /// Search the armory registry for available extensions.

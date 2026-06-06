@@ -1693,11 +1693,77 @@
 
 .inline-skill-action {
   margin-left: var(--space-2);
+  white-space: nowrap;
+}
+
+.skill-diagnostic-list {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.skill-diagnostic-item {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  align-items: flex-start;
+  padding: var(--space-2) 0;
+  border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+.skill-diagnostic-item:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.skill-diagnostic-main {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.skill-diagnostic-main strong {
+  color: var(--foreground);
+  font-size: var(--font-size-sm);
+}
+
+.skill-diagnostic-main span,
+.skill-diagnostic-main small {
+  color: var(--muted-foreground);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+.skill-management-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.25fr) minmax(220px, 0.75fr);
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  align-items: end;
+}
+
+.skill-management-group {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.compact-package-install-actions,
+.skill-activation-actions {
+  margin-top: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
 }
 
 .skill-activation-input {
-  min-width: 180px;
-  max-width: 260px;
+  min-width: 0;
+  max-width: none;
+}
+
+@media (max-width: 980px) {
+  .skill-management-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .settings-inline-actions {

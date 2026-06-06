@@ -155,27 +155,56 @@ pub fn classify_deployment(
 
     match extension_initialize {
         Some(init) => {
-            let info = flynt_extension_info(init);
-            if info["required_profile"].as_str() != Some(FLYNT_DEPLOYMENT_PROFILE) {
-                status = DeploymentStatus::Blocked;
-                details
-                    .push("flynt extension did not report the required flynt-agent profile".into());
-            }
-            if info["project_root"].as_str() != Some(project_root.to_string_lossy().as_ref()) {
-                status = DeploymentStatus::Blocked;
-                details.push(
-                    "flynt extension project root does not match the open Flynt project".into(),
-                );
-            }
-            if info["capability_contract_version"].as_u64()
-                != Some(FLYNT_DEPLOYMENT_CONTRACT_VERSION as u64)
-            {
-                status = DeploymentStatus::Blocked;
-                details.push("flynt extension capability contract is incompatible".into());
-            }
-            if info["surface_guide_version"].as_u64() != Some(FLYNT_SURFACE_GUIDE_VERSION as u64) {
-                status = DeploymentStatus::Blocked;
-                details.push("flynt extension surface guide version is incompatible".into());
+            if let Some(probe) = flynt_probe_info(init) {
+                status = match probe["status"].as_str() {
+                    Some(
+                        "missing" | "disabled" | "not_loaded" | "not_callable" | "call_failed",
+                    ) => DeploymentStatus::Warning,
+                    _ => DeploymentStatus::Unknown,
+                };
+                details.push(match probe["status"].as_str() {
+                    Some("disabled") => "flynt extension is installed but disabled".into(),
+                    Some("not_loaded" | "not_callable" | "call_failed") => format!(
+                        "flynt extension call failed: {}",
+                        probe["message"].as_str().unwrap_or("unknown error")
+                    ),
+                    _ => probe["message"]
+                        .as_str()
+                        .unwrap_or("flynt extension deployment could not be verified")
+                        .into(),
+                });
+                details.push("ACP prompting remains available; Flynt-specific extension tools may be unavailable until this is resolved.".into());
+                if let Some(last_error) = probe.get("last_error") {
+                    if !last_error.is_null() {
+                        details.push(format!("flynt extension last error: {last_error}"));
+                    }
+                }
+            } else {
+                let info = flynt_extension_info(init);
+                if info["required_profile"].as_str() != Some(FLYNT_DEPLOYMENT_PROFILE) {
+                    status = DeploymentStatus::Blocked;
+                    details.push(
+                        "flynt extension did not report the required flynt-agent profile".into(),
+                    );
+                }
+                if info["project_root"].as_str() != Some(project_root.to_string_lossy().as_ref()) {
+                    status = DeploymentStatus::Blocked;
+                    details.push(
+                        "flynt extension project root does not match the open Flynt project".into(),
+                    );
+                }
+                if info["capability_contract_version"].as_u64()
+                    != Some(FLYNT_DEPLOYMENT_CONTRACT_VERSION as u64)
+                {
+                    status = DeploymentStatus::Blocked;
+                    details.push("flynt extension capability contract is incompatible".into());
+                }
+                if info["surface_guide_version"].as_u64()
+                    != Some(FLYNT_SURFACE_GUIDE_VERSION as u64)
+                {
+                    status = DeploymentStatus::Blocked;
+                    details.push("flynt extension surface guide version is incompatible".into());
+                }
             }
         }
         None => {
@@ -210,8 +239,16 @@ pub fn classify_deployment(
 fn flynt_extension_info(metadata: &Value) -> &Value {
     metadata
         .get("extension_info")
-        .or_else(|| metadata.get("metadata").and_then(|value| value.get("extension_info")))
-        .or_else(|| metadata.get("flynt").and_then(|value| value.get("extension_info")))
+        .or_else(|| {
+            metadata
+                .get("metadata")
+                .and_then(|value| value.get("extension_info"))
+        })
+        .or_else(|| {
+            metadata
+                .get("flynt")
+                .and_then(|value| value.get("extension_info"))
+        })
         .or_else(|| {
             metadata
                 .get("omegon/extensions")
@@ -225,6 +262,10 @@ fn flynt_extension_info(metadata: &Value) -> &Value {
                 .and_then(|value| value.get("extension_info"))
         })
         .unwrap_or(&Value::Null)
+}
+
+fn flynt_probe_info(metadata: &Value) -> Option<&Value> {
+    metadata.get("flynt_probe")
 }
 
 #[cfg(test)]

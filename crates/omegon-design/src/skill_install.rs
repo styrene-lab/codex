@@ -19,6 +19,7 @@ pub const SKILL_BYTES: &[u8] = include_bytes!("../assets/SKILL.md");
 /// it (the user opts in by copying it into their project), but exposing it
 /// here lets the `design_load_style_guide` tool surface a "no guide
 /// configured — here's a starter you can copy" hint.
+#[allow(dead_code)]
 pub const STYLE_GUIDE_TEMPLATE_BYTES: &[u8] = include_bytes!("../assets/style-guide-template.md");
 
 fn skill_dir() -> Result<PathBuf> {

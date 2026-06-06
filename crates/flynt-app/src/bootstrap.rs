@@ -1101,9 +1101,7 @@ impl AppContext {
 
     pub fn set_deployment_metadata(&self, metadata: serde_json::Value) {
         let mut runtime = self.runtime;
-        if let Ok(mut runtime) = runtime.try_write() {
-            runtime.deployment_metadata = Some(metadata);
-        }
+        runtime.write().deployment_metadata = Some(metadata);
     }
 
     pub fn omegon_cli_probe(&self) -> Option<crate::omegon_cli_probe::OmegonCliProbeResult> {

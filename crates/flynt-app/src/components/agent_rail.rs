@@ -188,6 +188,28 @@ fn is_transport_disconnect(msg: &str) -> bool {
         || lower.contains("channel closed")
 }
 
+fn cleanup_project_omegon_acp(project: &Path, agent_id: Option<&str>) {
+    let mut pattern = format!("omegon acp --cwd {}", project.display());
+    if let Some(agent_id) = agent_id {
+        pattern.push_str(&format!(".*--agent {agent_id}"));
+    }
+    match std::process::Command::new("pkill")
+        .args(["-f", &pattern])
+        .status()
+    {
+        Ok(status) if status.success() => {
+            tracing::warn!(pattern, "Cleaned up stale Omegon ACP process(es)");
+        }
+        Ok(_) => {}
+        Err(error) => {
+            tracing::warn!(
+                pattern,
+                "Could not clean up stale Omegon ACP process(es): {error}"
+            );
+        }
+    }
+}
+
 fn reconnect_acp_session(
     ctx: AppContext,
     mut session: Signal<Option<Rc<AcpSession>>>,
@@ -223,16 +245,16 @@ fn reconnect_acp_session(
 
         tracing::warn!("Reconnecting ACP session after transport disconnect");
         *agent_status.write() = AgentStatus::Connecting;
+        let project = ctx.project_root();
+        let operator_settings = load_acp_overrides(&ctx.omegon());
+        let saved_config = operator_settings.acp_config.clone();
+        let agent_id = resolve_acp_agent_id(&ctx.omegon(), &operator_settings);
+        cleanup_project_omegon_acp(&project, agent_id.as_deref());
         session.set(None);
         shared_session.set(None);
         available_commands.write().clear();
         config_options.write().clear();
         *session_title.write() = None;
-
-        let project = ctx.project_root();
-        let operator_settings = load_acp_overrides(&ctx.omegon());
-        let saved_config = operator_settings.acp_config.clone();
-        let agent_id = resolve_acp_agent_id(&ctx.omegon(), &operator_settings);
 
         match AcpSession::connect(binary, project, agent_id).await {
             Ok((s, rx)) => {
@@ -637,7 +659,7 @@ pub fn AgentRail() -> Element {
     let mut items: Signal<Vec<ChatItem>> = use_signal(Vec::new);
     let mut agent_status = use_signal(|| AgentStatus::Idle);
     let mut session: Signal<Option<Rc<AcpSession>>> = use_signal(|| None);
-    let deployment_metadata: Signal<Option<serde_json::Value>> = use_signal(|| None);
+    let mut deployment_metadata: Signal<Option<serde_json::Value>> = use_signal(|| None);
     let mut shared_session = use_context::<Signal<Option<Rc<AcpSession>>>>();
     let available_commands: Signal<Vec<SlashCommand>> = use_signal(Vec::new);
     // Session title pushed by omegon via SessionInfoUpdate (typically derived
@@ -713,6 +735,7 @@ pub fn AgentRail() -> Element {
         let operator_settings = load_acp_overrides(&ctx.omegon());
         let saved_config = operator_settings.acp_config.clone();
         let agent_id = resolve_acp_agent_id(&ctx.omegon(), &operator_settings);
+        cleanup_project_omegon_acp(&project, agent_id.as_deref());
 
         let terminal_manager_for_loop = terminal_manager_for_connect.clone();
         spawn(async move {
@@ -751,6 +774,20 @@ pub fn AgentRail() -> Element {
                     );
                     *agent_status.write() = AgentStatus::Idle;
                     tracing::info!("ACP event loop started, agent ready");
+
+                    match sess.flynt_deployment_probe().await {
+                        Ok(meta) if meta.get("flynt_probe").is_none() => {
+                            tracing::info!("Flynt deployment metadata probe succeeded");
+                            ctx.set_deployment_metadata(meta.clone());
+                            deployment_metadata.set(Some(meta));
+                        }
+                        Ok(meta) => {
+                            tracing::warn!(metadata = %meta, "Flynt deployment metadata probe returned diagnostics without initialize metadata");
+                        }
+                        Err(error) => {
+                            tracing::warn!("Flynt deployment metadata probe failed: {error}");
+                        }
+                    }
 
                     // Check if the active model's provider is healthy
                     if let Ok(resp) = sess.provider_status().await {
@@ -1003,6 +1040,8 @@ pub fn AgentRail() -> Element {
                             let mut session_lifecycle_msg = session_lifecycle_msg;
                             let mut transport_generation = transport_generation;
                             let mut agent_stopped_by_operator = agent_stopped_by_operator;
+                            let project_root = ctx.project_root();
+                            let agent_id = resolve_acp_agent_id(&ctx.omegon(), &ctx.omegon().load_operator_settings());
                             move |_| {
                                 let was_busy = agent_status.read().is_busy();
                                 *agent_stopped_by_operator.write() = true;
@@ -1016,6 +1055,7 @@ pub fn AgentRail() -> Element {
                                 transport_generation.set(generation);
                                 session.set(None);
                                 shared_session.set(None);
+                                cleanup_project_omegon_acp(&project_root, agent_id.as_deref());
                                 available_commands.write().clear();
                                 config_options.write().clear();
                                 *session_title.write() = None;
