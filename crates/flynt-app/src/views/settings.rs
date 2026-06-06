@@ -14,11 +14,11 @@ use crate::{
     views::{IndexingScopesEditor, PublicationRulesEditor},
 };
 use dioxus::prelude::*;
-use std::rc::Rc;
 use flynt_core::models::{
     AppearanceConfig, FlyntOperatorSettings, FontSizePreset, IndexingConfig, LocalRuntimeConfig,
     OmegonProfile, ProjectConfig, SyncConfig, VisualizationConfig,
 };
+use std::rc::Rc;
 
 // ── Settings view ─────────────────────────────────────────────────────────────
 
@@ -1470,10 +1470,69 @@ fn DeploymentDiagnosticCard(diagnostic: DeploymentDiagnostic) -> Element {
     }
 }
 
-
 pub(crate) fn package_install_summary(source: &str, report: &serde_json::Value) -> String {
-    let mut parts = vec![format!("Installed package from {source}")];
-    if let Some(contributions) = report.get("contributions").and_then(|value| value.as_array()) {
+    let status = report
+        .get("status")
+        .and_then(|value| value.as_str())
+        .unwrap_or("installed");
+    let package = report.get("package");
+    let package_label = package
+        .and_then(|package| {
+            package
+                .get("name")
+                .or_else(|| package.get("id"))
+                .and_then(|value| value.as_str())
+        })
+        .unwrap_or(source);
+
+    let mut parts = vec![match status {
+        "already_installed" => format!("Package already installed: {package_label}"),
+        "update_available" => format!("Package update available: {package_label}"),
+        "updated" => format!("Updated package: {package_label}"),
+        _ => format!("Installed package from {source}"),
+    }];
+
+    if let Some(version_check) = report.get("version_check") {
+        let version_detail = match status {
+            "already_installed" | "update_available" => {
+                let installed = version_check
+                    .get("installed")
+                    .and_then(|value| value.as_str());
+                let candidate = version_check
+                    .get("candidate")
+                    .and_then(|value| value.as_str());
+                match (installed, candidate) {
+                    (Some(installed), Some(candidate)) => {
+                        Some(format!("version {installed} → {candidate}"))
+                    }
+                    _ => None,
+                }
+            }
+            "updated" => {
+                let previous = version_check
+                    .get("previous")
+                    .and_then(|value| value.as_str());
+                let installed = version_check
+                    .get("installed")
+                    .and_then(|value| value.as_str());
+                match (previous, installed) {
+                    (Some(previous), Some(installed)) => {
+                        Some(format!("version {previous} → {installed}"))
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        if let Some(detail) = version_detail {
+            parts.push(detail);
+        }
+    }
+
+    if let Some(contributions) = report
+        .get("contributions")
+        .and_then(|value| value.as_array())
+    {
         let labels: Vec<String> = contributions
             .iter()
             .filter_map(|item| {
@@ -1492,6 +1551,83 @@ pub(crate) fn package_install_summary(source: &str, report: &serde_json::Value) 
         }
     }
     parts.join(" — ")
+}
+
+#[cfg(test)]
+mod package_install_summary_tests {
+    use super::*;
+
+    #[test]
+    fn summarizes_already_installed_package() {
+        let report = serde_json::json!({
+            "status": "already_installed",
+            "package": { "id": "recro-omegon", "name": "Recro Omegon" },
+            "version_check": {
+                "relation": "same",
+                "installed": "0.1.0",
+                "candidate": "0.1.0"
+            }
+        });
+
+        assert_eq!(
+            package_install_summary("https://github.com/recro/recro-omegon", &report),
+            "Package already installed: Recro Omegon — version 0.1.0 → 0.1.0"
+        );
+    }
+
+    #[test]
+    fn summarizes_update_available_package() {
+        let report = serde_json::json!({
+            "status": "update_available",
+            "package": { "id": "recro-omegon", "name": "Recro Omegon" },
+            "version_check": {
+                "relation": "newer_available",
+                "installed": "0.1.0",
+                "candidate": "0.2.0"
+            }
+        });
+
+        assert_eq!(
+            package_install_summary("https://github.com/recro/recro-omegon", &report),
+            "Package update available: Recro Omegon — version 0.1.0 → 0.2.0"
+        );
+    }
+
+    #[test]
+    fn summarizes_updated_package() {
+        let report = serde_json::json!({
+            "status": "updated",
+            "package": { "id": "recro-omegon" },
+            "version_check": {
+                "relation": "updated",
+                "previous": "0.1.0",
+                "installed": "0.2.0"
+            },
+            "contributions": [
+                { "kind": "skill", "id": "recro" }
+            ]
+        });
+
+        assert_eq!(
+            package_install_summary("https://github.com/recro/recro-omegon", &report),
+            "Updated package: recro-omegon — version 0.1.0 → 0.2.0 — Contributions: skill: recro"
+        );
+    }
+
+    #[test]
+    fn summarizes_legacy_install_report_with_contributions() {
+        let report = serde_json::json!({
+            "contributions": [
+                { "kind": "skill", "id": "recro" },
+                { "kind": "extension", "name": "recro-tools" }
+            ]
+        });
+
+        assert_eq!(
+            package_install_summary("https://github.com/recro/recro-omegon", &report),
+            "Installed package from https://github.com/recro/recro-omegon — Contributions: skill: recro, extension: recro-tools"
+        );
+    }
 }
 
 #[component]
@@ -1571,11 +1707,18 @@ fn ArmorySkillsRuntimeDiagnosticCard(
     on_manage_skills: EventHandler<()>,
 ) -> Element {
     let missing = report.missing_required_skills();
-    let status = if missing.is_empty() { "Ready" } else { "Warning" };
+    let status = if missing.is_empty() {
+        "Ready"
+    } else {
+        "Warning"
+    };
     let summary = if missing.is_empty() {
         "All required Flynt skills resolve from project overrides, user Armory, or bundled fallbacks.".to_string()
     } else {
-        format!("{} required Flynt skill(s) are not installed.", missing.len())
+        format!(
+            "{} required Flynt skill(s) are not installed.",
+            missing.len()
+        )
     };
     let class = if missing.is_empty() {
         "deployment-diagnostic ok"
@@ -1616,7 +1759,6 @@ fn ArmorySkillsRuntimeDiagnosticCard(
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct InstalledPackageSummary {
     id: String,
@@ -1627,13 +1769,21 @@ struct InstalledPackageSummary {
 
 fn installed_package_summaries(plugins_dir: &std::path::Path) -> Vec<InstalledPackageSummary> {
     let mut packages = Vec::new();
-    let Ok(entries) = std::fs::read_dir(plugins_dir) else { return packages; };
+    let Ok(entries) = std::fs::read_dir(plugins_dir) else {
+        return packages;
+    };
     for entry in entries.flatten() {
         let dir = entry.path();
-        if !dir.is_dir() { continue; }
+        if !dir.is_dir() {
+            continue;
+        }
         let manifest = dir.join("plugin.toml");
-        if !manifest.exists() { continue; }
-        let Ok(raw) = std::fs::read_to_string(&manifest) else { continue; };
+        if !manifest.exists() {
+            continue;
+        }
+        let Ok(raw) = std::fs::read_to_string(&manifest) else {
+            continue;
+        };
         let value_for = |key: &str| -> Option<String> {
             raw.lines()
                 .map(str::trim)
@@ -1643,7 +1793,11 @@ fn installed_package_summaries(plugins_dir: &std::path::Path) -> Vec<InstalledPa
                 })
                 .filter(|value| !value.is_empty())
         };
-        let fallback = dir.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let fallback = dir
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
         packages.push(InstalledPackageSummary {
             id: value_for("id").unwrap_or_else(|| fallback.clone()),
             name: value_for("name").unwrap_or_else(|| fallback.clone()),

@@ -12,8 +12,8 @@ use crate::state::{Route, SettingsPage, TerminalOpenCommand};
 use crate::terminal::TerminalManager;
 use comrak::{Options, markdown_to_html};
 use dioxus::prelude::*;
-use std::path::{Path, PathBuf};
 use std::collections::VecDeque;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::mpsc::TryRecvError;
 
@@ -527,8 +527,6 @@ enum ChatItem {
     Plan(Vec<crate::acp::PlanItem>),
 }
 
-
-
 fn upstream_stall_attempt(text: &str) -> Option<u32> {
     if !text.contains("Upstream stalled stream") && !text.contains("LLM stream idle") {
         return None;
@@ -552,9 +550,7 @@ fn push_or_replace_stall_notice(items: &mut Signal<Vec<ChatItem>>, attempt: u32)
             "⚠ Upstream LLM stream stalled after {attempt} retry attempts. Flynt is restarting the Omegon transport so the panel can recover."
         )
     } else {
-        format!(
-            "⚠ Upstream LLM stream stalled; Omegon is retrying (attempt {attempt})."
-        )
+        format!("⚠ Upstream LLM stream stalled; Omegon is retrying (attempt {attempt}).")
     };
     let mut list = items.write();
     if let Some(ChatItem::Message {
@@ -562,7 +558,9 @@ fn push_or_replace_stall_notice(items: &mut Signal<Vec<ChatItem>>, attempt: u32)
         content: existing,
     }) = list.last_mut()
     {
-        if existing.contains("Upstream LLM stream stalled") || existing.contains("Upstream stalled stream") {
+        if existing.contains("Upstream LLM stream stalled")
+            || existing.contains("Upstream stalled stream")
+        {
             *existing = content;
             return;
         }
@@ -1725,28 +1723,41 @@ fn AgentPreflightCard(
         })
         .unwrap_or("Unknown");
     let blocked = preflight_is_blocked(&deployment, cli_probe.as_ref());
+    let cli_ready = cli_status == "Ready";
+    let deployment_unknown =
+        deployment.status == crate::omegon_deployment_diagnostics::DeploymentStatus::Unknown;
+    let deployment_label = if deployment_unknown {
+        "Not verified"
+    } else {
+        deployment.status.label()
+    };
     let class = if blocked {
         "agent-preflight blocked"
-    } else if deployment.status == crate::omegon_deployment_diagnostics::DeploymentStatus::Ok
-        && matches!(
-            cli_probe.as_ref().map(|probe| &probe.status),
-            Some(crate::omegon_cli_probe::OmegonCliProbeStatus::Compatible)
-        )
+    } else if cli_ready
+        && (deployment.status == crate::omegon_deployment_diagnostics::DeploymentStatus::Ok
+            || deployment_unknown)
     {
         "agent-preflight ok"
     } else {
         "agent-preflight warning"
+    };
+    let pill = if blocked {
+        "Blocked"
+    } else if cli_ready && deployment_unknown {
+        "Usable"
+    } else {
+        "Checked"
     };
 
     rsx! {
         div { class: "{class}",
             div { class: "agent-preflight-head",
                 span { class: "agent-preflight-title", "Preflight" }
-                span { class: "agent-preflight-pill", if blocked { "Blocked" } else { "Checked" } }
+                span { class: "agent-preflight-pill", "{pill}" }
             }
             div { class: "agent-preflight-row",
                 span { "Deployment" }
-                strong { "{deployment.status.label()}" }
+                strong { "{deployment_label}" }
             }
             div { class: "agent-preflight-row",
                 span { "CLI" }
@@ -1754,8 +1765,10 @@ fn AgentPreflightCard(
             }
             if blocked {
                 div { class: "agent-preflight-summary", "Prompting is disabled until blocked runtime diagnostics are resolved." }
-            } else if deployment.status != crate::omegon_deployment_diagnostics::DeploymentStatus::Ok || cli_status != "Ready" {
-                div { class: "agent-preflight-summary", "Some runtime checks are unknown; prompting remains enabled." }
+            } else if deployment_unknown && cli_ready {
+                div { class: "agent-preflight-summary", "ACP is connected; deployment metadata has not been observed yet." }
+            } else if deployment.status != crate::omegon_deployment_diagnostics::DeploymentStatus::Ok || !cli_ready {
+                div { class: "agent-preflight-summary", "Some runtime checks are still pending; prompting remains enabled." }
             }
             button {
                 class: "btn btn-ghost btn-xs agent-preflight-settings",
@@ -1808,7 +1821,10 @@ fn handle_acp_event(
             if let Some(attempt) = upstream_stall_attempt(text) {
                 push_or_replace_stall_notice(items, attempt);
                 if attempt >= 3 {
-                    tracing::warn!(attempt, "Upstream stream stalled repeatedly; restarting ACP transport");
+                    tracing::warn!(
+                        attempt,
+                        "Upstream stream stalled repeatedly; restarting ACP transport"
+                    );
                     reconnect_acp_session(
                         ctx.clone(),
                         session,
@@ -2042,7 +2058,10 @@ fn handle_acp_event(
             tracing::info!("ACP Done");
             *status.write() = AgentStatus::Idle;
             if let Some(next) = queued_prompts.write().pop_front() {
-                items.write().push(ChatItem::Message { role: ChatRole::User, content: next.clone() });
+                items.write().push(ChatItem::Message {
+                    role: ChatRole::User,
+                    content: next.clone(),
+                });
                 *status.write() = AgentStatus::Thinking;
                 if let Some(sess) = session.read().clone() {
                     sess.prompt(&next);
@@ -2051,8 +2070,14 @@ fn handle_acp_event(
         }
         AcpEvent::ProviderRetry(ref value) => {
             let attempt = value.get("attempt").and_then(|v| v.as_u64()).unwrap_or(0);
-            let provider = value.get("provider").and_then(|v| v.as_str()).unwrap_or("provider");
-            let message = value.get("message").and_then(|v| v.as_str()).unwrap_or("upstream stream stalled");
+            let provider = value
+                .get("provider")
+                .and_then(|v| v.as_str())
+                .unwrap_or("provider");
+            let message = value
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("upstream stream stalled");
             items.write().push(ChatItem::Message {
                 role: ChatRole::Assistant,
                 content: format!("⚠ {provider} retry {attempt}: {message}"),
@@ -2060,30 +2085,49 @@ fn handle_acp_event(
             *status.write() = AgentStatus::ToolRunning;
         }
         AcpEvent::ProviderFailure(ref value) => {
-            let provider = value.get("provider").and_then(|v| v.as_str()).unwrap_or("provider");
-            let message = value.get("message").and_then(|v| v.as_str()).unwrap_or("upstream provider failed");
+            let provider = value
+                .get("provider")
+                .and_then(|v| v.as_str())
+                .unwrap_or("provider");
+            let message = value
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("upstream provider failed");
             items.write().push(ChatItem::Message {
                 role: ChatRole::Assistant,
                 content: format!("✖ {provider} failed: {message}"),
             });
             *status.write() = AgentStatus::Idle;
             if let Some(next) = queued_prompts.write().pop_front() {
-                items.write().push(ChatItem::Message { role: ChatRole::User, content: next.clone() });
+                items.write().push(ChatItem::Message {
+                    role: ChatRole::User,
+                    content: next.clone(),
+                });
                 *status.write() = AgentStatus::Thinking;
-                if let Some(sess) = session.read().clone() { sess.prompt(&next); }
+                if let Some(sess) = session.read().clone() {
+                    sess.prompt(&next);
+                }
             }
         }
         AcpEvent::TurnCancelled(ref value) => {
-            let reason = value.get("reason").and_then(|v| v.as_str()).unwrap_or("turn cancelled");
+            let reason = value
+                .get("reason")
+                .and_then(|v| v.as_str())
+                .unwrap_or("turn cancelled");
             items.write().push(ChatItem::Message {
                 role: ChatRole::Assistant,
                 content: format!("Turn cancelled: {reason}"),
             });
             *status.write() = AgentStatus::Idle;
             if let Some(next) = queued_prompts.write().pop_front() {
-                items.write().push(ChatItem::Message { role: ChatRole::User, content: next.clone() });
+                items.write().push(ChatItem::Message {
+                    role: ChatRole::User,
+                    content: next.clone(),
+                });
                 *status.write() = AgentStatus::Thinking;
-                if let Some(sess) = session.read().clone() { sess.prompt(&next); }
+                if let Some(sess) = session.read().clone() {
+                    sess.prompt(&next);
+                }
             }
         }
         AcpEvent::Error(ref msg) => {
