@@ -611,7 +611,12 @@ impl AcpSession {
 
     async fn ext_call(&self, method: &str, params: serde_json::Value) -> Result<serde_json::Value> {
         let raw_params = serde_json::value::RawValue::from_string(serde_json::to_string(&params)?)?;
-        let req = ExtRequest::new(method, raw_params.into());
+        let wire_method = if method.starts_with('_') {
+            method.to_string()
+        } else {
+            format!("_{method}")
+        };
+        let req = ExtRequest::new(wire_method, raw_params.into());
         let value = self
             .conn
             .send_request(ClientRequest::ExtMethodRequest(req))
