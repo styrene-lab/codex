@@ -523,6 +523,51 @@ enum ChatItem {
 }
 
 
+
+fn upstream_stall_attempt(text: &str) -> Option<u32> {
+    if !text.contains("Upstream stalled stream") && !text.contains("LLM stream idle") {
+        return None;
+    }
+    let marker = "attempt ";
+    let idx = text.rfind(marker)? + marker.len();
+    let digits: String = text[idx..]
+        .chars()
+        .take_while(|ch| ch.is_ascii_digit())
+        .collect();
+    if digits.is_empty() {
+        Some(1)
+    } else {
+        digits.parse().ok()
+    }
+}
+
+fn push_or_replace_stall_notice(items: &mut Signal<Vec<ChatItem>>, attempt: u32) {
+    let content = if attempt >= 3 {
+        format!(
+            "⚠ Upstream LLM stream stalled after {attempt} retry attempts. Flynt is restarting the Omegon transport so the panel can recover."
+        )
+    } else {
+        format!(
+            "⚠ Upstream LLM stream stalled; Omegon is retrying (attempt {attempt})."
+        )
+    };
+    let mut list = items.write();
+    if let Some(ChatItem::Message {
+        role: ChatRole::Assistant,
+        content: existing,
+    }) = list.last_mut()
+    {
+        if existing.contains("Upstream LLM stream stalled") || existing.contains("Upstream stalled stream") {
+            *existing = content;
+            return;
+        }
+    }
+    list.push(ChatItem::Message {
+        role: ChatRole::Assistant,
+        content,
+    });
+}
+
 fn parse_session_history(value: &serde_json::Value) -> Vec<(String, String)> {
     value
         .get("sessions")
@@ -940,6 +985,22 @@ pub fn AgentRail() -> Element {
                         },
                         "History"
                     }
+                    if matches!(*agent_status.read(), AgentStatus::Thinking | AgentStatus::ToolRunning) {
+                        button {
+                            class: "btn btn-ghost btn-xs danger",
+                            onclick: {
+                                let sess = sess.clone();
+                                let mut session_lifecycle_msg = session_lifecycle_msg;
+                                move |_| {
+                                    match sess.cancel_current_turn() {
+                                        Ok(()) => *session_lifecycle_msg.write() = Some("Cancel requested for the current turn…".into()),
+                                        Err(error) => *session_lifecycle_msg.write() = Some(format!("Cancel request failed: {error}")),
+                                    }
+                                }
+                            },
+                            "Cancel turn"
+                        }
+                    }
                     button {
                         class: "btn btn-ghost btn-xs",
                         onclick: {
@@ -1015,7 +1076,7 @@ pub fn AgentRail() -> Element {
                                             let sid_for_load = sid.clone();
                                             let cwd = cwd.clone();
                                             spawn(async move {
-                                                let session_id = agent_client_protocol::SessionId::new(sid_for_load.clone());
+                                                let session_id = agent_client_protocol::schema::SessionId::new(sid_for_load.clone());
                                                 match sess.load_session(session_id, cwd).await {
                                                     Ok(_) => {
                                                         items.write().clear();
@@ -1701,6 +1762,25 @@ fn handle_acp_event(
         }
         AcpEvent::TextDelta(ref text) => {
             tracing::info!("ACP TextDelta: {} bytes", text.len());
+            if let Some(attempt) = upstream_stall_attempt(text) {
+                push_or_replace_stall_notice(items, attempt);
+                if attempt >= 3 {
+                    tracing::warn!(attempt, "Upstream stream stalled repeatedly; restarting ACP transport");
+                    reconnect_acp_session(
+                        ctx.clone(),
+                        session,
+                        shared_session,
+                        *items,
+                        *status,
+                        *commands,
+                        *config,
+                        *session_title,
+                        deployment_metadata,
+                        transport_generation,
+                    );
+                }
+                return;
+            }
             let mut list = items.write();
             if let Some(ChatItem::Message {
                 role: ChatRole::Assistant,
@@ -1915,6 +1995,33 @@ fn handle_acp_event(
         }
         AcpEvent::Done => {
             tracing::info!("ACP Done");
+            *status.write() = AgentStatus::Idle;
+        }
+        AcpEvent::ProviderRetry(ref value) => {
+            let attempt = value.get("attempt").and_then(|v| v.as_u64()).unwrap_or(0);
+            let provider = value.get("provider").and_then(|v| v.as_str()).unwrap_or("provider");
+            let message = value.get("message").and_then(|v| v.as_str()).unwrap_or("upstream stream stalled");
+            items.write().push(ChatItem::Message {
+                role: ChatRole::Assistant,
+                content: format!("⚠ {provider} retry {attempt}: {message}"),
+            });
+            *status.write() = AgentStatus::ToolRunning;
+        }
+        AcpEvent::ProviderFailure(ref value) => {
+            let provider = value.get("provider").and_then(|v| v.as_str()).unwrap_or("provider");
+            let message = value.get("message").and_then(|v| v.as_str()).unwrap_or("upstream provider failed");
+            items.write().push(ChatItem::Message {
+                role: ChatRole::Assistant,
+                content: format!("✖ {provider} failed: {message}"),
+            });
+            *status.write() = AgentStatus::Idle;
+        }
+        AcpEvent::TurnCancelled(ref value) => {
+            let reason = value.get("reason").and_then(|v| v.as_str()).unwrap_or("turn cancelled");
+            items.write().push(ChatItem::Message {
+                role: ChatRole::Assistant,
+                content: format!("Turn cancelled: {reason}"),
+            });
             *status.write() = AgentStatus::Idle;
         }
         AcpEvent::Error(ref msg) => {

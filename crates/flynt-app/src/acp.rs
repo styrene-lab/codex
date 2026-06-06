@@ -7,20 +7,21 @@
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use crate::omegon_cli_contract::OmegonCliContract;
-use agent_client_protocol::{
-    Agent, Client, ClientCapabilities, ClientSideConnection, ContentBlock,
-    ExtRequest, InitializeRequest, ListSessionsRequest, LoadSessionRequest, NewSessionRequest,
-    PermissionOption, PermissionOptionId, PermissionOptionKind, PromptRequest, RequestPermissionOutcome, RequestPermissionRequest,
-    RequestPermissionResponse, SelectedPermissionOutcome, SessionConfigId, SessionConfigKind,
-    SessionConfigOption, SessionConfigSelectOptions, SessionConfigValueId, SessionId,
-    SessionNotification, SessionUpdate, SetSessionConfigOptionRequest, TextContent,
+use agent_client_protocol::{Agent, ConnectionTo};
+use agent_client_protocol::schema::{
+    AgentNotification, CancelNotification, ClientCapabilities, ClientRequest, ContentBlock, ExtNotification, ExtRequest,
+    InitializeRequest, ListSessionsRequest, LoadSessionRequest, NewSessionRequest,
+    PermissionOption, PermissionOptionId, PermissionOptionKind, PromptRequest, ProtocolVersion,
+    RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
+    SelectedPermissionOutcome, SessionConfigId, SessionConfigKind, SessionConfigOption,
+    SessionConfigSelectOptions, SessionConfigValueId, SessionId, SessionNotification,
+    SessionUpdate, SetSessionConfigOptionRequest, TextContent,
 };
 use anyhow::Result;
-use tokio::process::{Child, Command};
 use tokio::sync::oneshot;
-use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 /// Events flowing from the ACP session to the UI.
 #[derive(Debug, Clone)]
@@ -65,6 +66,12 @@ pub enum AcpEvent {
     SessionTitleChanged(Option<String>),
     /// The prompt completed.
     Done,
+    /// Structured provider retry telemetry from Omegon.
+    ProviderRetry(serde_json::Value),
+    /// Structured provider terminal failure telemetry from Omegon.
+    ProviderFailure(serde_json::Value),
+    /// Structured turn cancellation telemetry from Omegon.
+    TurnCancelled(serde_json::Value),
     /// An error occurred.
     Error(String),
 }
@@ -183,7 +190,7 @@ fn extract_config_options(opts: &[SessionConfigOption]) -> Vec<ConfigOption> {
         .collect()
 }
 
-type EventSender = Rc<RefCell<std::sync::mpsc::Sender<AcpEvent>>>;
+type EventSender = Arc<Mutex<std::sync::mpsc::Sender<AcpEvent>>>;
 
 fn allow_response(options: &[PermissionOption]) -> Option<RequestPermissionResponse> {
     choose_option(
@@ -226,218 +233,148 @@ fn selected_response(option_id: PermissionOptionId) -> RequestPermissionResponse
     ))
 }
 
-struct FlyntAcpClient {
-    tx: EventSender,
+fn handle_ext_notification(tx: &EventSender, notification: ExtNotification) {
+    let value: serde_json::Value = serde_json::from_str(notification.params.get())
+        .unwrap_or_else(|_| serde_json::json!({ "raw": notification.params.get() }));
+    let event = match notification.method.as_ref() {
+        "provider/retry" | "_provider/retry" => AcpEvent::ProviderRetry(value),
+        "provider/failure" | "_provider/failure" => AcpEvent::ProviderFailure(value),
+        "turn/cancelled" | "_turn/cancelled" => AcpEvent::TurnCancelled(value),
+        other => {
+            tracing::debug!(method = other, "Ignoring ACP extension notification");
+            return;
+        }
+    };
+    let _ = tx.lock().unwrap().send(event);
 }
 
-#[async_trait::async_trait(?Send)]
-impl Client for FlyntAcpClient {
-    async fn request_permission(
-        &self,
-        args: RequestPermissionRequest,
-    ) -> agent_client_protocol::Result<RequestPermissionResponse> {
-        let (decision_tx, decision_rx) = oneshot::channel();
-        let options = args
-            .options
-            .iter()
-            .map(|option| PermissionOptionView {
-                option_id: option.option_id.to_string(),
-                name: option.name.clone(),
-                kind: option.kind,
-            })
-            .collect::<Vec<_>>();
-        let fallback = reject_response(&args.options);
-        let request = PendingPermissionRequest {
-            request_id: args.tool_call.tool_call_id.to_string(),
-            title: args
-                .tool_call
-                .fields
-                .title
-                .clone()
-                .unwrap_or_else(|| "Permission request".to_string()),
-            kind: args
-                .tool_call
-                .fields
-                .kind
-                .as_ref()
-                .map(|kind| format!("{kind:?}"))
-                .unwrap_or_else(|| "Tool".to_string()),
-            raw_input: args.tool_call.fields.raw_input.clone(),
-            options,
-            responder: std::sync::Arc::new(std::sync::Mutex::new(Some(decision_tx))),
-        };
-
-        if self
-            .tx
-            .borrow()
-            .send(AcpEvent::PermissionRequested(request))
-            .is_err()
-        {
-            return Ok(fallback);
+fn handle_session_notification(tx: &EventSender, args: SessionNotification) {
+    let tx_ref = tx.lock().unwrap();
+    match args.update {
+        SessionUpdate::AgentMessageChunk(chunk) => {
+            if let ContentBlock::Text(text) = chunk.content {
+                let _ = tx_ref.send(AcpEvent::TextDelta(text.text));
+            }
         }
-
-        match decision_rx.await {
-            Ok(PermissionDecision::Approve) => {
-                Ok(allow_response(&args.options).unwrap_or(fallback))
+        SessionUpdate::AgentThoughtChunk(chunk) => {
+            if let ContentBlock::Text(text) = chunk.content {
+                let _ = tx_ref.send(AcpEvent::ThoughtDelta(text.text));
             }
-            Ok(PermissionDecision::Reject) | Err(_) => Ok(fallback),
         }
-    }
-
-    async fn session_notification(
-        &self,
-        args: SessionNotification,
-    ) -> agent_client_protocol::Result<()> {
-        tracing::debug!(
-            "ACP session_notification received: {:?}",
-            std::mem::discriminant(&args.update)
-        );
-        let tx = self.tx.borrow();
-        match args.update {
-            SessionUpdate::AgentMessageChunk(chunk) => {
-                if let ContentBlock::Text(text) = chunk.content {
-                    let _ = tx.send(AcpEvent::TextDelta(text.text));
-                }
-            }
-            SessionUpdate::AgentThoughtChunk(chunk) => {
-                if let ContentBlock::Text(text) = chunk.content {
-                    let _ = tx.send(AcpEvent::ThoughtDelta(text.text));
-                }
-            }
-            SessionUpdate::ToolCall(tc) => {
-                let _ = tx.send(AcpEvent::ToolCallStarted {
-                    id: tc.tool_call_id.to_string(),
-                    title: tc.title,
-                    kind: format!("{:?}", tc.kind),
-                    args: tc.raw_input,
-                });
-            }
-            SessionUpdate::ToolCallUpdate(update) => {
-                // Concatenate text output from the content array. Diff
-                // and terminal-embed variants get rendered by the
-                // host-delegated paths once we advertise those
-                // capabilities; for now we surface text only.
-                let mut terminal_ids = Vec::new();
-                let output = update
-                    .fields
-                    .content
-                    .as_ref()
-                    .map(|blocks| {
-                        let mut out = String::new();
-                        for block in blocks {
-                            match block {
-                                agent_client_protocol::ToolCallContent::Content(c) => {
-                                    if let ContentBlock::Text(t) = &c.content {
-                                        if !out.is_empty() {
-                                            out.push('\n');
-                                        }
-                                        out.push_str(&t.text);
-                                    }
-                                }
-                                agent_client_protocol::ToolCallContent::Terminal(t) => {
-                                    terminal_ids.push(t.terminal_id.to_string());
-                                }
-                                _ => {}
+        SessionUpdate::ToolCall(tc) => {
+            let _ = tx_ref.send(AcpEvent::ToolCallStarted {
+                id: tc.tool_call_id.to_string(),
+                title: tc.title,
+                kind: format!("{:?}", tc.kind),
+                args: tc.raw_input,
+            });
+        }
+        SessionUpdate::ToolCallUpdate(update) => {
+            let mut terminal_ids = Vec::new();
+            let output = update.fields.content.as_ref().map(|blocks| {
+                let mut out = String::new();
+                for block in blocks {
+                    match block {
+                        agent_client_protocol::schema::ToolCallContent::Content(c) => {
+                            if let ContentBlock::Text(t) = &c.content {
+                                if !out.is_empty() { out.push('\n'); }
+                                out.push_str(&t.text);
                             }
                         }
-                        out
-                    })
-                    .filter(|s| !s.is_empty());
-
-                let _ = tx.send(AcpEvent::ToolCallUpdated {
-                    id: update.tool_call_id.to_string(),
-                    status: update
-                        .fields
-                        .status
-                        .map(|s| format!("{s:?}"))
-                        .unwrap_or_default(),
-                    title: update.fields.title,
-                    output,
-                    raw_output: update.fields.raw_output,
-                    terminal_ids,
-                });
-            }
-            SessionUpdate::Plan(plan) => {
-                let items: Vec<PlanItem> = plan
-                    .entries
-                    .into_iter()
-                    .map(|e| PlanItem {
-                        content: e.content,
-                        status: match e.status {
-                            agent_client_protocol::PlanEntryStatus::Pending => PlanStatus::Pending,
-                            agent_client_protocol::PlanEntryStatus::InProgress => {
-                                PlanStatus::InProgress
-                            }
-                            agent_client_protocol::PlanEntryStatus::Completed => {
-                                PlanStatus::Completed
-                            }
-                            _ => PlanStatus::Pending,
-                        },
-                        priority: match e.priority {
-                            agent_client_protocol::PlanEntryPriority::High => PlanPriority::High,
-                            agent_client_protocol::PlanEntryPriority::Medium => {
-                                PlanPriority::Medium
-                            }
-                            agent_client_protocol::PlanEntryPriority::Low => PlanPriority::Low,
-                            _ => PlanPriority::Medium,
-                        },
-                    })
-                    .collect();
-                let _ = tx.send(AcpEvent::PlanUpdated(items));
-            }
-            SessionUpdate::SessionInfoUpdate(info) => {
-                // MaybeUndefined<String>: serialize_undefined doesn't expose a
-                // direct getter, so we round-trip through serde_json. Title
-                // can be present (Some), explicitly null (treated as None to
-                // clear), or absent (no event).
-                let title = match serde_json::to_value(&info.title).ok() {
-                    Some(serde_json::Value::String(s)) => Some(Some(s)),
-                    Some(serde_json::Value::Null) => Some(None),
-                    _ => None,
-                };
-                if let Some(t) = title {
-                    let _ = tx.send(AcpEvent::SessionTitleChanged(t));
+                        agent_client_protocol::schema::ToolCallContent::Terminal(t) => {
+                            terminal_ids.push(t.terminal_id.to_string());
+                        }
+                        _ => {}
+                    }
                 }
-                if let Some(meta) = info.meta.as_ref().and_then(|meta| meta.get("flynt")) {
-                    let _ = tx.send(AcpEvent::DeploymentMetadata(meta.clone()));
-                }
-            }
-            SessionUpdate::AvailableCommandsUpdate(cmds) => {
-                let commands: Vec<SlashCommand> = cmds
-                    .available_commands
-                    .into_iter()
-                    .map(|c| SlashCommand {
-                        name: c.name,
-                        description: c.description,
-                    })
-                    .collect();
-                let _ = tx.send(AcpEvent::CommandsAvailable(commands));
-            }
-            SessionUpdate::ConfigOptionUpdate(update) => {
-                let opts = extract_config_options(&update.config_options);
-                if !opts.is_empty() {
-                    let _ = tx.send(AcpEvent::ConfigChanged(opts));
-                }
-            }
-            other => {
-                tracing::debug!(
-                    "ACP unhandled session update: {:?}",
-                    std::mem::discriminant(&other)
-                );
+                out
+            }).filter(|s| !s.is_empty());
+            let _ = tx_ref.send(AcpEvent::ToolCallUpdated {
+                id: update.tool_call_id.to_string(),
+                status: update.fields.status.map(|s| format!("{s:?}")).unwrap_or_default(),
+                title: update.fields.title,
+                output,
+                raw_output: update.fields.raw_output,
+                terminal_ids,
+            });
+        }
+        SessionUpdate::Plan(plan) => {
+            let items = plan.entries.into_iter().map(|e| PlanItem {
+                content: e.content,
+                status: match e.status {
+                    agent_client_protocol::schema::PlanEntryStatus::Pending => PlanStatus::Pending,
+                    agent_client_protocol::schema::PlanEntryStatus::InProgress => PlanStatus::InProgress,
+                    agent_client_protocol::schema::PlanEntryStatus::Completed => PlanStatus::Completed,
+                    _ => PlanStatus::Pending,
+                },
+                priority: match e.priority {
+                    agent_client_protocol::schema::PlanEntryPriority::High => PlanPriority::High,
+                    agent_client_protocol::schema::PlanEntryPriority::Medium => PlanPriority::Medium,
+                    agent_client_protocol::schema::PlanEntryPriority::Low => PlanPriority::Low,
+                    _ => PlanPriority::Medium,
+                },
+            }).collect();
+            let _ = tx_ref.send(AcpEvent::PlanUpdated(items));
+        }
+        SessionUpdate::SessionInfoUpdate(info) => {
+            let title = match serde_json::to_value(&info.title).ok() {
+                Some(serde_json::Value::String(s)) => Some(Some(s)),
+                Some(serde_json::Value::Null) => Some(None),
+                _ => None,
+            };
+            if let Some(t) = title { let _ = tx_ref.send(AcpEvent::SessionTitleChanged(t)); }
+            if let Some(meta) = info.meta.as_ref().and_then(|meta| meta.get("flynt")) {
+                let _ = tx_ref.send(AcpEvent::DeploymentMetadata(meta.clone()));
             }
         }
-        Ok(())
+        SessionUpdate::AvailableCommandsUpdate(cmds) => {
+            let commands = cmds.available_commands.into_iter().map(|c| SlashCommand { name: c.name, description: c.description }).collect();
+            let _ = tx_ref.send(AcpEvent::CommandsAvailable(commands));
+        }
+        SessionUpdate::ConfigOptionUpdate(update) => {
+            let opts = extract_config_options(&update.config_options);
+            if !opts.is_empty() { let _ = tx_ref.send(AcpEvent::ConfigChanged(opts)); }
+        }
+        _ => {}
+    }
+}
+
+async fn handle_request_permission(
+    tx: EventSender,
+    args: RequestPermissionRequest,
+    responder: agent_client_protocol::Responder<RequestPermissionResponse>,
+) -> agent_client_protocol::Result<()> {
+    let (decision_tx, decision_rx) = oneshot::channel();
+    let options = args.options.iter().map(|option| PermissionOptionView {
+        option_id: option.option_id.to_string(),
+        name: option.name.clone(),
+        kind: option.kind,
+    }).collect::<Vec<_>>();
+    let fallback = reject_response(&args.options);
+    let request = PendingPermissionRequest {
+        request_id: args.tool_call.tool_call_id.to_string(),
+        title: args.tool_call.fields.title.clone().unwrap_or_else(|| "Permission request".to_string()),
+        kind: args.tool_call.fields.kind.as_ref().map(|kind| format!("{kind:?}")).unwrap_or_else(|| "Tool".to_string()),
+        raw_input: args.tool_call.fields.raw_input.clone(),
+        options,
+        responder: std::sync::Arc::new(std::sync::Mutex::new(Some(decision_tx))),
+    };
+    if tx.lock().unwrap().send(AcpEvent::PermissionRequested(request)).is_err() {
+        return responder.respond(fallback);
+    }
+    match decision_rx.await {
+        Ok(PermissionDecision::Approve) => responder.respond(allow_response(&args.options).unwrap_or(fallback)),
+        Ok(PermissionDecision::Reject) | Err(_) => responder.respond(fallback),
     }
 }
 
 /// A live ACP session connected to an Omegon child process.
 pub struct AcpSession {
-    conn: Rc<ClientSideConnection>,
+    conn: Rc<ConnectionTo<Agent>>,
     session_id: Rc<RefCell<SessionId>>,
     tx: std::sync::mpsc::Sender<AcpEvent>,
     #[allow(dead_code)]
     auth_method_id: Option<String>,
-    _child: Child,
 }
 
 impl AcpSession {
@@ -451,61 +388,75 @@ impl AcpSession {
         let done_tx = tx.clone();
 
         let contract = OmegonCliContract::current();
-        let mut cmd = Command::new(&omegon_binary);
-        cmd.args(contract.acp_args(&cwd, agent_id.as_deref()))
-            .env("FLYNT_PROJECT", &cwd)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::inherit());
-        cmd.kill_on_drop(true);
-        let mut child = cmd.spawn()?;
-
-        let child_stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| anyhow::anyhow!("no stdin"))?;
-        let child_stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| anyhow::anyhow!("no stdout"))?;
-
-        let client = FlyntAcpClient {
-            tx: Rc::new(RefCell::new(tx)),
-        };
-
-        let (conn, io_task) = ClientSideConnection::new(
-            client,
-            child_stdin.compat_write(),
-            child_stdout.compat(),
-            |fut| {
-                dioxus::prelude::spawn(fut);
-            },
+        let mut server = agent_client_protocol::schema::McpServerStdio::new(
+            "omegon",
+            omegon_binary.clone(),
+        );
+        server.args = contract.acp_args(&cwd, agent_id.as_deref());
+        server.env.push(agent_client_protocol::schema::EnvVariable::new(
+            "FLYNT_PROJECT",
+            cwd.to_string_lossy().to_string(),
+        ));
+        let agent = agent_client_protocol::AcpAgent::new(
+            agent_client_protocol::schema::McpServer::Stdio(server),
         );
 
+        let event_tx: EventSender = Arc::new(Mutex::new(tx));
+        let (conn_tx, conn_rx) = oneshot::channel();
         let io_err_tx = done_tx.clone();
+        let permission_tx = event_tx.clone();
+        let session_tx = event_tx.clone();
+        let ext_tx = event_tx.clone();
         dioxus::prelude::spawn(async move {
-            match io_task.await {
-                Ok(()) => {
-                    tracing::warn!("ACP I/O task ended");
-                    let _ = io_err_tx.send(AcpEvent::Error("ACP transport disconnected".into()));
-                }
-                Err(e) => {
-                    tracing::error!("ACP I/O error: {e}");
-                    let _ =
-                        io_err_tx.send(AcpEvent::Error(format!("ACP transport disconnected: {e}")));
-                }
+            let result = agent_client_protocol::Client
+                .builder()
+                .on_receive_request(
+                    async move |request: RequestPermissionRequest, responder, _cx| {
+                        handle_request_permission(permission_tx.clone(), request, responder).await
+                    },
+                    agent_client_protocol::on_receive_request!(),
+                )
+                .on_receive_notification(
+                    async move |notification: AgentNotification, _cx| {
+                        match notification {
+                            AgentNotification::SessionNotification(notification) => {
+                                handle_session_notification(&session_tx, notification);
+                            }
+                            AgentNotification::ExtNotification(notification) => {
+                                handle_ext_notification(&ext_tx, notification);
+                            }
+                            _ => {}
+                        }
+                        Ok(())
+                    },
+                    agent_client_protocol::on_receive_notification!(),
+                )
+                .connect_with(agent, async move |connection: ConnectionTo<Agent>| {
+                    let _ = conn_tx.send(connection.clone());
+                    futures::future::pending::<agent_client_protocol::Result<()>>().await
+                })
+                .await;
+            if let Err(e) = result {
+                tracing::error!("ACP I/O error: {e}");
+                let _ = io_err_tx.send(AcpEvent::Error(format!("ACP transport disconnected: {e}")));
+            } else {
+                tracing::warn!("ACP I/O task ended");
+                let _ = io_err_tx.send(AcpEvent::Error("ACP transport disconnected".into()));
             }
         });
 
+        let conn = conn_rx
+            .await
+            .map_err(|_| anyhow::anyhow!("ACP connection failed before initialization"))?;
         let conn = Rc::new(conn);
 
         // Initialize
         let init_resp = conn
-            .initialize(
-                InitializeRequest::new(agent_client_protocol::ProtocolVersion::LATEST)
-                    .client_info(agent_client_protocol::Implementation::new("flynt", "0.1.0"))
+            .send_request(
+                InitializeRequest::new(ProtocolVersion::V1)
                     .client_capabilities(ClientCapabilities::new().terminal(true)),
             )
+            .block_task()
             .await
             .map_err(|e| anyhow::anyhow!("ACP init failed: {e}"))?;
 
@@ -519,7 +470,8 @@ impl AcpSession {
 
         // Create session
         let session_resp = conn
-            .new_session(NewSessionRequest::new(&cwd))
+            .send_request(NewSessionRequest::new(&cwd))
+            .block_task()
             .await
             .map_err(|e| anyhow::anyhow!("ACP session failed: {e}"))?;
 
@@ -537,7 +489,6 @@ impl AcpSession {
                 session_id: Rc::new(RefCell::new(session_resp.session_id)),
                 tx: done_tx,
                 auth_method_id,
-                _child: child,
             },
             rx,
         ))
@@ -594,23 +545,27 @@ impl AcpSession {
 
     pub async fn list_sessions(&self, cwd: Option<PathBuf>) -> Result<serde_json::Value> {
         let req = ListSessionsRequest::new().cwd(cwd);
-        let resp = self.conn.list_sessions(req).await?;
+        let resp = self.conn.send_request(req).block_task().await?;
         Ok(serde_json::to_value(resp)?)
     }
 
     pub async fn load_session(&self, session_id: SessionId, cwd: PathBuf) -> Result<serde_json::Value> {
         let req = LoadSessionRequest::new(session_id.clone(), cwd);
-        let resp = self.conn.load_session(req).await?;
+        let resp = self.conn.send_request(req).block_task().await?;
         *self.session_id.borrow_mut() = session_id;
         Ok(serde_json::to_value(resp)?)
     }
 
     pub async fn new_session(&self, cwd: PathBuf) -> Result<serde_json::Value> {
-        let resp = self.conn.new_session(NewSessionRequest::new(cwd)).await?;
+        let resp = self.conn.send_request(NewSessionRequest::new(cwd)).block_task().await?;
         *self.session_id.borrow_mut() = resp.session_id.clone();
         Ok(serde_json::to_value(resp)?)
     }
 
+    pub fn cancel_current_turn(&self) -> Result<()> {
+        self.conn.send_notification(CancelNotification::new(self.current_session_id()))?;
+        Ok(())
+    }
 
     /// Send a user prompt.
     pub fn prompt(&self, text: &str) {
@@ -625,7 +580,7 @@ impl AcpSession {
         let conn = self.conn.clone();
         let tx = self.tx.clone();
         dioxus::prelude::spawn(async move {
-            match conn.prompt(req).await {
+            match conn.send_request(req).block_task().await {
                 Ok(_) => {
                     tracing::info!("AcpSession::prompt completed");
                     let _ = tx.send(AcpEvent::Done);
@@ -645,7 +600,7 @@ impl AcpSession {
             SessionConfigId::new(config_id),
             SessionConfigValueId::new(value),
         );
-        if let Err(e) = self.conn.set_session_config_option(req).await {
+        if let Err(e) = self.conn.send_request(req).block_task().await {
             let _ = self
                 .tx
                 .send(AcpEvent::Error(format!("Config change failed: {e}")));
@@ -657,12 +612,12 @@ impl AcpSession {
     async fn ext_call(&self, method: &str, params: serde_json::Value) -> Result<serde_json::Value> {
         let raw_params = serde_json::value::RawValue::from_string(serde_json::to_string(&params)?)?;
         let req = ExtRequest::new(method, raw_params.into());
-        let resp = self
+        let value = self
             .conn
-            .ext_method(req)
+            .send_request(ClientRequest::ExtMethodRequest(req))
+            .block_task()
             .await
             .map_err(|e| anyhow::anyhow!("ext_method {method} failed: {e}"))?;
-        let value: serde_json::Value = serde_json::from_str(resp.0.get())?;
         if let Some(err) = value["error"].as_str() {
             anyhow::bail!("{err}");
         }
