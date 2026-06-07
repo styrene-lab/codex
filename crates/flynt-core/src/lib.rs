@@ -15,6 +15,7 @@ pub mod identity;
 pub mod manifest;
 pub mod models;
 pub mod omegon_deployment;
+pub mod omegon_plan_link;
 pub mod parser;
 pub mod project_registry;
 pub mod providers;
