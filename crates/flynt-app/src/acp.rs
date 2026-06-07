@@ -158,6 +158,50 @@ pub enum PermissionDecision {
 pub struct OmegonRuntimeCapabilities {
     #[serde(default)]
     pub capabilities: serde_json::Value,
+    #[serde(default)]
+    pub features: serde_json::Map<String, serde_json::Value>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+impl OmegonRuntimeCapabilities {
+    pub fn plan_tasks_contract(&self) -> Option<OmegonPlanTasksContract> {
+        self.features
+            .get("plan_tasks_contract")
+            .cloned()
+            .and_then(|value| serde_json::from_value(value).ok())
+    }
+}
+
+/// Machine-readable plan/task compatibility contract from `_runtime/capabilities`.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct OmegonPlanTasksContract {
+    #[serde(default)]
+    pub compatibility: Vec<String>,
+    #[serde(default)]
+    pub stable_id: bool,
+    #[serde(default)]
+    pub revision: bool,
+    #[serde(default)]
+    pub durable_bind: bool,
+    #[serde(default)]
+    pub structured_errors: bool,
+    #[serde(default)]
+    pub pagination: bool,
+    #[serde(default)]
+    pub filtering: bool,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+/// Source artifact information for projected Omegon tasks.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct OmegonTaskSourceRef {
+    pub kind: String,
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub anchor: Option<String>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -199,6 +243,8 @@ pub struct OmegonTaskSummary {
     #[serde(default)]
     pub stable_id: Option<String>,
     #[serde(default)]
+    pub source: Option<OmegonTaskSourceRef>,
+    #[serde(default)]
     pub plan_id: Option<String>,
     #[serde(default)]
     pub label: Option<String>,
@@ -220,6 +266,8 @@ pub struct OmegonTaskDetail {
     pub id: String,
     #[serde(default)]
     pub stable_id: Option<String>,
+    #[serde(default)]
+    pub source: Option<OmegonTaskSourceRef>,
     #[serde(default)]
     pub plan_id: Option<String>,
     #[serde(default)]
@@ -1330,10 +1378,11 @@ mod tests {
                 "tasks": [{
                     "id": "task-a",
                     "stable_id": "stable-task-a",
+                    "source": { "kind": "openspec", "path": "openspec/changes/foo/tasks.md", "anchor": "1.1" },
                     "plan_id": "plan-a",
                     "label": "Task A",
                     "status": "pending",
-                    "revision": "sha256:abc",
+                    "revision": "source-v1:openspec:foo:1.1:sha256:abc",
                     "writable": true,
                     "supported_mutations": ["bind_external_ref"]
                 }]
@@ -1345,24 +1394,56 @@ mod tests {
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].id, "task-a");
         assert_eq!(tasks[0].stable_id.as_deref(), Some("stable-task-a"));
+        assert_eq!(tasks[0].source.as_ref().map(|source| source.kind.as_str()), Some("openspec"));
+        assert_eq!(tasks[0].source.as_ref().and_then(|source| source.anchor.as_deref()), Some("1.1"));
         assert_eq!(tasks[0].supported_mutations, vec!["bind_external_ref"]);
     }
 
     #[test]
-    fn task_detail_preserves_unknown_projection_fields() {
+    fn task_detail_preserves_typed_source_and_unknown_projection_fields() {
         let value = serde_json::json!({
             "task": {
                 "id": "task-a",
-                "source": { "kind": "openspec", "path": "openspec/changes/foo/tasks.md" }
+                "source": { "kind": "openspec", "path": "openspec/changes/foo/tasks.md" },
+                "custom": { "nested": true }
             }
         });
 
         let task: OmegonTaskDetail = parse_projection(value, "task").unwrap();
 
         assert_eq!(task.id, "task-a");
+        assert_eq!(task.source.as_ref().map(|source| source.kind.as_str()), Some("openspec"));
         assert_eq!(
-            task.extra.get("source").and_then(|source| source.get("kind")).and_then(|kind| kind.as_str()),
-            Some("openspec")
+            task.extra.get("custom").and_then(|custom| custom.get("nested")).and_then(|nested| nested.as_bool()),
+            Some(true)
         );
+    }
+
+    #[test]
+    fn runtime_capabilities_parse_plan_tasks_contract() {
+        let value = serde_json::json!({
+            "features": {
+                "plan_tasks_contract": {
+                    "compatibility": ["read_only", "manual_link", "session_bind"],
+                    "stable_id": true,
+                    "revision": true,
+                    "durable_bind": false,
+                    "structured_errors": true,
+                    "pagination": false,
+                    "filtering": true
+                }
+            }
+        });
+
+        let capabilities: OmegonRuntimeCapabilities = parse_projection(value, "capabilities").unwrap();
+        let contract = capabilities.plan_tasks_contract().unwrap();
+
+        assert_eq!(contract.compatibility, vec!["read_only", "manual_link", "session_bind"]);
+        assert!(contract.stable_id);
+        assert!(contract.revision);
+        assert!(!contract.durable_bind);
+        assert!(contract.structured_errors);
+        assert!(contract.filtering);
+        assert!(!contract.pagination);
     }
 }
