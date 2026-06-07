@@ -153,6 +153,109 @@ pub enum PermissionDecision {
     Reject,
 }
 
+/// Read-only Omegon ACP runtime capabilities projection.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct OmegonRuntimeCapabilities {
+    #[serde(default)]
+    pub capabilities: serde_json::Value,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+/// Summary entry returned by Omegon `_plans/list`.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct OmegonPlanSummary {
+    pub id: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub revision: Option<String>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+/// Detailed read-only projection returned by Omegon `_plans/show`.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct OmegonPlanDetail {
+    pub id: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub revision: Option<String>,
+    #[serde(default)]
+    pub tasks: Vec<OmegonTaskSummary>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+/// Summary entry returned by Omegon `_tasks/list`.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct OmegonTaskSummary {
+    pub id: String,
+    #[serde(default)]
+    pub stable_id: Option<String>,
+    #[serde(default)]
+    pub plan_id: Option<String>,
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub revision: Option<String>,
+    #[serde(default)]
+    pub writable: Option<bool>,
+    #[serde(default)]
+    pub supported_mutations: Vec<String>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+/// Detailed read-only projection returned by Omegon `_tasks/show`.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct OmegonTaskDetail {
+    pub id: String,
+    #[serde(default)]
+    pub stable_id: Option<String>,
+    #[serde(default)]
+    pub plan_id: Option<String>,
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub revision: Option<String>,
+    #[serde(default)]
+    pub writable: Option<bool>,
+    #[serde(default)]
+    pub supported_mutations: Vec<String>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+fn unwrap_projection_payload(value: serde_json::Value, key: &str) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(mut object) => object
+            .remove(key)
+            .or_else(|| object.remove("result").and_then(|mut result| match result {
+                serde_json::Value::Object(ref mut result_object) => result_object.remove(key),
+                other => Some(other),
+            }))
+            .unwrap_or(serde_json::Value::Object(object)),
+        other => other,
+    }
+}
+
+fn parse_projection<T: serde::de::DeserializeOwned>(
+    value: serde_json::Value,
+    key: &str,
+) -> Result<T> {
+    Ok(serde_json::from_value(unwrap_projection_payload(value, key))?)
+}
+
 /// Extract config options from ACP SessionConfigOption list.
 fn extract_config_options(opts: &[SessionConfigOption]) -> Vec<ConfigOption> {
     opts.iter()
@@ -1057,6 +1160,46 @@ impl AcpSession {
         self.ext_call("catalog/list", serde_json::json!({})).await
     }
 
+    // ── Omegon plan/task projections (read-only) ─────────────────────
+
+    /// Query Omegon runtime capabilities. This is read-only discovery.
+    pub async fn omegon_runtime_capabilities(&self) -> Result<OmegonRuntimeCapabilities> {
+        let value = self.ext_call("_runtime/capabilities", serde_json::json!({})).await?;
+        parse_projection(value, "capabilities")
+    }
+
+    /// List projected Omegon plans as read-only external planning context.
+    pub async fn omegon_plans_list(&self) -> Result<Vec<OmegonPlanSummary>> {
+        let value = self.ext_call("_plans/list", serde_json::json!({})).await?;
+        parse_projection(value, "plans")
+    }
+
+    /// Show one projected Omegon plan. Does not mutate or bind anything.
+    pub async fn omegon_plan_show(&self, plan_id: &str) -> Result<OmegonPlanDetail> {
+        let value = self
+            .ext_call("_plans/show", serde_json::json!({ "plan_id": plan_id }))
+            .await?;
+        parse_projection(value, "plan")
+    }
+
+    /// List projected Omegon tasks as read-only external planning context.
+    pub async fn omegon_tasks_list(&self, plan_id: Option<&str>) -> Result<Vec<OmegonTaskSummary>> {
+        let mut params = serde_json::json!({});
+        if let Some(plan_id) = plan_id {
+            params["plan_id"] = serde_json::Value::String(plan_id.into());
+        }
+        let value = self.ext_call("_tasks/list", params).await?;
+        parse_projection(value, "tasks")
+    }
+
+    /// Show one projected Omegon task. Does not call `_tasks/bind`.
+    pub async fn omegon_task_show(&self, task_id: &str) -> Result<OmegonTaskDetail> {
+        let value = self
+            .ext_call("_tasks/show", serde_json::json!({ "task_id": task_id }))
+            .await?;
+        parse_projection(value, "task")
+    }
+
     /// Install agents from the armory (or bundled fallback).
     pub async fn catalog_install(&self, offline: bool) -> Result<serde_json::Value> {
         self.ext_call("catalog/install", serde_json::json!({ "offline": offline }))
@@ -1163,6 +1306,63 @@ mod tests {
             .unwrap()
             .to_string(),
             "once"
+        );
+    }
+
+    #[test]
+    fn unwrap_projection_payload_accepts_direct_key() {
+        let value = serde_json::json!({
+            "plans": [{ "id": "plan-a", "title": "Plan A" }],
+            "other": true,
+        });
+
+        let plans: Vec<OmegonPlanSummary> = parse_projection(value, "plans").unwrap();
+
+        assert_eq!(plans.len(), 1);
+        assert_eq!(plans[0].id, "plan-a");
+        assert_eq!(plans[0].title.as_deref(), Some("Plan A"));
+    }
+
+    #[test]
+    fn unwrap_projection_payload_accepts_result_wrapped_key() {
+        let value = serde_json::json!({
+            "result": {
+                "tasks": [{
+                    "id": "task-a",
+                    "stable_id": "stable-task-a",
+                    "plan_id": "plan-a",
+                    "label": "Task A",
+                    "status": "pending",
+                    "revision": "sha256:abc",
+                    "writable": true,
+                    "supported_mutations": ["bind_external_ref"]
+                }]
+            }
+        });
+
+        let tasks: Vec<OmegonTaskSummary> = parse_projection(value, "tasks").unwrap();
+
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].id, "task-a");
+        assert_eq!(tasks[0].stable_id.as_deref(), Some("stable-task-a"));
+        assert_eq!(tasks[0].supported_mutations, vec!["bind_external_ref"]);
+    }
+
+    #[test]
+    fn task_detail_preserves_unknown_projection_fields() {
+        let value = serde_json::json!({
+            "task": {
+                "id": "task-a",
+                "source": { "kind": "openspec", "path": "openspec/changes/foo/tasks.md" }
+            }
+        });
+
+        let task: OmegonTaskDetail = parse_projection(value, "task").unwrap();
+
+        assert_eq!(task.id, "task-a");
+        assert_eq!(
+            task.extra.get("source").and_then(|source| source.get("kind")).and_then(|kind| kind.as_str()),
+            Some("openspec")
         );
     }
 }
