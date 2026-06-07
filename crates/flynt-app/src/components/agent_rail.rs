@@ -1109,9 +1109,15 @@ pub fn AgentRail() -> Element {
                                                 match sess.load_session(session_id, cwd).await {
                                                     Ok(_) => {
                                                         items.write().clear();
+                                                        items.write().push(ChatItem::Message {
+                                                            role: ChatRole::Assistant,
+                                                            content: format!(
+                                                                "Switched to saved Omegon session {sid_for_load}. Flynt does not currently replay the prior transcript, so continue with an explicit prompt rather than relying on earlier chat context."
+                                                            ),
+                                                        });
                                                         *session_history_open.write() = false;
                                                         *session_title.write() = Some(sid_for_load.clone());
-                                                        *session_lifecycle_msg.write() = Some(format!("Resumed session {sid_for_load}."));
+                                                        *session_lifecycle_msg.write() = Some(format!("Switched to session {sid_for_load}."));
                                                     }
                                                     Err(error) => {
                                                         *session_lifecycle_msg.write() = Some(format!("Resume failed: {error}"));

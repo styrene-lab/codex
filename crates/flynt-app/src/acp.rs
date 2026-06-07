@@ -455,6 +455,12 @@ impl AcpSession {
                 "FLYNT_PROJECT",
                 cwd.to_string_lossy().to_string(),
             ));
+        server
+            .env
+            .push(agent_client_protocol::schema::EnvVariable::new(
+                "OMEGON_CHILD_ENABLED_EXTENSIONS",
+                "flynt",
+            ));
         let agent = agent_client_protocol::AcpAgent::new(
             agent_client_protocol::schema::McpServer::Stdio(server),
         );

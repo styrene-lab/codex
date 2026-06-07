@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use flynt_core::{
     graph::{build_graph_payload, format_kind},
-    models::{Board, Task},
+    models::{Board, ProjectLens, Task},
+    query::execute_lens,
     store::{ProjectStore, TaskFilter},
 };
 use flynt_store::project::Project;
@@ -136,6 +137,49 @@ impl Extension for FlyntExtension {
                     "label": "List Documents",
                     "description": "List all project documents (metadata only: id, path, title, tags, updated_at).",
                     "parameters": { "type": "object", "properties": {} }
+                },
+                {
+                    "name": "list_lenses",
+                    "label": "List Project Lenses",
+                    "description": "List Flynt Project Lenses: saved live query/display definitions stored under .flynt/lenses/*.toml. Use this when the operator asks about the Lenses surface.",
+                    "parameters": { "type": "object", "properties": {} }
+                },
+                {
+                    "name": "get_lens",
+                    "label": "Get Project Lens",
+                    "description": "Get one Flynt Project Lens definition by project-relative path or title.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": { "type": "string", "description": "Project-relative lens path, e.g. .flynt/lenses/opportunities.toml" },
+                            "title": { "type": "string", "description": "Lens title when path is not known." }
+                        }
+                    }
+                },
+                {
+                    "name": "execute_lens",
+                    "label": "Execute Project Lens",
+                    "description": "Execute a Flynt Project Lens against the live project store and return columns plus rows.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": { "type": "string", "description": "Project-relative lens path, e.g. .flynt/lenses/opportunities.toml" },
+                            "title": { "type": "string", "description": "Lens title when path is not known." },
+                            "limit": { "type": "integer", "description": "Optional maximum number of rows to return." }
+                        }
+                    }
+                },
+                {
+                    "name": "create_lens",
+                    "label": "Create Project Lens",
+                    "description": "Create or overwrite a Flynt Project Lens. Lenses are TOML saved live queries over documents or tasks, rendered in the Lenses surface.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "lens": { "type": "object", "description": "ProjectLens object: title, source(documents|tasks), layout(table|list), filters, columns, sort, limit." }
+                        },
+                        "required": ["lens"]
+                    }
                 },
                 {
                     "name": "find_document_by_slug",
@@ -633,6 +677,94 @@ impl Extension for FlyntExtension {
                     .list_documents()
                     .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
                 Ok(serde_json::to_value(docs).unwrap_or(json!([])))
+            }
+
+            "execute_list_lenses" => {
+                let lenses = self
+                    .project
+                    .load_lenses()
+                    .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
+                let items: Vec<_> = lenses
+                    .into_iter()
+                    .map(|(path, lens)| json!({ "path": path, "lens": lens }))
+                    .collect();
+                Ok(json!({ "lenses": items }))
+            }
+
+            "execute_get_lens" => {
+                let lenses = self
+                    .project
+                    .load_lenses()
+                    .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
+                let path_arg = params.get("path").and_then(|v| v.as_str());
+                let title_arg = params.get("title").and_then(|v| v.as_str());
+                let found = lenses.into_iter().find(|(path, lens)| {
+                    path_arg.is_some_and(|p| path == std::path::Path::new(p))
+                        || title_arg.is_some_and(|t| lens.title.eq_ignore_ascii_case(t))
+                });
+                match found {
+                    Some((path, lens)) => Ok(json!({ "path": path, "lens": lens })),
+                    None => Err(omegon_extension::Error::internal_error(
+                        "lens not found; pass path or title from list_lenses",
+                    )),
+                }
+            }
+
+            "execute_execute_lens" => {
+                let lenses = self
+                    .project
+                    .load_lenses()
+                    .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
+                let path_arg = params.get("path").and_then(|v| v.as_str());
+                let title_arg = params.get("title").and_then(|v| v.as_str());
+                let found = lenses.into_iter().find(|(path, lens)| {
+                    path_arg.is_some_and(|p| path == std::path::Path::new(p))
+                        || title_arg.is_some_and(|t| lens.title.eq_ignore_ascii_case(t))
+                });
+                let Some((path, mut lens)) = found else {
+                    return Err(omegon_extension::Error::internal_error(
+                        "lens not found; pass path or title from list_lenses",
+                    ));
+                };
+                if let Some(limit) = params.get("limit").and_then(|v| v.as_u64()) {
+                    lens.limit = Some(limit as usize);
+                }
+                let result = execute_lens(&lens, self.project.store.as_ref())
+                    .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
+                let rows: Vec<_> = result
+                    .rows
+                    .into_iter()
+                    .map(|row| {
+                        json!({
+                            "key": row.key,
+                            "title": row.title,
+                            "document_id": row.document_id.map(|id| id.0.to_string()),
+                            "values": row.values,
+                        })
+                    })
+                    .collect();
+                Ok(json!({
+                    "path": path,
+                    "lens": lens,
+                    "result": {
+                        "columns": result.columns,
+                        "rows": rows,
+                    }
+                }))
+            }
+
+            "execute_create_lens" => {
+                let lens_value = params
+                    .get("lens")
+                    .cloned()
+                    .ok_or_else(|| omegon_extension::Error::invalid_params("missing 'lens'"))?;
+                let lens: ProjectLens = serde_json::from_value(lens_value)
+                    .map_err(|e| omegon_extension::Error::invalid_params(e.to_string()))?;
+                let path = self
+                    .project
+                    .save_lens(&lens)
+                    .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
+                Ok(json!({ "created": true, "path": path, "lens": lens }))
             }
 
             "execute_find_document_by_slug" => {
