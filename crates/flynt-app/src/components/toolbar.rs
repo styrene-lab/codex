@@ -332,6 +332,11 @@ pub fn Toolbar(
             "sync-badge conflict",
             format!("{n} conflict(s)"),
         ),
+        SyncStatus::Error => (
+            "!",
+            "sync-badge error",
+            "Sync error — open sync panel".to_string(),
+        ),
     };
 
     let grouped_results = group_results(&results.read());

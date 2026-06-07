@@ -1,18 +1,18 @@
 //! UI state mirror — writes the panel/tab/view state the embedded Omegon
 //! agent needs to answer "what am I looking at?".
 //!
-//! Shape on disk: `<project>/.flynt-local/flynt/ui-state.json`. The flynt-agent
+//! Shape on disk: `<userspace project runtime>/ui-state.json`. The flynt-agent
 //! extension reads this file via its `get_ui_state` tool. Atomic write via
 //! tempfile + rename so the agent never sees a half-written document.
 
 use flynt_core::store::ProjectStore;
 use flynt_store::project::Project;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 use crate::state::{Route, TabState};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Serialize)]
 struct DocumentRef {
     id: String,
     title: String,
@@ -21,10 +21,10 @@ struct DocumentRef {
     /// What kind of document this is from the agent's perspective. Lets
     /// design_board-aware tools (design_board_active) skip the body-parse hop. Values:
     /// "design-board", "drawing", or "note" (the default).
-    document_type: &'static str,
+    document_type: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct UiStateSnapshot<'a> {
     /// The document the user is currently looking at, if any.
     active_document: Option<DocumentRef>,
@@ -36,6 +36,25 @@ struct UiStateSnapshot<'a> {
     project_root: &'a str,
     /// ISO-8601 UTC timestamp of this snapshot.
     updated_at: String,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
+struct UiStateSnapshotStable {
+    active_document: Option<DocumentRef>,
+    open_documents: Vec<DocumentRef>,
+    current_view: String,
+    project_root: String,
+}
+
+impl<'a> From<&UiStateSnapshot<'a>> for UiStateSnapshotStable {
+    fn from(snapshot: &UiStateSnapshot<'a>) -> Self {
+        Self {
+            active_document: snapshot.active_document.clone(),
+            open_documents: snapshot.open_documents.clone(),
+            current_view: snapshot.current_view.to_string(),
+            project_root: snapshot.project_root.to_string(),
+        }
+    }
 }
 
 fn route_label(route: &Route) -> &'static str {
@@ -61,7 +80,7 @@ fn resolve_doc_ref(
     Some(DocumentRef {
         id: id.0.to_string(),
         title: title.to_string(),
-        document_type: classify_document(project, &doc.path),
+        document_type: classify_document(project, &doc.path).to_string(),
         path: path_str,
     })
 }
@@ -107,10 +126,10 @@ fn classify_document(project: &Project, rel_path: &Path) -> &'static str {
     "note"
 }
 
-/// Write the UI state snapshot to `<project>/.flynt-local/flynt/ui-state.json`.
+/// Write the UI state snapshot to `<userspace project runtime>/ui-state.json`.
 /// Errors are logged but never propagated — UI state is best-effort and must
 /// not block the editor on a slow disk.
-pub fn write_snapshot(project: &Project, tabs: &TabState, route: &Route) {
+pub fn write_snapshot(project: &Project, runtime_root: &Path, tabs: &TabState, route: &Route) {
     let active_document = tabs
         .tabs
         .get(tabs.active)
@@ -131,19 +150,62 @@ pub fn write_snapshot(project: &Project, tabs: &TabState, route: &Route) {
         updated_at: chrono::Utc::now().to_rfc3339(),
     };
 
-    if let Err(e) = write_atomic(&project.root, &snapshot) {
+    if let Err(e) = write_atomic(runtime_root, &snapshot) {
         tracing::warn!("ui-state write failed: {e}");
     }
 }
 
-fn write_atomic(project_root: &Path, snapshot: &UiStateSnapshot<'_>) -> std::io::Result<()> {
-    let dir = project_root.join(".flynt-local").join("flynt");
-    std::fs::create_dir_all(&dir)?;
-    let final_path = dir.join("ui-state.json");
-    let tmp_path = dir.join("ui-state.json.tmp");
+fn write_atomic(runtime_root: &Path, snapshot: &UiStateSnapshot<'_>) -> std::io::Result<()> {
+    std::fs::create_dir_all(runtime_root)?;
+    let final_path = runtime_root.join("ui-state.json");
+    let tmp_path = runtime_root.join("ui-state.json.tmp");
+    let stable = UiStateSnapshotStable::from(snapshot);
+    if let Ok(existing) = std::fs::read(&final_path) {
+        if let Ok(existing_snapshot) = serde_json::from_slice::<UiStateSnapshotStable>(&existing) {
+            if existing_snapshot == stable {
+                return Ok(());
+            }
+        }
+    }
+
     let body = serde_json::to_vec_pretty(snapshot)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
     std::fs::write(&tmp_path, &body)?;
     std::fs::rename(&tmp_path, &final_path)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use flynt_store::project::Project;
+
+    #[test]
+    fn writes_ui_state_to_runtime_root_not_project_local_state() {
+        let project_tmp = tempfile::TempDir::new().unwrap();
+        let runtime_tmp = tempfile::TempDir::new().unwrap();
+        let project = Project::open(project_tmp.path()).unwrap();
+        let tabs = TabState::default();
+
+        write_snapshot(&project, runtime_tmp.path(), &tabs, &Route::Notes);
+
+        assert!(runtime_tmp.path().join("ui-state.json").exists());
+        assert!(!project_tmp.path().join(".flynt-local").exists());
+    }
+
+    #[test]
+    fn identical_ui_state_snapshot_is_noop() {
+        let project_tmp = tempfile::TempDir::new().unwrap();
+        let runtime_tmp = tempfile::TempDir::new().unwrap();
+        let project = Project::open(project_tmp.path()).unwrap();
+        let tabs = TabState::default();
+
+        write_snapshot(&project, runtime_tmp.path(), &tabs, &Route::Notes);
+        let path = runtime_tmp.path().join("ui-state.json");
+        let first = std::fs::read_to_string(&path).unwrap();
+        write_snapshot(&project, runtime_tmp.path(), &tabs, &Route::Notes);
+        let second = std::fs::read_to_string(&path).unwrap();
+
+        assert_eq!(first, second);
+    }
 }

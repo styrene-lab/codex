@@ -8,7 +8,9 @@ use crate::{
 };
 use comrak::{Options, markdown_to_html};
 use dioxus::prelude::*;
-use flynt_core::models::{DocumentId, DocumentMeta, Frontmatter, PublicationConfig, PublicationVisibility};
+use flynt_core::models::{
+    DocumentId, DocumentMeta, Frontmatter, PublicationConfig, PublicationVisibility,
+};
 use flynt_core::parser::parse_document_source;
 use flynt_core::store::ProjectStore;
 use flynt_store::sync::git::{FileHistoryEntry, FileSnapshot, GitSync};
@@ -747,12 +749,8 @@ pub(crate) fn cm6_fast_swap_js(content: &str) -> String {
     )
 }
 
-
 fn embed_slug(value: &str) -> String {
-    value
-        .trim()
-        .to_lowercase()
-        .replace([' ', '_'], "-")
+    value.trim().to_lowercase().replace([' ', '_'], "-")
 }
 
 fn embed_resolution_identity(value: &serde_json::Value) -> String {
@@ -780,11 +778,7 @@ fn merge_embed_resolution(
         return existing;
     }
 
-    let mut candidates = if existing
-        .get("status")
-        .and_then(|v| v.as_str())
-        == Some("ambiguous")
-    {
+    let mut candidates = if existing.get("status").and_then(|v| v.as_str()) == Some("ambiguous") {
         existing
             .get("candidates")
             .and_then(|v| v.as_array())
@@ -847,8 +841,6 @@ fn insert_embed_resolution(
     insert_embed_resolution_for_key(map, &embed_slug(key), resolution);
 }
 
-
-
 fn insert_embed_path_aliases(
     map: &mut serde_json::Map<String, serde_json::Value>,
     path: &str,
@@ -870,7 +862,11 @@ fn is_embed_image_path(path: &std::path::Path) -> bool {
     )
 }
 
-fn collect_embed_image_assets(root: &std::path::Path, rel_dir: &str, out: &mut Vec<std::path::PathBuf>) {
+fn collect_embed_image_assets(
+    root: &std::path::Path,
+    rel_dir: &str,
+    out: &mut Vec<std::path::PathBuf>,
+) {
     let dir = root.join(rel_dir);
     let Ok(read_dir) = std::fs::read_dir(&dir) else {
         return;
@@ -915,7 +911,9 @@ fn build_embed_index_json(ctx: &AppContext) -> String {
 
     let root = ctx.project_root();
     let mut artifacts = Vec::new();
-    artifacts.extend(flynt_core::visual_artifacts::discover_excalidraw_artifacts(&root));
+    artifacts.extend(flynt_core::visual_artifacts::discover_excalidraw_artifacts(
+        &root,
+    ));
     artifacts.extend(flynt_core::visual_artifacts::discover_design_board_artifacts(&root));
     artifacts.extend(flynt_core::visual_artifacts::discover_flow_artifacts(&root));
 
@@ -990,7 +988,8 @@ fn build_embed_index_json(ctx: &AppContext) -> String {
 }
 
 fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> String {
-    let doc_id_json = serde_json::to_string(&doc_id.0.to_string()).unwrap_or_else(|_| "null".into());
+    let doc_id_json =
+        serde_json::to_string(&doc_id.0.to_string()).unwrap_or_else(|_| "null".into());
     let escaped = serde_json::to_string(content).unwrap_or_else(|_| "\"\"".into());
     let embed_index = if embed_index_json.trim().is_empty() {
         "{}"
@@ -2850,7 +2849,11 @@ pub fn NotesView() -> Element {
                 match msg_type {
                     "edit" => {
                         if !message_matches_active {
-                            tracing::warn!(?msg_doc_id, ?active_doc_id, "dropping stale editor edit message");
+                            tracing::warn!(
+                                ?msg_doc_id,
+                                ?active_doc_id,
+                                "dropping stale editor edit message"
+                            );
                             continue;
                         }
                         // Keep edit_body in sync with CM6's live content.
@@ -2869,16 +2872,29 @@ pub fn NotesView() -> Element {
                     }
                     "save" | "autosave" => {
                         if !message_matches_active {
-                            tracing::warn!(?msg_doc_id, ?active_doc_id, "dropping stale editor save message");
+                            tracing::warn!(
+                                ?msg_doc_id,
+                                ?active_doc_id,
+                                "dropping stale editor save message"
+                            );
                             continue;
                         }
                         let content = data.to_string();
-                        let Some((doc_id, path, _title, disk_body, frontmatter)) = doc_data.peek().clone() else {
-                            tracing::warn!(?msg_doc_id, "dropping editor save with no loaded doc_data");
+                        let Some((doc_id, path, _title, disk_body, frontmatter)) =
+                            doc_data.peek().clone()
+                        else {
+                            tracing::warn!(
+                                ?msg_doc_id,
+                                "dropping editor save with no loaded doc_data"
+                            );
                             continue;
                         };
                         if Some(&doc_id) != msg_doc_id.as_ref() {
-                            tracing::warn!(?msg_doc_id, ?doc_id, "dropping editor save for non-loaded doc");
+                            tracing::warn!(
+                                ?msg_doc_id,
+                                ?doc_id,
+                                "dropping editor save for non-loaded doc"
+                            );
                             continue;
                         }
                         if crate::visual_artifact_surface::resolve_wrapper_surface(
@@ -2907,12 +2923,8 @@ pub fn NotesView() -> Element {
                                     saved_content
                                 ));
                             }
-                            Ok(Err(e)) => {
-                                *save_err.write() = Some(format!("Could not save — {e}"))
-                            }
-                            Err(e) => {
-                                *save_err.write() = Some(format!("Save interrupted — {e}"))
-                            }
+                            Ok(Err(e)) => *save_err.write() = Some(format!("Could not save — {e}")),
+                            Err(e) => *save_err.write() = Some(format!("Save interrupted — {e}")),
                         }
                     }
                     "mode" => {

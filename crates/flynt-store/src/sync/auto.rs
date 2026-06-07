@@ -81,10 +81,12 @@ pub fn start_auto_sync(
             let _ = status_tx.send(AutoSyncStatus::Pulling);
             match git.pull() {
                 Ok(result) if !result.conflicts.is_empty() => {
-                    warn!("sync conflicts: {:?}", result.conflicts);
+                    warn!(
+                        "sync conflicts: {:?}; stopping auto-sync until operator resolves them",
+                        result.conflicts
+                    );
                     let _ = status_tx.send(AutoSyncStatus::Conflict(result.conflicts));
-                    consecutive_failures += 1;
-                    continue;
+                    break;
                 }
                 Ok(result) if result.files_pulled > 0 => {
                     info!("pulled {} file(s)", result.files_pulled);

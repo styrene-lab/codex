@@ -220,6 +220,7 @@ pub enum SyncStatus {
     Idle,
     Syncing,
     Conflict(usize),
+    Error,
 }
 
 #[derive(Clone, PartialEq, Debug)]

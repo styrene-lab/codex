@@ -103,9 +103,28 @@ impl Project {
         self.root.join(".flynt").join("lenses")
     }
 
-    /// Open (or create) a project rooted at `root`.
+    /// Open (or create) a project rooted at `root` without assuming the folder
+    /// should be converted into a Flynt-managed vault. Existing folders are
+    /// indexed non-destructively until the operator explicitly saves portable
+    /// metadata/configuration.
     pub fn open(root: &Path) -> Result<Self> {
-        Self::open_with_options(root, ProjectOpenOptions::default())
+        Self::open_with_options(
+            root,
+            ProjectOpenOptions {
+                create_portable_metadata: false,
+            },
+        )
+    }
+
+    /// Create/open a Flynt-managed project and materialize portable `.flynt/`
+    /// metadata when absent.
+    pub fn open_managed(root: &Path) -> Result<Self> {
+        Self::open_with_options(
+            root,
+            ProjectOpenOptions {
+                create_portable_metadata: true,
+            },
+        )
     }
 
     /// Open a folder without creating portable `.flynt/` metadata when it does
@@ -148,18 +167,25 @@ impl Project {
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_else(|| "Flynt".to_string());
 
-            let indexing = if looks_like_code_repo(root) {
-                info!(
-                    "Code repo detected at {:?} — defaulting write_frontmatter to false",
-                    root
-                );
+            let indexing = if options.create_portable_metadata && !looks_like_code_repo(root) {
+                IndexingConfig::default()
+            } else {
+                if looks_like_code_repo(root) {
+                    info!(
+                        "Code repo detected at {:?} — defaulting write_frontmatter to false",
+                        root
+                    );
+                } else {
+                    info!(
+                        "Existing folder detected at {:?} — defaulting write_frontmatter to false until portable metadata is enabled",
+                        root
+                    );
+                }
                 IndexingConfig {
                     write_frontmatter: false,
                     scopes: Vec::new(),
                     track_index_snapshot: false,
                 }
-            } else {
-                IndexingConfig::default()
             };
 
             let cfg = ProjectConfig {
@@ -179,20 +205,11 @@ impl Project {
             cfg
         };
 
-        // Ensure .gitignore exists so legacy in-project local state is never committed
-        let gitignore = root.join(".gitignore");
-        if !gitignore.exists()
-            && (root.join(".flynt-local").exists() || root.join(".codex-local").exists())
-        {
-            if let Err(e) = fs::write(
-                &gitignore,
-                ".flynt-local/\n.codex-local/\n.DS_Store\n*.swp\n*~\n",
-            ) {
-                tracing::warn!(
-                    "Could not create .gitignore at {}: {e} — local state may be committed if git sync is enabled",
-                    gitignore.display()
-                );
-            }
+        if let Err(e) = ensure_flynt_gitignore_block(root) {
+            tracing::warn!(
+                "Could not update .gitignore at {}: {e} — local/generated state may be committed if git sync is enabled",
+                root.join(".gitignore").display()
+            );
         }
 
         let db_path = resolve_index_db_path(root, &config.local_runtime);
@@ -2258,6 +2275,35 @@ fn normalized_relative_path(path: &Path) -> String {
         .join("/")
 }
 
+const FLYNT_GITIGNORE_BLOCK: &str = "# Flynt local/generated state\n.flynt-local/\n.codex-local/\n.omegon/\nai/\n.flynt/forge-sync.db\n.flynt/operator-settings.json\n.flynt/omegon.toml\n.flynt/registry/project-registry.snapshot.json\ndrawings/*.svg\n.DS_Store\n*.tmp\n*.swp\n*~\n";
+
+fn ensure_flynt_gitignore_block(root: &Path) -> Result<()> {
+    let git_dir = root.join(".git");
+    let legacy_local_state_exists =
+        root.join(".flynt-local").exists() || root.join(".codex-local").exists();
+    if !git_dir.exists() && !legacy_local_state_exists {
+        return Ok(());
+    }
+
+    let gitignore = root.join(".gitignore");
+    let marker = "# Flynt local/generated state";
+    let existing = fs::read_to_string(&gitignore).unwrap_or_default();
+    if existing.contains(marker) {
+        return Ok(());
+    }
+
+    let mut next = existing;
+    if !next.is_empty() && !next.ends_with('\n') {
+        next.push('\n');
+    }
+    if !next.is_empty() {
+        next.push('\n');
+    }
+    next.push_str(FLYNT_GITIGNORE_BLOCK);
+    fs::write(gitignore, next)?;
+    Ok(())
+}
+
 fn resolve_index_db_path(root: &Path, runtime: &LocalRuntimeConfig) -> PathBuf {
     if let Some(path) = runtime
         .flynt_index_db_path
@@ -2390,8 +2436,8 @@ fn replace_frontmatter_tags(content: &str, new_tags: &[String]) -> Option<String
 #[cfg(test)]
 mod tests {
     use super::{
-        Project, canonical_document_source, import_destination_path, markdown_to_micron,
-        normalized_relative_path, resolve_index_db_path,
+        Project, canonical_document_source, ensure_flynt_gitignore_block, import_destination_path,
+        markdown_to_micron, normalized_relative_path, resolve_index_db_path,
     };
     use chrono::Utc;
     use flynt_core::{
@@ -2789,6 +2835,44 @@ Original body content.
     }
 
     #[test]
+    fn open_existing_folder_does_not_create_portable_metadata_or_stamp_frontmatter() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().join("existing-folder");
+        std::fs::create_dir_all(&root).unwrap();
+        let readme = root.join("README.md");
+        let original = "# Existing Folder
+";
+        std::fs::write(&readme, original).unwrap();
+
+        let project = Project::open(&root).unwrap();
+        project.reindex().unwrap();
+
+        assert!(!root.join(".flynt/config.toml").exists());
+        assert!(!root.join(".flynt/templates").exists());
+        assert!(
+            !root
+                .join(".flynt/registry/project-registry.snapshot.json")
+                .exists()
+        );
+        assert!(!root.join(".flynt/forge-sync.db").exists());
+        assert!(!root.join(".flynt/omegon.toml").exists());
+        assert!(!root.join(".flynt-local").exists());
+        assert_eq!(std::fs::read_to_string(readme).unwrap(), original);
+        assert!(!project.config.indexing.write_frontmatter);
+    }
+
+    #[test]
+    fn open_managed_creates_portable_config() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().join("managed-project");
+
+        let project = Project::open_managed(&root).unwrap();
+
+        assert!(root.join(".flynt/config.toml").exists());
+        assert!(project.config.indexing.write_frontmatter);
+    }
+
+    #[test]
     fn open_read_only_does_not_create_portable_metadata() {
         let tmp = TempDir::new().unwrap();
         let root = tmp.path().join("work-repo");
@@ -3102,6 +3186,39 @@ position = 0
         assert!(resolved.is_absolute());
         assert!(resolved.ends_with("flynt/flynt-index.db"));
         assert!(!resolved.starts_with(root.join(".flynt-local")));
+    }
+
+    #[test]
+    fn appends_flynt_gitignore_block_for_git_projects() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().join("project");
+        std::fs::create_dir_all(root.join(".git")).unwrap();
+        std::fs::write(root.join(".gitignore"), "target/\n").unwrap();
+
+        ensure_flynt_gitignore_block(&root).unwrap();
+        let gitignore = std::fs::read_to_string(root.join(".gitignore")).unwrap();
+
+        assert!(gitignore.contains("target/"));
+        assert!(gitignore.contains("# Flynt local/generated state"));
+        assert!(gitignore.contains(".omegon/"));
+        assert!(gitignore.contains(".flynt/forge-sync.db"));
+        assert!(gitignore.contains("drawings/*.svg"));
+    }
+
+    #[test]
+    fn flynt_gitignore_block_is_idempotent() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().join("project");
+        std::fs::create_dir_all(root.join(".git")).unwrap();
+
+        ensure_flynt_gitignore_block(&root).unwrap();
+        ensure_flynt_gitignore_block(&root).unwrap();
+        let gitignore = std::fs::read_to_string(root.join(".gitignore")).unwrap();
+
+        assert_eq!(
+            gitignore.matches("# Flynt local/generated state").count(),
+            1
+        );
     }
 
     #[test]

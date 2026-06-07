@@ -33,6 +33,7 @@ use flynt_models::task::TaskId;
 use flynt_store::project::Project;
 use flynt_store::save_hook::SaveHook;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -82,11 +83,9 @@ pub struct PushPipeline {
 }
 
 impl PushPipeline {
-    pub fn new(project: Arc<Project>) -> Result<Arc<Self>> {
-        // SyncStore — colocated with the project, separate sqlite file
-        // from the document index. Matches what flynt-agent's
-        // `sync_store_for` does for consistency.
-        let sync_db_path = project.root.join(".flynt").join("forge-sync.db");
+    pub fn new(project: Arc<Project>, sync_db_path: PathBuf) -> Result<Arc<Self>> {
+        // SyncStore — machine-local forge sync state. It intentionally lives
+        // in the userspace project runtime root, not the syncable vault.
         if let Some(parent) = sync_db_path.parent() {
             std::fs::create_dir_all(parent).context("create .flynt dir")?;
         }
@@ -533,10 +532,23 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn sync_db_lives_at_runtime_path_not_project_flynt_dir() {
+        let project_tmp = tempfile::TempDir::new().unwrap();
+        let runtime_tmp = tempfile::TempDir::new().unwrap();
+        let project = Arc::new(Project::open(project_tmp.path()).unwrap());
+        let sync_db = runtime_tmp.path().join("forge-sync.db");
+
+        let _pipeline = PushPipeline::new(project, sync_db.clone()).unwrap();
+
+        assert!(sync_db.exists());
+        assert!(!project_tmp.path().join(".flynt/forge-sync.db").exists());
+    }
+
+    #[tokio::test]
     async fn status_for_unknown_task_is_local_only() {
         let tmp = tempfile::TempDir::new().unwrap();
         let project = Arc::new(Project::open(tmp.path()).unwrap());
-        let pipeline = PushPipeline::new(project).unwrap();
+        let pipeline = PushPipeline::new(project, tmp.path().join("forge-sync.db")).unwrap();
         let unknown = Uuid::new_v4();
         assert!(matches!(
             pipeline.status_for(unknown),
@@ -550,7 +562,7 @@ mod tests {
         // pill flashes without waiting for the drain loop.
         let tmp = tempfile::TempDir::new().unwrap();
         let project = Arc::new(Project::open(tmp.path()).unwrap());
-        let pipeline = PushPipeline::new(project).unwrap();
+        let pipeline = PushPipeline::new(project, tmp.path().join("forge-sync.db")).unwrap();
         let mut rx = pipeline.subscribe();
 
         let task_id = Uuid::new_v4();
@@ -572,7 +584,7 @@ mod tests {
         // pick it up until the debounce window elapses.
         let tmp = tempfile::TempDir::new().unwrap();
         let project = Arc::new(Project::open(tmp.path()).unwrap());
-        let pipeline = PushPipeline::new(project).unwrap();
+        let pipeline = PushPipeline::new(project, tmp.path().join("forge-sync.db")).unwrap();
         let task_id = Uuid::new_v4();
         pipeline.on_task_saved(task_id);
         // Not ready (default 5s window).
@@ -587,7 +599,7 @@ mod tests {
         // ticking through the drain loop forever.
         let tmp = tempfile::TempDir::new().unwrap();
         let project = Arc::new(Project::open(tmp.path()).unwrap());
-        let pipeline = PushPipeline::new(project).unwrap();
+        let pipeline = PushPipeline::new(project, tmp.path().join("forge-sync.db")).unwrap();
 
         let task_id = Uuid::new_v4();
         // Seed state: simulate an edit + cached hash.
@@ -630,7 +642,7 @@ mod tests {
     async fn resolve_pull_theirs_errors_when_task_missing() {
         let tmp = tempfile::TempDir::new().unwrap();
         let project = Arc::new(Project::open(tmp.path()).unwrap());
-        let pipeline = PushPipeline::new(project).unwrap();
+        let pipeline = PushPipeline::new(project, tmp.path().join("forge-sync.db")).unwrap();
         // No task in the store — pull should surface a clean error
         // rather than panic.
         let err = pipeline
@@ -644,7 +656,7 @@ mod tests {
     async fn resolve_force_push_errors_when_task_missing() {
         let tmp = tempfile::TempDir::new().unwrap();
         let project = Arc::new(Project::open(tmp.path()).unwrap());
-        let pipeline = PushPipeline::new(project).unwrap();
+        let pipeline = PushPipeline::new(project, tmp.path().join("forge-sync.db")).unwrap();
         let err = pipeline
             .resolve_force_push(Uuid::new_v4())
             .await
@@ -660,7 +672,7 @@ mod tests {
         // signal shutdown.
         let tmp = tempfile::TempDir::new().unwrap();
         let project = Arc::new(Project::open(tmp.path()).unwrap());
-        let pipeline = PushPipeline::new(project).unwrap();
+        let pipeline = PushPipeline::new(project, tmp.path().join("forge-sync.db")).unwrap();
         let handle = pipeline.clone().spawn_drain_loop();
         // Give the loop a moment to start ticking.
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -674,7 +686,7 @@ mod tests {
     async fn shutdown_is_idempotent() {
         let tmp = tempfile::TempDir::new().unwrap();
         let project = Arc::new(Project::open(tmp.path()).unwrap());
-        let pipeline = PushPipeline::new(project).unwrap();
+        let pipeline = PushPipeline::new(project, tmp.path().join("forge-sync.db")).unwrap();
         pipeline.shutdown();
         pipeline.shutdown(); // second call doesn't panic
         assert!(pipeline.shutdown_flag.load(Ordering::SeqCst));

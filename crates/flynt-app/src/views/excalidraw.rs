@@ -152,12 +152,21 @@ pub fn ExcalidrawView(path: PathBuf) -> Element {
             };
             document.addEventListener('keydown', window._excSaveKeydownHandler);
 
-            // Auto-save loop: check every 2 seconds if there are pending changes
-            let lastSaved = '';
+            // Auto-save loop: check every 2 seconds if there are pending changes.
+            // Excalidraw emits a normalized scene during initial mount; treat the
+            // first observed payload as the baseline instead of a user edit.
+            let lastSaved = null;
+            let armed = false;
             async function autoSaveLoop() {
                 while (window._excSaveBridgeGeneration === bridgeGeneration) {
                     await new Promise(r => setTimeout(r, 2000));
-                    if (window._excalidrawLatest && window._excalidrawLatest !== lastSaved) {
+                    if (!window._excalidrawLatest) { continue; }
+                    if (!armed) {
+                        lastSaved = window._excalidrawLatest;
+                        armed = true;
+                        continue;
+                    }
+                    if (window._excalidrawLatest !== lastSaved) {
                         lastSaved = window._excalidrawLatest;
                         window._excSaveQueue.push(lastSaved);
                     }

@@ -186,6 +186,10 @@
   color:      var(--warning);
   background: color-mix(in srgb, var(--warning) 12%, transparent);
 }
+.sync-badge.error {
+  color:      var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
 
 .sync-activity-popover {
   position: absolute;

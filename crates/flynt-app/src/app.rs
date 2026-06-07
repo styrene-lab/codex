@@ -16,7 +16,16 @@ use crate::{
 use dioxus::prelude::*;
 use flynt_core::store::ProjectStore;
 use rfd::FileDialog;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+fn write_file_if_changed(path: &Path, bytes: &[u8]) {
+    if std::fs::read(path).is_ok_and(|existing| existing == bytes) {
+        return;
+    }
+    if let Err(error) = std::fs::write(path, bytes) {
+        tracing::warn!(path = %path.display(), %error, "generated file write failed");
+    }
+}
 
 #[component]
 pub fn App() -> Element {
@@ -150,7 +159,7 @@ pub fn App() -> Element {
                         flynt_store::sync::AutoSyncStatus::Conflict(files) => {
                             SyncStatus::Conflict(files.len())
                         }
-                        flynt_store::sync::AutoSyncStatus::Error(_) => SyncStatus::Syncing, // transient
+                        flynt_store::sync::AutoSyncStatus::Error(_) => SyncStatus::Error,
                     };
                     let now = chrono::Utc::now();
                     match status {
@@ -222,7 +231,8 @@ pub fn App() -> Element {
             let tabs = tab_state.read().clone();
             let route = active_route.read().clone();
             let project = ui_ctx.project();
-            crate::ui_state::write_snapshot(&project, &tabs, &route);
+            let runtime_root = ui_ctx.omegon().local_state_root.clone();
+            crate::ui_state::write_snapshot(&project, &runtime_root, &tabs, &route);
         });
     }
 
@@ -233,8 +243,8 @@ pub fn App() -> Element {
     {
         let assets_ctx = ctx.clone();
         use_effect(move || {
-            let project = assets_ctx.project();
-            crate::design_board_assets::bootstrap(&project.root);
+            let runtime_root = assets_ctx.omegon().local_state_root.clone();
+            crate::design_board_assets::bootstrap(&runtime_root);
         });
     }
 
@@ -447,7 +457,7 @@ pub fn App() -> Element {
                             let mut eval = document::eval(&js);
                             if let Ok(svg) = eval.recv::<String>().await {
                                 if !svg.is_empty() {
-                                    let _ = std::fs::write(&svg_path, &svg);
+                                    write_file_if_changed(&svg_path, svg.as_bytes());
                                 }
                             }
                         }

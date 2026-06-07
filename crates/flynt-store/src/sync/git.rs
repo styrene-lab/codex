@@ -2,6 +2,7 @@ use anyhow::Result;
 use flynt_core::sync::{SyncBackend, SyncResult, SyncStatus};
 use git2::{
     Cred, DiffOptions, FetchOptions, IndexAddOption, Oid, PushOptions, RemoteCallbacks, Repository,
+    RepositoryState,
 };
 use std::path::{Path, PathBuf};
 use tracing::debug;
@@ -40,6 +41,10 @@ pub struct SyncDiagnostic {
     pub ahead: Option<usize>,
     pub behind: Option<usize>,
     pub remote_ref_available: bool,
+    pub detached_head: bool,
+    pub repository_state: String,
+    pub index_conflicts: Vec<String>,
+    pub blockers: Vec<String>,
 }
 
 impl GitSync {
@@ -147,6 +152,50 @@ impl GitSync {
         cb
     }
 
+    fn preflight_repo(repo: &Repository) -> Result<(String, bool, Vec<String>, Vec<String>)> {
+        let state = repo.state();
+        let state_label = repository_state_label(state).to_string();
+        let detached_head = repo.head_detached().unwrap_or(false);
+        let mut index_conflicts = Vec::new();
+        let mut blockers = Vec::new();
+
+        if state != RepositoryState::Clean {
+            blockers.push(format!(
+                "repository has an in-progress {state_label} operation"
+            ));
+        }
+        if detached_head {
+            blockers.push("repository is in detached HEAD state".into());
+        }
+
+        let index = repo.index()?;
+        if index.has_conflicts() {
+            index_conflicts = index
+                .conflicts()?
+                .filter_map(|conflict| conflict.ok())
+                .filter_map(|conflict| conflict.our.or(conflict.their).or(conflict.ancestor))
+                .filter_map(|entry| String::from_utf8(entry.path).ok())
+                .collect();
+            index_conflicts.sort();
+            index_conflicts.dedup();
+            blockers.push(format!(
+                "repository has unresolved index conflicts: {}",
+                index_conflicts.join(", ")
+            ));
+        }
+
+        Ok((state_label, detached_head, index_conflicts, blockers))
+    }
+
+    fn ensure_safe_to_sync(repo: &Repository) -> Result<()> {
+        let (_, _, _, blockers) = Self::preflight_repo(repo)?;
+        if blockers.is_empty() {
+            Ok(())
+        } else {
+            anyhow::bail!("sync preflight failed: {}", blockers.join("; "))
+        }
+    }
+
     fn fetch_options() -> FetchOptions<'static> {
         let mut opts = FetchOptions::new();
         opts.remote_callbacks(Self::credential_callbacks());
@@ -252,6 +301,15 @@ impl GitSync {
                 _ => (None, None, false),
             };
 
+        let (repository_state, detached_head, index_conflicts, mut blockers) =
+            Self::preflight_repo(&repo)?;
+        if !remote_ref_available {
+            blockers.push(format!(
+                "remote ref refs/remotes/{}/{} is not available; fetch or publish the branch before syncing",
+                self.remote, self.branch
+            ));
+        }
+
         Ok(SyncDiagnostic {
             backend: "git".into(),
             remote: self.remote.clone(),
@@ -261,7 +319,28 @@ impl GitSync {
             ahead,
             behind,
             remote_ref_available,
+            detached_head,
+            repository_state,
+            index_conflicts,
+            blockers,
         })
+    }
+}
+
+fn repository_state_label(state: RepositoryState) -> &'static str {
+    match state {
+        RepositoryState::Clean => "clean",
+        RepositoryState::Merge => "merge",
+        RepositoryState::Revert => "revert",
+        RepositoryState::RevertSequence => "revert-sequence",
+        RepositoryState::CherryPick => "cherry-pick",
+        RepositoryState::CherryPickSequence => "cherry-pick-sequence",
+        RepositoryState::Bisect => "bisect",
+        RepositoryState::Rebase => "rebase",
+        RepositoryState::RebaseInteractive => "rebase-interactive",
+        RepositoryState::RebaseMerge => "rebase-merge",
+        RepositoryState::ApplyMailbox => "apply-mailbox",
+        RepositoryState::ApplyMailboxOrRebase => "apply-mailbox-or-rebase",
     }
 }
 
@@ -475,6 +554,7 @@ impl SyncBackend for GitSync {
 
     fn pull(&self) -> Result<SyncResult> {
         let repo = self.open_repo()?;
+        Self::ensure_safe_to_sync(&repo)?;
         let mut remote = repo.find_remote(&self.remote)?;
         remote.fetch(&[&self.branch], Some(&mut Self::fetch_options()), None)?;
 
@@ -505,33 +585,23 @@ impl SyncBackend for GitSync {
             });
         }
 
-        // Non-fast-forward: attempt merge, detect conflicts
-        repo.merge(&[&fetch_annotated], None, None)?;
-        let index = repo.index()?;
-        if index.has_conflicts() {
-            let conflicts: Vec<String> = index
-                .conflicts()?
-                .filter_map(|c| c.ok())
-                .filter_map(|c| c.our.or(c.their))
-                .filter_map(|e| String::from_utf8(e.path).ok())
-                .collect();
-            repo.cleanup_state()?;
-            return Ok(SyncResult {
-                files_pulled: 0,
-                files_pushed: 0,
-                conflicts,
-            });
-        }
-        repo.cleanup_state()?;
+        // Non-fast-forward histories require merge/rebase semantics. Do not
+        // attempt an implicit libgit2 merge here: without a deliberate merge
+        // commit and conflict UX, it can leave the worktree/index in an
+        // ambiguous state and later auto-commit generated conflict markers.
         Ok(SyncResult {
-            files_pulled: 1,
+            files_pulled: 0,
             files_pushed: 0,
-            conflicts: vec![],
+            conflicts: vec![format!(
+                "local and {}/{} have diverged; resolve manually before syncing",
+                self.remote, self.branch
+            )],
         })
     }
 
     fn push(&self) -> Result<SyncResult> {
         let repo = self.open_repo()?;
+        Self::ensure_safe_to_sync(&repo)?;
         let mut remote = repo.find_remote(&self.remote)?;
         let refspec = format!("refs/heads/{}:refs/heads/{}", self.branch, self.branch);
         remote.push(&[&refspec], Some(&mut Self::push_options()))?;
@@ -560,6 +630,7 @@ impl GitSync {
     /// Stage all changes and commit. Safe to call even if working tree is clean.
     pub fn auto_commit(&self, message: &str) -> Result<()> {
         let repo = self.open_repo()?;
+        Self::ensure_safe_to_sync(&repo)?;
         let mut index = repo.index()?;
         // Stage all changes. IndexAddOption::DEFAULT respects .gitignore.
         // The .gitignore (created by Project::open) excludes .flynt-local/.
@@ -647,5 +718,105 @@ mod tag_tests {
 
         git.create_tag("unique", None).unwrap();
         assert!(git.create_tag("unique", None).is_err());
+    }
+}
+
+#[cfg(test)]
+mod sync_pull_tests {
+    use super::*;
+    use git2::{Repository, Signature};
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn commit_file(repo: &Repository, path: &str, content: &str, message: &str) -> Oid {
+        let workdir = repo.workdir().unwrap();
+        let abs = workdir.join(path);
+        if let Some(parent) = abs.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(abs, content).unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new(path)).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let sig = Signature::now("Test", "test@example.com").unwrap();
+        let parents = repo
+            .head()
+            .ok()
+            .and_then(|head| head.peel_to_commit().ok())
+            .map(|parent| vec![parent])
+            .unwrap_or_default();
+        let parent_refs: Vec<_> = parents.iter().collect();
+        repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parent_refs)
+            .unwrap()
+    }
+
+    fn setup_remote_and_local() -> (TempDir, PathBuf, Repository, Repository) {
+        let tmp = TempDir::new().unwrap();
+        let remote_path = tmp.path().join("remote.git");
+        let remote = Repository::init_bare(&remote_path).unwrap();
+
+        let seed_path = tmp.path().join("seed");
+        let seed = Repository::init(&seed_path).unwrap();
+        commit_file(&seed, "README.md", "base\n", "base");
+        seed.remote("origin", remote_path.to_str().unwrap())
+            .unwrap();
+        seed.find_remote("origin")
+            .unwrap()
+            .push(&["refs/heads/main:refs/heads/main"], None)
+            .unwrap();
+
+        let local_path = tmp.path().join("local");
+        let local = Repository::clone(remote_path.to_str().unwrap(), &local_path).unwrap();
+        (tmp, remote_path, local, remote)
+    }
+
+    #[test]
+    fn pull_fast_forward_updates_worktree() {
+        let (_tmp, remote_path, local, _remote) = setup_remote_and_local();
+        let upstream_path = local.workdir().unwrap().parent().unwrap().join("upstream");
+        let upstream = Repository::clone(remote_path.to_str().unwrap(), &upstream_path).unwrap();
+        commit_file(&upstream, "Remote.md", "remote\n", "remote change");
+        upstream
+            .find_remote("origin")
+            .unwrap()
+            .push(&["refs/heads/main:refs/heads/main"], None)
+            .unwrap();
+
+        let git = GitSync::new(local.workdir().unwrap().to_path_buf(), "origin", "main");
+        let result = git.pull().unwrap();
+
+        assert!(result.conflicts.is_empty());
+        assert_eq!(result.files_pulled, 1);
+        assert_eq!(
+            fs::read_to_string(local.workdir().unwrap().join("Remote.md")).unwrap(),
+            "remote\n"
+        );
+        assert!(local.statuses(None).unwrap().is_empty());
+    }
+
+    #[test]
+    fn pull_divergence_reports_conflict_without_dirtying_worktree() {
+        let (_tmp, remote_path, local, _remote) = setup_remote_and_local();
+        let upstream_path = local.workdir().unwrap().parent().unwrap().join("upstream");
+        let upstream = Repository::clone(remote_path.to_str().unwrap(), &upstream_path).unwrap();
+        commit_file(&local, "Local.md", "local\n", "local change");
+        commit_file(&upstream, "Remote.md", "remote\n", "remote change");
+        upstream
+            .find_remote("origin")
+            .unwrap()
+            .push(&["refs/heads/main:refs/heads/main"], None)
+            .unwrap();
+
+        let git = GitSync::new(local.workdir().unwrap().to_path_buf(), "origin", "main");
+        let result = git.pull().unwrap();
+
+        assert_eq!(result.files_pulled, 0);
+        assert_eq!(result.files_pushed, 0);
+        assert_eq!(result.conflicts.len(), 1);
+        assert!(result.conflicts[0].contains("diverged"));
+        assert!(!local.workdir().unwrap().join("Remote.md").exists());
+        assert!(local.statuses(None).unwrap().is_empty());
     }
 }

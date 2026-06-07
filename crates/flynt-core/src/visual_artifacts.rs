@@ -541,7 +541,10 @@ mod tests {
     fn content_without_frontmatter_returns_body_after_closing_delimiter() {
         let content = "+++\ntitle = \"Map\"\n+++\n\n![[map.excalidraw]]\n";
 
-        assert_eq!(content_without_frontmatter(content), "\n\n![[map.excalidraw]]\n");
+        assert_eq!(
+            content_without_frontmatter(content),
+            "\n\n![[map.excalidraw]]\n"
+        );
     }
 
     #[test]

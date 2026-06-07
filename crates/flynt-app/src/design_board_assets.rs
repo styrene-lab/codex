@@ -1,9 +1,9 @@
 //! DesignBoard asset bootstrap — copies bundled tweakcn presets and shadcn
-//! primitives into the project's `.flynt-local/flynt/assets/` directory so
+//! primitives into the project's `assets/` directory so
 //! `flynt-agent` (a separate binary) can read them via the `design_board_*`
 //! tools (phase 5).
 //!
-//! Why a project-side copy? `flynt-app` and `flynt-agent` are two binaries
+//! Why a runtime-side copy? `flynt-app` and `flynt-agent` are two binaries
 //! installed into different locations. The app has the bundled assets
 //! via `include_str!`; the agent needs to find them without depending on
 //! the app's install path. Putting a copy under `.flynt-local/flynt/` is
@@ -19,15 +19,12 @@ use std::path::Path;
 const TWEAKCN_PRESETS: &[u8] = include_bytes!("../assets/vendor/tweakcn-presets.json");
 const SHADCN_PRIMITIVES: &[u8] = include_bytes!("../assets/vendor/shadcn-primitives.json");
 
-/// Copy bundled design board assets into `<project>/.flynt-local/flynt/assets/`
+/// Copy bundled design board assets into `<project>/assets/`
 /// if they're missing or stale. Errors are logged but not propagated —
-/// the design board still renders without the project-side copy; the only
+/// the design board still renders without the runtime-side copy; the only
 /// surface that requires it is the `design_board_*` agent tool family.
-pub fn bootstrap(project_root: &Path) {
-    let dir = project_root
-        .join(".flynt-local")
-        .join("flynt")
-        .join("assets");
+pub fn bootstrap(runtime_root: &Path) {
+    let dir = runtime_root.join("assets");
     if let Err(e) = std::fs::create_dir_all(&dir) {
         tracing::warn!("design_board asset dir create failed: {e}");
         return;
@@ -57,12 +54,8 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         bootstrap(tmp.path());
 
-        let presets = tmp
-            .path()
-            .join(".flynt-local/flynt/assets/tweakcn-presets.json");
-        let primitives = tmp
-            .path()
-            .join(".flynt-local/flynt/assets/shadcn-primitives.json");
+        let presets = tmp.path().join("assets/tweakcn-presets.json");
+        let primitives = tmp.path().join("assets/shadcn-primitives.json");
         assert!(presets.exists(), "presets file should be written");
         assert!(primitives.exists(), "primitives file should be written");
     }
@@ -72,9 +65,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         bootstrap(tmp.path());
 
-        let presets = tmp
-            .path()
-            .join(".flynt-local/flynt/assets/tweakcn-presets.json");
+        let presets = tmp.path().join("assets/tweakcn-presets.json");
         let parsed: serde_json::Value =
             serde_json::from_slice(&std::fs::read(&presets).unwrap()).unwrap();
         assert!(
@@ -82,9 +73,7 @@ mod tests {
             "at least one bundled theme should be present"
         );
 
-        let primitives = tmp
-            .path()
-            .join(".flynt-local/flynt/assets/shadcn-primitives.json");
+        let primitives = tmp.path().join("assets/shadcn-primitives.json");
         let parsed: serde_json::Value =
             serde_json::from_slice(&std::fs::read(&primitives).unwrap()).unwrap();
         assert_eq!(parsed["version"], 1);
@@ -95,9 +84,7 @@ mod tests {
     fn bootstrap_is_idempotent() {
         let tmp = TempDir::new().unwrap();
         bootstrap(tmp.path());
-        let path = tmp
-            .path()
-            .join(".flynt-local/flynt/assets/tweakcn-presets.json");
+        let path = tmp.path().join("assets/tweakcn-presets.json");
         let mtime1 = std::fs::metadata(&path).unwrap().modified().unwrap();
 
         // Second call shouldn't rewrite an unchanged file.
@@ -110,7 +97,7 @@ mod tests {
     #[test]
     fn bootstrap_repairs_corrupted_file() {
         let tmp = TempDir::new().unwrap();
-        let dir = tmp.path().join(".flynt-local/flynt/assets");
+        let dir = tmp.path().join("assets");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("tweakcn-presets.json");
         std::fs::write(&path, b"corrupted").unwrap();

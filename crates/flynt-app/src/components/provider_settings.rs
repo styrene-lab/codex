@@ -7,12 +7,21 @@ fn parse_live_provider_status(text: &str) -> HashMap<String, CredentialStatus> {
     text.lines()
         .filter_map(|line| {
             let parts: Vec<&str> = line.splitn(3, ':').collect();
-            if parts.len() < 2 { return None; }
+            if parts.len() < 2 {
+                return None;
+            }
             let id = parts[0].trim().to_string();
             let status = match parts[1].trim() {
-                "ok" | "authenticated" | "available" | "configured" => CredentialStatus::Authenticated {
-                    source: parts.get(2).map(|s| s.trim()).filter(|s| !s.is_empty()).unwrap_or("omegon").to_string(),
-                },
+                "ok" | "authenticated" | "available" | "configured" => {
+                    CredentialStatus::Authenticated {
+                        source: parts
+                            .get(2)
+                            .map(|s| s.trim())
+                            .filter(|s| !s.is_empty())
+                            .unwrap_or("omegon")
+                            .to_string(),
+                    }
+                }
                 "expired" => CredentialStatus::Expired,
                 _ => CredentialStatus::Missing,
             };
@@ -21,7 +30,10 @@ fn parse_live_provider_status(text: &str) -> HashMap<String, CredentialStatus> {
         .collect()
 }
 
-async fn live_provider_status_for(sess: Rc<AcpSession>, provider_id: &str) -> Option<CredentialStatus> {
+async fn live_provider_status_for(
+    sess: Rc<AcpSession>,
+    provider_id: &str,
+) -> Option<CredentialStatus> {
     let resp = sess.provider_status().await.ok()?;
     let text = resp["text"].as_str()?;
     parse_live_provider_status(text).remove(provider_id)
@@ -100,7 +112,10 @@ fn ProviderRow(
     let mut logging_in = use_signal(|| false);
 
     let (status_class, status_text) = match &status {
-        CredentialStatus::Authenticated { source } => ("provider-status authenticated", format!("Authenticated ({source})")),
+        CredentialStatus::Authenticated { source } => (
+            "provider-status authenticated",
+            format!("Authenticated ({source})"),
+        ),
         CredentialStatus::Expired => ("provider-status expired", "Expired".to_string()),
         CredentialStatus::Missing => ("provider-status missing", "Not configured".to_string()),
     };

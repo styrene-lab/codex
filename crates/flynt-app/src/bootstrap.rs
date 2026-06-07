@@ -348,13 +348,13 @@ impl OmegonRuntimeContext {
         indexing: flynt_core::models::IndexingConfig,
     ) -> anyhow::Result<Project> {
         std::fs::create_dir_all(path)?;
-        let project = Project::open(path)?;
+        let project = Project::open_managed(path)?;
         let mut config: ProjectConfig = project.config.clone();
         config.project_name = name.to_string();
         config.sync = sync;
         config.indexing = indexing;
         project.save_config(&config)?;
-        let project = Project::open(path)?;
+        let project = Project::open_managed(path)?;
         let mut profile = Self::load_launcher_profile();
         Self::register_known_project(&mut profile, path, name);
         Self::save_launcher_profile(&profile)?;
@@ -1238,7 +1238,7 @@ pub(crate) fn runtime_state_for_project_root(project_root: PathBuf) -> RuntimeSt
         Err(e) => warn!("Reindex failed: {e}"),
     }
 
-    {
+    if project.config.indexing.track_index_snapshot {
         let project_root_for_registry = project_root.clone();
         let project_for_registry = Arc::clone(&project);
         std::thread::spawn(move || {
@@ -1253,8 +1253,9 @@ pub(crate) fn runtime_state_for_project_root(project_root: PathBuf) -> RuntimeSt
         tx.clone(),
     ));
 
-    // Ensure default templates exist
-    let _ = flynt_core::templates::ensure_default_templates(&project_root);
+    // Default templates are bundled fallbacks. Do not materialize them into
+    // the syncable vault on idle open; project templates are written only by
+    // explicit customization/install flows.
 
     // iCloud: download any placeholder files before indexing
     if matches!(project.config.sync, flynt_core::models::SyncConfig::ICloud) {
@@ -1311,17 +1312,10 @@ pub(crate) fn runtime_state_for_project_root(project_root: PathBuf) -> RuntimeSt
         }
         _ => (None, None),
     };
-    // Ensure the Flynt-scoped Omegon deployment manifest exists before
-    // starting ACP/daemon surfaces. This keeps Flynt activation separate
-    // from the operator's global ~/.omegon profile while still allowing
-    // shared installed artifacts to be referenced by scope.
-    let _deployment_manifest = match omegon.ensure_deployment_manifest() {
-        Ok(manifest) => manifest,
-        Err(e) => {
-            warn!("Failed to ensure Flynt Omegon deployment manifest: {e}");
-            flynt_core::omegon_deployment::OmegonDeploymentManifest::default()
-        }
-    };
+    // Load Flynt-scoped Omegon activation defaults without writing project
+    // deployment config on idle open. Settings/actions that intentionally
+    // change deployment state are responsible for persisting the manifest.
+    let _deployment_manifest = omegon.load_deployment_manifest();
 
     // Initialize daemon manager from operator settings
     let operator_settings = omegon.load_operator_settings();
@@ -1348,7 +1342,10 @@ pub(crate) fn runtime_state_for_project_root(project_root: PathBuf) -> RuntimeSt
     // Pipeline construction can fail (e.g., .flynt dir not writable
     // for a read-only / fallback project root); in that case we run
     // without auto-push — the SyncStatusPill falls back to LocalOnly.
-    let push_pipeline = match crate::push_pipeline::PushPipeline::new(project.clone()) {
+    let push_pipeline = match crate::push_pipeline::PushPipeline::new(
+        project.clone(),
+        omegon.local_state_root.join("forge-sync.db"),
+    ) {
         Ok(p) => {
             project.install_save_hook(p.clone());
             p.clone().spawn_drain_loop();
