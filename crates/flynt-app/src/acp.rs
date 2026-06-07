@@ -190,8 +190,44 @@ pub struct OmegonPlanTasksContract {
     pub pagination: bool,
     #[serde(default)]
     pub filtering: bool,
+    #[serde(default)]
+    pub external_import: Option<OmegonExternalImportCapability>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct OmegonExternalImportCapability {
+    #[serde(default)]
+    pub supported: bool,
+    #[serde(default)]
+    pub durability: Vec<String>,
+    #[serde(default)]
+    pub targets: Vec<String>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+impl OmegonExternalImportCapability {
+    pub fn supports_session_import(&self) -> bool {
+        self.supported
+            && self.durability.iter().any(|entry| entry == "session")
+            && self.targets.iter().any(|entry| entry == "session")
+    }
+}
+
+impl OmegonPlanTasksContract {
+    pub fn supports(&self, mode: &str) -> bool {
+        self.compatibility.iter().any(|entry| entry == mode)
+    }
+
+    pub fn allows_repo_bind(&self) -> bool {
+        self.durable_bind && self.supports("repo_bind")
+    }
+
+    pub fn allows_session_bind(&self) -> bool {
+        self.supports("session_bind")
+    }
 }
 
 /// Source artifact information for projected Omegon tasks.
@@ -243,6 +279,8 @@ pub struct OmegonTaskSummary {
     #[serde(default)]
     pub stable_id: Option<String>,
     #[serde(default)]
+    pub stable_id_quality: Option<String>,
+    #[serde(default)]
     pub source: Option<OmegonTaskSourceRef>,
     #[serde(default)]
     pub plan_id: Option<String>,
@@ -267,6 +305,8 @@ pub struct OmegonTaskDetail {
     #[serde(default)]
     pub stable_id: Option<String>,
     #[serde(default)]
+    pub stable_id_quality: Option<String>,
+    #[serde(default)]
     pub source: Option<OmegonTaskSourceRef>,
     #[serde(default)]
     pub plan_id: Option<String>,
@@ -284,14 +324,114 @@ pub struct OmegonTaskDetail {
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OmegonTaskBindDurability {
+    Session,
+    Repo,
+}
+
+impl OmegonTaskBindDurability {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Session => "session",
+            Self::Repo => "repo",
+        }
+    }
+}
+
+/// Result envelope returned by Omegon `_tasks/bind`.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct OmegonTaskBindResponse {
+    #[serde(default)]
+    pub accepted: bool,
+    #[serde(default)]
+    pub durability: Option<String>,
+    #[serde(default)]
+    pub revision: Option<String>,
+    #[serde(default)]
+    pub binding: Option<OmegonTaskBinding>,
+    #[serde(default)]
+    pub code: Option<String>,
+    #[serde(default)]
+    pub error: Option<String>,
+    #[serde(default)]
+    pub warning: Option<String>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+impl OmegonTaskBindResponse {
+    pub fn is_repo_durable(&self) -> bool {
+        self.accepted && self.durability.as_deref() == Some("repo")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct OmegonTaskBinding {
+    pub task_id: String,
+    #[serde(default)]
+    pub stable_id: Option<String>,
+    pub system: String,
+    pub external_task_id: String,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct OmegonTaskEventsResponse {
+    #[serde(default)]
+    pub events: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub durability: Option<String>,
+    #[serde(default)]
+    pub note: Option<String>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct OmegonExternalTaskImportResponse {
+    #[serde(default)]
+    pub accepted: bool,
+    #[serde(default)]
+    pub durability: Option<String>,
+    #[serde(default)]
+    pub review: Option<OmegonExternalTaskImportReview>,
+    #[serde(default)]
+    pub code: Option<String>,
+    #[serde(default)]
+    pub error: Option<String>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct OmegonExternalTaskImportReview {
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default)]
+    pub reason: Option<String>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+fn ensure_projection_id(id: &str, field: &str) -> Result<()> {
+    if id.trim().is_empty() {
+        anyhow::bail!("{field} is required");
+    }
+    Ok(())
+}
+
 fn unwrap_projection_payload(value: serde_json::Value, key: &str) -> serde_json::Value {
     match value {
         serde_json::Value::Object(mut object) => object
             .remove(key)
-            .or_else(|| object.remove("result").and_then(|mut result| match result {
-                serde_json::Value::Object(ref mut result_object) => result_object.remove(key),
-                other => Some(other),
-            }))
+            .or_else(|| {
+                object.remove("result").and_then(|mut result| match result {
+                    serde_json::Value::Object(ref mut result_object) => result_object.remove(key),
+                    other => Some(other),
+                })
+            })
             .unwrap_or(serde_json::Value::Object(object)),
         other => other,
     }
@@ -301,7 +441,9 @@ fn parse_projection<T: serde::de::DeserializeOwned>(
     value: serde_json::Value,
     key: &str,
 ) -> Result<T> {
-    Ok(serde_json::from_value(unwrap_projection_payload(value, key))?)
+    Ok(serde_json::from_value(unwrap_projection_payload(
+        value, key,
+    ))?)
 }
 
 /// Extract config options from ACP SessionConfigOption list.
@@ -1212,7 +1354,9 @@ impl AcpSession {
 
     /// Query Omegon runtime capabilities. This is read-only discovery.
     pub async fn omegon_runtime_capabilities(&self) -> Result<OmegonRuntimeCapabilities> {
-        let value = self.ext_call("_runtime/capabilities", serde_json::json!({})).await?;
+        let value = self
+            .ext_call("_runtime/capabilities", serde_json::json!({}))
+            .await?;
         parse_projection(value, "capabilities")
     }
 
@@ -1224,6 +1368,7 @@ impl AcpSession {
 
     /// Show one projected Omegon plan. Does not mutate or bind anything.
     pub async fn omegon_plan_show(&self, plan_id: &str) -> Result<OmegonPlanDetail> {
+        ensure_projection_id(plan_id, "plan_id")?;
         let value = self
             .ext_call("_plans/show", serde_json::json!({ "plan_id": plan_id }))
             .await?;
@@ -1232,9 +1377,25 @@ impl AcpSession {
 
     /// List projected Omegon tasks as read-only external planning context.
     pub async fn omegon_tasks_list(&self, plan_id: Option<&str>) -> Result<Vec<OmegonTaskSummary>> {
+        self.omegon_tasks_list_filtered(plan_id, None, None).await
+    }
+
+    /// List projected Omegon tasks with supported read-only filters.
+    pub async fn omegon_tasks_list_filtered(
+        &self,
+        plan_id: Option<&str>,
+        source: Option<&str>,
+        status: Option<&str>,
+    ) -> Result<Vec<OmegonTaskSummary>> {
         let mut params = serde_json::json!({});
-        if let Some(plan_id) = plan_id {
+        if let Some(plan_id) = plan_id.filter(|value| !value.trim().is_empty()) {
             params["plan_id"] = serde_json::Value::String(plan_id.into());
+        }
+        if let Some(source) = source.filter(|value| !value.trim().is_empty()) {
+            params["source"] = serde_json::Value::String(source.into());
+        }
+        if let Some(status) = status.filter(|value| !value.trim().is_empty()) {
+            params["status"] = serde_json::Value::String(status.into());
         }
         let value = self.ext_call("_tasks/list", params).await?;
         parse_projection(value, "tasks")
@@ -1242,10 +1403,74 @@ impl AcpSession {
 
     /// Show one projected Omegon task. Does not call `_tasks/bind`.
     pub async fn omegon_task_show(&self, task_id: &str) -> Result<OmegonTaskDetail> {
+        ensure_projection_id(task_id, "task_id")?;
         let value = self
             .ext_call("_tasks/show", serde_json::json!({ "task_id": task_id }))
             .await?;
         parse_projection(value, "task")
+    }
+
+    /// Best-effort session-local task binding hint.
+    ///
+    /// This wrapper deliberately requests `session` durability by default and returns the raw
+    /// durability envelope. Callers must not treat the result as authoritative unless Omegon
+    /// eventually returns `durability: "repo"` and the capability contract advertises repo bind.
+    pub async fn omegon_task_bind(
+        &self,
+        task_id: &str,
+        system: &str,
+        external_task_id: &str,
+        expected_revision: Option<&str>,
+        requested_durability: OmegonTaskBindDurability,
+    ) -> Result<OmegonTaskBindResponse> {
+        ensure_projection_id(task_id, "task_id")?;
+        ensure_projection_id(external_task_id, "external_task_id")?;
+        let mut params = serde_json::json!({
+            "task_id": task_id,
+            "system": if system.trim().is_empty() { "external" } else { system },
+            "external_task_id": external_task_id,
+            "requested_durability": requested_durability.as_str(),
+        });
+        if let Some(expected_revision) = expected_revision.filter(|value| !value.trim().is_empty())
+        {
+            params["expected_revision"] = serde_json::Value::String(expected_revision.into());
+        }
+        let value = self.ext_call("_tasks/bind", params).await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    /// Read session-local task events. Repo-durable event cursors are not currently advertised.
+    pub async fn omegon_task_events(&self) -> Result<OmegonTaskEventsResponse> {
+        let value = self
+            .ext_call("_tasks/events", serde_json::json!({}))
+            .await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    /// Import a Flynt-owned task as Omegon session-local review context.
+    ///
+    /// This does not create durable OpenSpec/design lifecycle state. It is the online equivalent
+    /// of a promotion draft when Omegon advertises `_external_tasks/import` for session targets.
+    pub async fn omegon_external_task_import_session(
+        &self,
+        external_task_id: &str,
+        title: &str,
+        body: &str,
+    ) -> Result<OmegonExternalTaskImportResponse> {
+        ensure_projection_id(external_task_id, "external_task_id")?;
+        let value = self
+            .ext_call(
+                "_external_tasks/import",
+                serde_json::json!({
+                    "system": "flynt",
+                    "external_task_id": external_task_id,
+                    "title": title,
+                    "body": body,
+                    "target": { "kind": "session" },
+                }),
+            )
+            .await?;
+        Ok(serde_json::from_value(value)?)
     }
 
     /// Install agents from the armory (or bundled fallback).
@@ -1394,8 +1619,17 @@ mod tests {
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].id, "task-a");
         assert_eq!(tasks[0].stable_id.as_deref(), Some("stable-task-a"));
-        assert_eq!(tasks[0].source.as_ref().map(|source| source.kind.as_str()), Some("openspec"));
-        assert_eq!(tasks[0].source.as_ref().and_then(|source| source.anchor.as_deref()), Some("1.1"));
+        assert_eq!(
+            tasks[0].source.as_ref().map(|source| source.kind.as_str()),
+            Some("openspec")
+        );
+        assert_eq!(
+            tasks[0]
+                .source
+                .as_ref()
+                .and_then(|source| source.anchor.as_deref()),
+            Some("1.1")
+        );
         assert_eq!(tasks[0].supported_mutations, vec!["bind_external_ref"]);
     }
 
@@ -1412,9 +1646,15 @@ mod tests {
         let task: OmegonTaskDetail = parse_projection(value, "task").unwrap();
 
         assert_eq!(task.id, "task-a");
-        assert_eq!(task.source.as_ref().map(|source| source.kind.as_str()), Some("openspec"));
         assert_eq!(
-            task.extra.get("custom").and_then(|custom| custom.get("nested")).and_then(|nested| nested.as_bool()),
+            task.source.as_ref().map(|source| source.kind.as_str()),
+            Some("openspec")
+        );
+        assert_eq!(
+            task.extra
+                .get("custom")
+                .and_then(|custom| custom.get("nested"))
+                .and_then(|nested| nested.as_bool()),
             Some(true)
         );
     }
@@ -1430,20 +1670,112 @@ mod tests {
                     "durable_bind": false,
                     "structured_errors": true,
                     "pagination": false,
-                    "filtering": true
+                    "filtering": true,
+                    "external_import": {
+                        "supported": true,
+                        "durability": ["session"],
+                        "targets": ["session"]
+                    }
                 }
             }
         });
 
-        let capabilities: OmegonRuntimeCapabilities = parse_projection(value, "capabilities").unwrap();
+        let capabilities: OmegonRuntimeCapabilities =
+            parse_projection(value, "capabilities").unwrap();
         let contract = capabilities.plan_tasks_contract().unwrap();
 
-        assert_eq!(contract.compatibility, vec!["read_only", "manual_link", "session_bind"]);
+        assert_eq!(
+            contract.compatibility,
+            vec!["read_only", "manual_link", "session_bind"]
+        );
+        assert!(contract.supports("read_only"));
+        assert!(contract.allows_session_bind());
+        assert!(!contract.allows_repo_bind());
         assert!(contract.stable_id);
         assert!(contract.revision);
         assert!(!contract.durable_bind);
         assert!(contract.structured_errors);
         assert!(contract.filtering);
         assert!(!contract.pagination);
+        assert!(
+            contract
+                .external_import
+                .as_ref()
+                .unwrap()
+                .supports_session_import()
+        );
+    }
+
+    #[test]
+    fn parses_external_task_import_response() {
+        let response: OmegonExternalTaskImportResponse =
+            serde_json::from_value(serde_json::json!({
+                "accepted": true,
+                "durability": "session",
+                "review": {
+                    "required": true,
+                    "reason": "Imported as session-local external task context"
+                }
+            }))
+            .unwrap();
+
+        assert!(response.accepted);
+        assert_eq!(response.durability.as_deref(), Some("session"));
+        assert!(response.review.as_ref().unwrap().required);
+    }
+
+    #[test]
+    fn bind_response_distinguishes_session_from_repo_durable() {
+        let session: OmegonTaskBindResponse = serde_json::from_value(serde_json::json!({
+            "accepted": true,
+            "durability": "session",
+            "revision": "source-v1:demo",
+            "binding": {
+                "task_id": "task-a",
+                "stable_id": "stable-task-a",
+                "system": "flynt",
+                "external_task_id": "flynt-task-a"
+            },
+            "warning": "session/local hint only"
+        }))
+        .unwrap();
+        assert!(!session.is_repo_durable());
+        assert_eq!(session.binding.as_ref().unwrap().system, "flynt");
+
+        let repo: OmegonTaskBindResponse = serde_json::from_value(serde_json::json!({
+            "accepted": true,
+            "durability": "repo",
+            "binding": {
+                "task_id": "task-a",
+                "system": "flynt",
+                "external_task_id": "flynt-task-a"
+            }
+        }))
+        .unwrap();
+        assert!(repo.is_repo_durable());
+    }
+
+    #[test]
+    fn bind_response_preserves_structured_errors() {
+        let stale: OmegonTaskBindResponse = serde_json::from_value(serde_json::json!({
+            "accepted": false,
+            "durability": "none",
+            "code": "stale_revision",
+            "revision": "source-v1:demo",
+            "error": "task revision does not match expected_revision"
+        }))
+        .unwrap();
+
+        assert!(!stale.accepted);
+        assert_eq!(stale.durability.as_deref(), Some("none"));
+        assert_eq!(stale.code.as_deref(), Some("stale_revision"));
+        assert_eq!(stale.revision.as_deref(), Some("source-v1:demo"));
+        assert!(!stale.is_repo_durable());
+    }
+
+    #[test]
+    fn ensure_projection_id_rejects_blank_values() {
+        assert!(ensure_projection_id("task-a", "task_id").is_ok());
+        assert!(ensure_projection_id("  ", "task_id").is_err());
     }
 }

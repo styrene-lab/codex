@@ -79,7 +79,7 @@ pub enum TaskStatus {
 // ── Decay ───────────────────────────────────────────────────────────────────
 
 /// Controls how quickly a task loses relevance without interaction.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum DecayRate {
     /// No decay — stays fully relevant until manually resolved.
@@ -87,17 +87,12 @@ pub enum DecayRate {
     /// Slow decay — ~14 day half-life.
     Slow,
     /// Natural decay — ~7 day half-life. Default.
+    #[default]
     Natural,
     /// Fast decay — ~3 day half-life.
     Fast,
     /// Custom half-life in days.
     Custom(f64),
-}
-
-impl Default for DecayRate {
-    fn default() -> Self {
-        Self::Natural
-    }
 }
 
 impl DecayRate {

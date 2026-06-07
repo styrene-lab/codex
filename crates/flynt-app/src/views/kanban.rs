@@ -1,3 +1,4 @@
+use crate::acp::AcpSession;
 use crate::bootstrap::AppContext;
 use crate::state::{Route, TabState};
 use chrono::Utc;
@@ -6,8 +7,13 @@ use flynt_core::{
     models::{
         Board, BoardId, Column, Engagement, EngagementId, Priority, Task, TaskId, TaskStatus,
     },
+    omegon_plan_link::{
+        OmegonPromotionDraft, OmegonPromotionOriginalTask, find_omegon_plan_task_links,
+        find_omegon_promotion_drafts, upsert_omegon_promotion_draft,
+    },
     store::{ProjectStore, TaskFilter},
 };
+use std::rc::Rc;
 
 // ── Shared async helpers (avoid move-closure duplication) ────────────────────
 
@@ -54,6 +60,84 @@ async fn create_board(ctx: AppContext, name: String) -> anyhow::Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))??;
     Ok(())
+}
+
+async fn create_omegon_promotion_draft(ctx: AppContext, task_id: TaskId) -> anyhow::Result<()> {
+    let project = ctx.project();
+    tokio::task::spawn_blocking(move || {
+        let Some(mut task) = project.store.get_task(&task_id)? else {
+            return Ok(());
+        };
+        let original = OmegonPromotionOriginalTask {
+            title: task.title.clone(),
+            body: task.description.clone(),
+            board_id: task.board_id.0.to_string(),
+            column: task.column.clone(),
+            tags: task.tags.clone(),
+        };
+        let draft = OmegonPromotionDraft::new(
+            task.id.0.to_string(),
+            Utc::now().to_rfc3339(),
+            original,
+            "Omegon was unavailable when promotion was requested.",
+        );
+        upsert_omegon_promotion_draft(&mut task.external_refs, draft);
+        if !task.tags.iter().any(|tag| tag == "omegon-promotion-draft") {
+            task.tags.push("omegon-promotion-draft".to_string());
+        }
+        task.updated_at = Utc::now();
+        project.persist_task(&task)
+    })
+    .await
+    .map_err(|e| anyhow::anyhow!("{e}"))??;
+    Ok(())
+}
+
+fn omegon_promotion_prompt(task: &Task) -> String {
+    serde_json::json!({
+        "kind": "flynt_task_omegon_promotion_request",
+        "system": "flynt",
+        "external_task_id": task.id.0.to_string(),
+        "authority_model": {
+            "current_owner": "flynt",
+            "until": "Omegon accepts a bind/import/promotion result",
+            "local_omegon_plan_refs_are_not_reciprocal_binding_proof": true
+        },
+        "task": {
+            "title": task.title,
+            "body": task.description,
+            "board_id": task.board_id.0.to_string(),
+            "column": task.column,
+            "status": format!("{:?}", task.status),
+            "priority": format!("{:?}", task.priority),
+            "tags": task.tags,
+            "external_refs": task.external_refs,
+            "openspec_change": task.openspec_change,
+            "design_node_id": task.design_node_id.map(|id| id.to_string())
+        },
+        "instructions": [
+            "Treat the Flynt task as Flynt-owned until Omegon accepts a bind/import/promotion.",
+            "First search existing Omegon plan/task projections for a matching lifecycle task.",
+            "If a matching stable task exists, call _tasks/bind with requested_durability=repo and expected_revision.",
+            "If no matching task exists, ask/propose the correct lifecycle target: session plan, design node, or OpenSpec change.",
+            "Do not directly edit lifecycle artifacts unless operating through Omegon-authorized ACP/tooling.",
+            "Preserve the original Flynt content as evidence/context.",
+            "Return the accepted binding/import result or a review-needed reason."
+        ]
+    }).to_string()
+}
+
+fn omegon_promotion_state(task: &Task) -> (&'static str, &'static str) {
+    if !find_omegon_promotion_drafts(&task.external_refs).is_empty() {
+        return ("pending", "Omegon promotion pending review");
+    }
+    if !find_omegon_plan_task_links(&task.external_refs).is_empty() {
+        return (
+            "local",
+            "Flynt-local Omegon link; reciprocal binding not proven",
+        );
+    }
+    ("local", "Flynt-owned local task")
 }
 
 async fn delete_board(ctx: AppContext, board_id: BoardId) -> anyhow::Result<()> {
@@ -729,6 +813,7 @@ fn TaskCard(
     let ctx = use_context::<AppContext>();
     let mut tab_state = use_context::<Signal<TabState>>();
     let mut active_route = use_context::<Signal<Route>>();
+    let shared_session = use_context::<Signal<Option<Rc<AcpSession>>>>();
     let mut open = use_signal(|| false);
     // The inline editor is intentionally narrow: title rename, priority
     // quick-toggle, engagement quick-toggle. Description, sentry triggers,
@@ -748,6 +833,8 @@ fn TaskCard(
     let tid_open = task.id.clone();
     let ctx_archive = ctx.clone();
     let ctx_open = ctx.clone();
+    let ctx_promote = ctx.clone();
+    let task_promote = task.clone();
     let priority_class = priority_badge_class(task.priority);
 
     rsx! {
@@ -807,15 +894,26 @@ fn TaskCard(
                     };
                     let has_engagement = engagement_label.is_some();
                     let any = has_cron || has_webhook || has_model || has_design || has_spec || has_engagement;
-                    any.then(|| {
+                    {
+                        let (promotion_state, _promotion_title) = omegon_promotion_state(&task);
+                        let promotion_any = promotion_state != "local" || !find_omegon_plan_task_links(&task.external_refs).is_empty();
+                        any || promotion_any
+                    }.then(|| {
                         let cron_text = task.cron_trigger().map(String::from);
                         let webhook_text = task.webhook_trigger().map(String::from);
                         let model_text = task.execution.as_ref()
                             .and_then(|e| e.model.as_deref())
                             .map(short_model_label);
                         let spec_text = task.openspec_change.clone();
+                        let (promotion_state, promotion_title) = omegon_promotion_state(&task);
+                        let linked_count = find_omegon_plan_task_links(&task.external_refs).len();
                         rsx! {
                             div { class: "task-card-chips",
+                                if promotion_state == "pending" {
+                                    span { class: "task-chip task-chip-warning", title: "{promotion_title}", "⇧ pending" }
+                                } else if linked_count > 0 {
+                                    span { class: "task-chip task-chip-spec", title: "{promotion_title}", "⇧ local-link" }
+                                }
                                 if let Some(name) = engagement_label {
                                     span {
                                         class: "task-chip task-chip-engagement",
@@ -990,6 +1088,34 @@ fn TaskCard(
                                 });
                             },
                             "Open in editor"
+                        }
+
+                        button {
+                            class: "btn",
+                            title: "Promote this Flynt-owned task to Omegon lifecycle through explicit review/acceptance",
+                            onclick: move |_| {
+                                if let Some(sess) = shared_session.read().clone() {
+                                    let prompt = omegon_promotion_prompt(&task_promote);
+                                    let import_task = task_promote.clone();
+                                    spawn(async move {
+                                        let _ = sess.omegon_external_task_import_session(
+                                            &import_task.id.0.to_string(),
+                                            &import_task.title,
+                                            &import_task.description,
+                                        ).await;
+                                        sess.prompt(&prompt);
+                                    });
+                                } else {
+                                    let c = ctx_promote.clone();
+                                    let task_id = task_promote.id.clone();
+                                    spawn(async move {
+                                        if create_omegon_promotion_draft(c, task_id).await.is_ok() {
+                                            *refresh.write() += 1;
+                                        }
+                                    });
+                                }
+                            },
+                            "Promote to Omegon"
                         }
 
                         button {

@@ -67,35 +67,35 @@ pub fn serialize_task_to_markdown(task: &Task) -> String {
     // header becomes a SIBLING table at top-level scope, not a child of
     // execution. Net effect: env vars round-trip-deserialize to empty.
     // Inline tables (`env = { K = "V" }`) keep env scoped correctly.
-    if let Some(exec) = task.execution.as_ref() {
-        if !exec.is_empty() {
-            fm.push_str("\n[data.execution]\n");
-            if let Some(v) = &exec.model {
-                fm.push_str(&format!("model = {}\n", toml_quote(v)));
-            }
-            if let Some(v) = &exec.skill {
-                fm.push_str(&format!("skill = {}\n", toml_quote(v)));
-            }
-            if let Some(v) = exec.max_turns {
-                fm.push_str(&format!("max_turns = {v}\n"));
-            }
-            if let Some(v) = exec.timeout_secs {
-                fm.push_str(&format!("timeout_secs = {v}\n"));
-            }
-            if let Some(v) = exec.token_budget {
-                fm.push_str(&format!("token_budget = {v}\n"));
-            }
-            if let Some(v) = &exec.cwd {
-                fm.push_str(&format!("cwd = {}\n", toml_quote(&v.to_string_lossy())));
-            }
-            if !exec.env.is_empty() {
-                let pairs: Vec<String> = exec
-                    .env
-                    .iter()
-                    .map(|(k, v)| format!("{k} = {}", toml_quote(v)))
-                    .collect();
-                fm.push_str(&format!("env = {{ {} }}\n", pairs.join(", ")));
-            }
+    if let Some(exec) = task.execution.as_ref()
+        && !exec.is_empty()
+    {
+        fm.push_str("\n[data.execution]\n");
+        if let Some(v) = &exec.model {
+            fm.push_str(&format!("model = {}\n", toml_quote(v)));
+        }
+        if let Some(v) = &exec.skill {
+            fm.push_str(&format!("skill = {}\n", toml_quote(v)));
+        }
+        if let Some(v) = exec.max_turns {
+            fm.push_str(&format!("max_turns = {v}\n"));
+        }
+        if let Some(v) = exec.timeout_secs {
+            fm.push_str(&format!("timeout_secs = {v}\n"));
+        }
+        if let Some(v) = exec.token_budget {
+            fm.push_str(&format!("token_budget = {v}\n"));
+        }
+        if let Some(v) = &exec.cwd {
+            fm.push_str(&format!("cwd = {}\n", toml_quote(&v.to_string_lossy())));
+        }
+        if !exec.env.is_empty() {
+            let pairs: Vec<String> = exec
+                .env
+                .iter()
+                .map(|(k, v)| format!("{k} = {}", toml_quote(v)))
+                .collect();
+            fm.push_str(&format!("env = {{ {} }}\n", pairs.join(", ")));
         }
     }
 
