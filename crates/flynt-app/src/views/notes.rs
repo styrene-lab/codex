@@ -61,6 +61,7 @@ struct OutgoingLinkContext {
     display: Option<String>,
     anchor: Option<String>,
     resolved: Option<DocumentMeta>,
+    resolved_artifact: Option<String>,
     count: usize,
 }
 
@@ -163,6 +164,7 @@ fn build_link_context(
     body: &str,
     frontmatter: &Frontmatter,
     mut resolve: impl FnMut(&str) -> Option<DocumentMeta>,
+    mut resolve_artifact: impl FnMut(&str) -> Option<String>,
 ) -> LinkContext {
     let (_, _, links) = parse_document_source(body);
     let mut outgoing = Vec::<OutgoingLinkContext>::new();
@@ -178,18 +180,23 @@ fn build_link_context(
         }
 
         let resolved = resolve(&link.target);
+        let resolved_artifact = resolved
+            .is_none()
+            .then(|| resolve_artifact(&link.target))
+            .flatten();
         outgoing.push(OutgoingLinkContext {
             target: link.target,
             display: link.display,
             anchor: link.anchor,
             resolved,
+            resolved_artifact,
             count: 1,
         });
     }
 
     let resolved_count = outgoing
         .iter()
-        .filter(|link| link.resolved.is_some())
+        .filter(|link| link.resolved.is_some() || link.resolved_artifact.is_some())
         .count();
     let missing_count = outgoing.len().saturating_sub(resolved_count);
 
@@ -348,6 +355,7 @@ mod tests {
                     .eq_ignore_ascii_case("beta")
                     .then(|| resolved.clone())
             },
+            |_| None,
         );
 
         assert_eq!(context.aliases, vec!["Alpha Prime"]);
@@ -985,6 +993,62 @@ fn build_embed_index_json(ctx: &AppContext) -> String {
     }
 
     serde_json::Value::Object(map).to_string()
+}
+
+fn build_artifact_link_index(root: &std::path::Path) -> std::collections::HashMap<String, String> {
+    let mut out = std::collections::HashMap::new();
+    let mut artifacts = Vec::new();
+    artifacts.extend(flynt_core::visual_artifacts::discover_excalidraw_artifacts(
+        root,
+    ));
+    artifacts.extend(flynt_core::visual_artifacts::discover_design_board_artifacts(root));
+    artifacts.extend(flynt_core::visual_artifacts::discover_flow_artifacts(root));
+
+    for artifact in artifacts {
+        let kind = match artifact.kind {
+            flynt_core::visual_artifacts::VisualArtifactKind::ExcalidrawDrawing => "drawing",
+            flynt_core::visual_artifacts::VisualArtifactKind::DesignBoard => "board",
+            flynt_core::visual_artifacts::VisualArtifactKind::Flow => "flow",
+            flynt_core::visual_artifacts::VisualArtifactKind::D2Diagram => "artifact",
+        };
+        let source = artifact.source_path.to_string_lossy().to_string();
+        insert_artifact_link_alias(&mut out, &artifact.title, kind);
+        insert_artifact_link_alias(&mut out, &source, kind);
+        if let Some(name) = artifact
+            .source_path
+            .file_name()
+            .and_then(|name| name.to_str())
+        {
+            insert_artifact_link_alias(&mut out, name, kind);
+        }
+        if let Some(wrapper) = artifact.wrapper_path {
+            let wrapper = wrapper.to_string_lossy().to_string();
+            insert_artifact_link_alias(&mut out, &wrapper, kind);
+        }
+    }
+    out
+}
+
+fn insert_artifact_link_alias(
+    out: &mut std::collections::HashMap<String, String>,
+    value: &str,
+    kind: &str,
+) {
+    out.insert(value.to_string(), kind.to_string());
+    out.insert(value.to_lowercase(), kind.to_string());
+    out.insert(value.to_lowercase().replace(' ', "-"), kind.to_string());
+}
+
+fn resolve_artifact_link(
+    index: &std::collections::HashMap<String, String>,
+    target: &str,
+) -> Option<String> {
+    let cleaned = target.trim();
+    index
+        .get(cleaned)
+        .or_else(|| index.get(&cleaned.to_lowercase()))
+        .or_else(|| index.get(&cleaned.to_lowercase().replace(' ', "-")))
+        .cloned()
 }
 
 fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> String {
@@ -1817,9 +1881,10 @@ fn NoteLinksPanel(
                                 let label = link.display.clone().unwrap_or_else(|| link.target.clone());
                                 let anchor = link.anchor.clone();
                                 let meta = link.resolved.clone();
+                                let artifact = link.resolved_artifact.clone();
                                 let disabled = meta.is_none();
                                 let meta_for_open = meta.clone();
-                                let status = if link.resolved.is_some() { "resolved" } else { "missing" };
+                                let status = if link.resolved.is_some() || artifact.is_some() { "resolved" } else { "missing" };
                                 let mut classes = "note-inspector-item link-target".to_string();
                                 if disabled {
                                     classes.push_str(" missing");
@@ -1844,7 +1909,9 @@ fn NoteLinksPanel(
                                             }
                                         }
                                         span { class: "note-link-status {status}", "{status}" }
-                                        if disabled {
+                                        if let Some(kind) = artifact {
+                                            span { class: "note-inspector-item-meta", "Resolved {kind} artifact" }
+                                        } else if disabled {
                                             span { class: "note-inspector-item-meta", "No matching note yet" }
                                         }
                                     }
@@ -2576,14 +2643,20 @@ pub fn NotesView() -> Element {
                     return Ok(None);
                 };
                 let backlinks = project.store.get_backlinks(&doc_id).unwrap_or_default();
-                let context =
-                    build_link_context(backlinks, &doc.content, &doc.frontmatter, |target| {
+                let artifact_index = build_artifact_link_index(&project.root);
+                let context = build_link_context(
+                    backlinks,
+                    &doc.content,
+                    &doc.frontmatter,
+                    |target| {
                         project
                             .store
                             .find_document_by_slug(&target.to_lowercase())
                             .ok()
                             .flatten()
-                    });
+                    },
+                    |target| resolve_artifact_link(&artifact_index, target),
+                );
                 Ok::<_, anyhow::Error>(Some(context))
             })
             .await

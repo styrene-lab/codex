@@ -95,6 +95,9 @@ struct LoadedFlow {
     /// file didn't exist (newly created or unreadable) — first save
     /// allocates a fresh id.
     id: Option<Uuid>,
+    /// Parse/read error surfaced to the operator. An invalid non-empty
+    /// flow must not silently look like a legitimate empty canvas.
+    error: Option<String>,
 }
 
 /// Read + parse a `.flow` file into the shape we hand the bundle.
@@ -106,10 +109,11 @@ fn read_and_parse_flow(project_root: &Path, rel_path: &Path) -> LoadedFlow {
     let abs = project_root.join(rel_path);
     let raw = match std::fs::read_to_string(&abs) {
         Ok(s) => s,
-        Err(_) => {
+        Err(err) => {
             return LoadedFlow {
                 body_json: EMPTY_FLOW_JSON.to_string(),
                 id: None,
+                error: Some(format!("Could not read flow file: {err}")),
             };
         }
     };
@@ -118,12 +122,14 @@ fn read_and_parse_flow(project_root: &Path, rel_path: &Path) -> LoadedFlow {
             body_json: serde_json::to_string(&doc.flow)
                 .unwrap_or_else(|_| EMPTY_FLOW_JSON.to_string()),
             id: Some(doc.id),
+            error: None,
         },
         Err(e) => {
             tracing::warn!(error = %e, path = %abs.display(), "failed to parse .flow file");
             LoadedFlow {
                 body_json: EMPTY_FLOW_JSON.to_string(),
                 id: None,
+                error: Some(format!("Could not parse flow file: {e}")),
             }
         }
     }
@@ -422,13 +428,21 @@ pub fn FlowView(path: PathBuf) -> Element {
             class: "flow-pane",
             div {
                 class: "flow-overlay-actions",
-                span {
-                    class: "flow-save-state",
-                    style: format!(
-                        "opacity:{};",
-                        if save_state.read().is_empty() { 0.0 } else { 1.0 }
-                    ),
-                    "{save_state}"
+                if let Some(error) = loaded.read().error.clone() {
+                    span {
+                        class: "flow-save-state",
+                        style: "opacity:1;color:var(--warning);max-width:48rem;white-space:normal;",
+                        "{error}"
+                    }
+                } else {
+                    span {
+                        class: "flow-save-state",
+                        style: format!(
+                            "opacity:{};",
+                            if save_state.read().is_empty() { 0.0 } else { 1.0 }
+                        ),
+                        "{save_state}"
+                    }
                 }
             }
             div {
