@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.12.0 — 2026-06-08
+
+### Added
+- **Omegon plan/task ACP projections** — Flynt can read Omegon `_plans/*`, `_tasks/*`, runtime capability, task source, revision, binding, and external-import contract surfaces.
+- **Omegon task promotion flow** — Kanban tasks can be promoted into Omegon review context, with local pending drafts and explicit session/repo/conflict binding state chips.
+- **QA surface fixture coverage** — compact vault fixtures exercise notes, design boards, drawings, flows, task ingestion, and promotion states.
+
+### Fixed
+- **Task markdown ingestion** — startup indexing and file watcher reindex now materialize `kind = "task"` markdown into the Kanban task table without rewriting operator-authored files.
+- **Surface artifact context** — note Context/Links resolves `.board`, `.excalidraw`, and `.flow` visual artifacts instead of marking existing surface embeds as missing notes.
+- **Flow failure visibility** — invalid `.flow` files now surface parse/read errors instead of silently appearing as an empty starter canvas.
+- **Omegon provider warnings** — unknown or GPT display model names no longer fall through to Ollama warnings.
+- **Kanban readability** — task chips and agent tool-call status rows use higher-contrast styling.
+- **macOS bundle icon packaging** — release bundling preserves the `.icns` app icon in the copied app bundle.
+
 ## 0.11.2 — 2026-05-27
 
 ### Added

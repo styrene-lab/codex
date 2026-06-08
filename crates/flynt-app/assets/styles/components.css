@@ -1684,20 +1684,20 @@
   line-height:    1.5;
 }
 
-/* Tool call blocks — minimal chrome, metadata over branding. The tool name
-   sits in monospace with no badge; args (e.g. path, query) are the visible
-   payload alongside the name. */
+/* Tool call blocks — compact timeline rows. */
 .agent-tool-call {
-  border:         none;
-  border-left:    2px solid var(--border);
-  border-radius:  0;
-  padding:        2px 0 2px var(--space-2);
-  background:     transparent;
+  margin:         2px 0;
+  padding:        4px 8px;
+  border:         1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-left:    3px solid color-mix(in srgb, var(--primary) 65%, var(--border));
+  border-radius:  var(--radius-sm);
+  background:     color-mix(in srgb, var(--surface) 76%, transparent);
   font-size:      var(--font-size-xs);
 }
 .agent-tool-header {
-  display:        flex;
-  align-items:    baseline;
+  display:        grid;
+  grid-template-columns: minmax(9rem, auto) 1fr auto;
+  align-items:    center;
   gap:            var(--space-2);
   min-width:      0;
 }
@@ -1705,40 +1705,55 @@
   color:          var(--muted-foreground);
   font-family:    var(--font-mono, monospace);
   font-size:      11px;
-  font-weight:    400;
-  flex-shrink:    0;
+  font-weight:    600;
+  min-width:      0;
+  overflow:       hidden;
+  text-overflow:  ellipsis;
+  white-space:    nowrap;
 }
 .agent-tool-args {
-  flex:           1;
   min-width:      0;
-  color:          var(--foreground);
+  color:          color-mix(in srgb, var(--foreground) 88%, var(--muted-foreground));
   font-family:    var(--font-mono, monospace);
   font-size:      11px;
   white-space:    nowrap;
   overflow:       hidden;
   text-overflow:  ellipsis;
-  opacity:        0.85;
+  opacity:        0.95;
 }
 .agent-tool-status {
+  justify-self:   end;
   font-size:      10px;
-  font-weight:    500;
-  padding:        0 var(--space-1);
-  opacity:        0.6;
-  flex-shrink:    0;
-}
-.agent-tool-status.inprogress {
-  color:          var(--primary);
-  opacity:        0.85;
-}
-.agent-tool-status.completed {
-  color:          var(--success);
-}
-.agent-tool-status.failed {
-  color:          var(--error);
+  font-weight:    700;
+  line-height:    1;
+  padding:        3px 7px;
+  border-radius:  var(--radius-full);
+  border:         1px solid var(--border);
+  background:     color-mix(in srgb, var(--card) 86%, transparent);
+  color:          var(--muted-foreground);
+  text-transform: lowercase;
   opacity:        1;
 }
+.agent-tool-status.inprogress,
+.agent-tool-status.running {
+  color:          var(--primary);
+  border-color:   color-mix(in srgb, var(--primary) 55%, transparent);
+  background:     color-mix(in srgb, var(--primary) 14%, transparent);
+}
+.agent-tool-status.completed {
+  color:          #c8ffe8;
+  border-color:   rgba(26, 184, 120, 0.65);
+  background:     rgba(14, 46, 32, 0.72);
+}
+.agent-tool-status.failed {
+  color:          #ffd0d0;
+  border-color:   rgba(200, 48, 48, 0.75);
+  background:     rgba(46, 14, 14, 0.72);
+}
 .agent-tool-status.pending {
-  color:          var(--warning);
+  color:          #ffe0ad;
+  border-color:   rgba(200, 100, 24, 0.7);
+  background:     rgba(42, 24, 8, 0.72);
 }
 
 /* System messages */

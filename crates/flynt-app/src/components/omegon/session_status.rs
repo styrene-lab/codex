@@ -80,7 +80,7 @@ fn parse_provider_status(text: &str) -> Vec<ProviderState> {
 }
 
 fn provider_for_model(model: &str) -> &str {
-    // Explicit prefix takes priority — no heuristics needed
+    // Explicit prefix takes priority — no heuristics needed.
     if model.starts_with("anthropic:") {
         return "anthropic";
     }
@@ -94,11 +94,14 @@ fn provider_for_model(model: &str) -> &str {
         return "openrouter";
     }
 
-    // Heuristic fallback for unprefixed model names
+    // Heuristic fallback for unprefixed model names. Do not assume Ollama for
+    // unknown strings: provider_status commonly reports Ollama availability even
+    // when the selected model is a cloud model whose display name is not prefixed.
     if model.starts_with("claude") {
         return "anthropic";
     }
     if model.starts_with("gpt-")
+        || model.starts_with("GPT-")
         || model.starts_with("o1-")
         || model.starts_with("o3-")
         || model.starts_with("o4-")
@@ -106,8 +109,11 @@ fn provider_for_model(model: &str) -> &str {
         return "openai";
     }
 
-    // If none of the above matched, assume local/ollama
-    "ollama"
+    "unknown"
+}
+
+fn is_warnable_provider_status(status: &str) -> bool {
+    matches!(status, "expired" | "missing" | "unavailable")
 }
 
 #[component]
@@ -156,10 +162,7 @@ pub fn SessionStatusPanel() -> Element {
     let provider_warning = providers
         .read()
         .iter()
-        .find(|p| {
-            p.name == active_provider
-                && (p.status == "expired" || p.status == "missing" || p.status == "unavailable")
-        })
+        .find(|p| p.name == active_provider && is_warnable_provider_status(&p.status))
         .map(|p| {
             let action = if p.status == "expired" {
                 format!(
@@ -270,10 +273,7 @@ pub fn InlineSessionStatus() -> Element {
     let warning = providers
         .read()
         .iter()
-        .find(|p| {
-            p.name == active_provider
-                && (p.status == "expired" || p.status == "missing" || p.status == "unavailable")
-        })
+        .find(|p| p.name == active_provider && is_warnable_provider_status(&p.status))
         .map(|p| {
             if p.status == "expired" {
                 format!("{} token expired — /login {}", p.name, p.name)

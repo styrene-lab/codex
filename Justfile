@@ -45,6 +45,11 @@ bundle:
     cp -R target/dx/flynt/release/macos/Flynt.app dist/Flynt.app
     PLIST="dist/Flynt.app/Contents/Info.plist"
 
+    # Ensure dock/app icon is present in the copied bundle. dx reports copying the
+    # .icns into its intermediate bundle, but the dist copy can otherwise lack the
+    # resource while Info.plist still points CFBundleIconFile at icon.icns.
+    cp crates/flynt-app/assets/icon.icns dist/Flynt.app/Contents/Resources/icon.icns
+
     # Version info
     /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString {{version}}" "$PLIST" 2>/dev/null || \
     /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string {{version}}" "$PLIST"
