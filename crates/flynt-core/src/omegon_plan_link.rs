@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 pub const OMEGON_PLAN_REF_PREFIX: &str = "omegon-plan:";
 pub const OMEGON_PROMOTION_DRAFT_REF_PREFIX: &str = "omegon-promotion-draft:";
+pub const OMEGON_BINDING_STATE_REF_PREFIX: &str = "omegon-binding:";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OmegonPlanTaskLink {
@@ -16,6 +17,67 @@ pub struct OmegonPlanTaskLink {
     pub task_id: String,
     pub label: Option<String>,
     pub revision: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OmegonBindingState {
+    pub system: String,
+    pub external_task_id: String,
+    pub durability: String,
+    pub status: String,
+    pub task_id: Option<String>,
+    pub stable_id: Option<String>,
+    pub revision: Option<String>,
+    pub code: Option<String>,
+    pub message: Option<String>,
+}
+
+impl OmegonBindingState {
+    pub fn session_import(
+        external_task_id: impl Into<String>,
+        message: Option<impl Into<String>>,
+    ) -> Self {
+        Self {
+            system: "flynt".to_string(),
+            external_task_id: external_task_id.into(),
+            durability: "session".to_string(),
+            status: "session_bound".to_string(),
+            task_id: None,
+            stable_id: None,
+            revision: None,
+            code: None,
+            message: message.map(Into::into),
+        }
+    }
+
+    pub fn to_external_ref(&self) -> String {
+        format!(
+            "{OMEGON_BINDING_STATE_REF_PREFIX}{}",
+            serde_json::to_string(self).unwrap_or_else(|_| "{}".to_string())
+        )
+    }
+
+    pub fn from_external_ref(value: &str) -> Option<Self> {
+        let payload = value.strip_prefix(OMEGON_BINDING_STATE_REF_PREFIX)?;
+        let state: Self = serde_json::from_str(payload).ok()?;
+        if state.external_task_id.trim().is_empty() || state.durability.trim().is_empty() {
+            return None;
+        }
+        Some(state)
+    }
+
+    pub fn is_repo_bound(&self) -> bool {
+        self.status == "repo_bound" && self.durability == "repo"
+    }
+
+    pub fn is_session_bound(&self) -> bool {
+        self.status == "session_bound" && self.durability == "session"
+    }
+
+    pub fn is_conflict(&self) -> bool {
+        matches!(self.status.as_str(), "stale" | "conflict")
+            || matches!(self.code.as_deref(), Some("stale_revision" | "conflict"))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -147,6 +209,23 @@ pub fn find_omegon_plan_task_links<'a>(
         .collect()
 }
 
+pub fn find_omegon_binding_states<'a>(
+    refs: impl IntoIterator<Item = &'a String>,
+) -> Vec<OmegonBindingState> {
+    refs.into_iter()
+        .filter_map(|value| OmegonBindingState::from_external_ref(value))
+        .collect()
+}
+
+pub fn upsert_omegon_binding_state(refs: &mut Vec<String>, state: OmegonBindingState) {
+    refs.retain(|value| {
+        OmegonBindingState::from_external_ref(value)
+            .map(|existing| existing.external_task_id != state.external_task_id)
+            .unwrap_or(true)
+    });
+    refs.push(state.to_external_ref());
+}
+
 pub fn find_omegon_promotion_drafts<'a>(
     refs: impl IntoIterator<Item = &'a String>,
 ) -> Vec<OmegonPromotionDraft> {
@@ -204,6 +283,34 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn binding_state_round_trips_and_classifies() {
+        let state = OmegonBindingState::session_import("flynt-task-1", Some("review required"));
+        let encoded = state.to_external_ref();
+        assert!(encoded.starts_with(OMEGON_BINDING_STATE_REF_PREFIX));
+        let decoded = OmegonBindingState::from_external_ref(&encoded).unwrap();
+        assert!(decoded.is_session_bound());
+        assert!(!decoded.is_repo_bound());
+        assert!(!decoded.is_conflict());
+    }
+
+    #[test]
+    fn upsert_replaces_existing_binding_state_for_task() {
+        let mut refs = vec!["https://example.com".to_string()];
+        upsert_omegon_binding_state(
+            &mut refs,
+            OmegonBindingState::session_import("task", Some("first")),
+        );
+        upsert_omegon_binding_state(
+            &mut refs,
+            OmegonBindingState::session_import("task", Some("second")),
+        );
+        let states = find_omegon_binding_states(&refs);
+        assert_eq!(refs.len(), 2);
+        assert_eq!(states.len(), 1);
+        assert_eq!(states[0].message.as_deref(), Some("second"));
     }
 
     #[test]

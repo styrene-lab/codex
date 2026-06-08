@@ -8,8 +8,9 @@ use flynt_core::{
         Board, BoardId, Column, Engagement, EngagementId, Priority, Task, TaskId, TaskStatus,
     },
     omegon_plan_link::{
-        OmegonPromotionDraft, OmegonPromotionOriginalTask, find_omegon_plan_task_links,
-        find_omegon_promotion_drafts, upsert_omegon_promotion_draft,
+        OmegonBindingState, OmegonPromotionDraft, OmegonPromotionOriginalTask,
+        find_omegon_binding_states, find_omegon_plan_task_links, find_omegon_promotion_drafts,
+        upsert_omegon_binding_state, upsert_omegon_promotion_draft,
     },
     store::{ProjectStore, TaskFilter},
 };
@@ -128,12 +129,22 @@ fn omegon_promotion_prompt(task: &Task) -> String {
 }
 
 fn omegon_promotion_state(task: &Task) -> (&'static str, &'static str) {
+    let states = find_omegon_binding_states(&task.external_refs);
+    if states.iter().any(|state| state.is_conflict()) {
+        return ("conflict", "Omegon binding is stale or conflicted");
+    }
+    if states.iter().any(|state| state.is_repo_bound()) {
+        return ("repo", "Repo-durable Omegon binding accepted");
+    }
+    if states.iter().any(|state| state.is_session_bound()) {
+        return ("session", "Session-local Omegon review context imported");
+    }
     if !find_omegon_promotion_drafts(&task.external_refs).is_empty() {
         return ("pending", "Omegon promotion pending review");
     }
     if !find_omegon_plan_task_links(&task.external_refs).is_empty() {
         return (
-            "local",
+            "local_link",
             "Flynt-local Omegon link; reciprocal binding not proven",
         );
     }
@@ -909,9 +920,15 @@ fn TaskCard(
                         let linked_count = find_omegon_plan_task_links(&task.external_refs).len();
                         rsx! {
                             div { class: "task-card-chips",
-                                if promotion_state == "pending" {
+                                if promotion_state == "conflict" {
+                                    span { class: "task-chip task-chip-warning", title: "{promotion_title}", "⇧ conflict" }
+                                } else if promotion_state == "repo" {
+                                    span { class: "task-chip task-chip-spec", title: "{promotion_title}", "⇧ repo" }
+                                } else if promotion_state == "session" {
+                                    span { class: "task-chip task-chip-design", title: "{promotion_title}", "⇧ session" }
+                                } else if promotion_state == "pending" {
                                     span { class: "task-chip task-chip-warning", title: "{promotion_title}", "⇧ pending" }
-                                } else if linked_count > 0 {
+                                } else if linked_count > 0 || promotion_state == "local_link" {
                                     span { class: "task-chip task-chip-spec", title: "{promotion_title}", "⇧ local-link" }
                                 }
                                 if let Some(name) = engagement_label {
@@ -1097,12 +1114,50 @@ fn TaskCard(
                                 if let Some(sess) = shared_session.read().clone() {
                                     let prompt = omegon_promotion_prompt(&task_promote);
                                     let import_task = task_promote.clone();
+                                    let c = ctx_promote.clone();
                                     spawn(async move {
-                                        let _ = sess.omegon_external_task_import_session(
-                                            &import_task.id.0.to_string(),
-                                            &import_task.title,
-                                            &import_task.description,
-                                        ).await;
+                                        let import_result = sess
+                                            .omegon_external_task_import_session(
+                                                &import_task.id.0.to_string(),
+                                                &import_task.title,
+                                                &import_task.description,
+                                            )
+                                            .await;
+                                        if let Ok(response) = import_result
+                                            && response.accepted
+                                            && response.durability.as_deref() == Some("session")
+                                        {
+                                            let project = c.project();
+                                            let task_id = import_task.id.clone();
+                                            let reason = response
+                                                .review
+                                                .and_then(|review| review.reason)
+                                                .or_else(|| {
+                                                    Some(
+                                                        "Imported as session-local Omegon review context"
+                                                            .to_string(),
+                                                    )
+                                                });
+                                            let _ = tokio::task::spawn_blocking(move || {
+                                                if let Ok(Some(mut task)) =
+                                                    project.store.get_task(&task_id)
+                                                {
+                                                    upsert_omegon_binding_state(
+                                                        &mut task.external_refs,
+                                                        OmegonBindingState::session_import(
+                                                            task.id.0.to_string(),
+                                                            reason,
+                                                        ),
+                                                    );
+                                                    task.updated_at = Utc::now();
+                                                    project.persist_task(&task)
+                                                } else {
+                                                    Ok(())
+                                                }
+                                            })
+                                            .await;
+                                            *refresh.write() += 1;
+                                        }
                                         sess.prompt(&prompt);
                                     });
                                 } else {
