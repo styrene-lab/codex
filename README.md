@@ -21,7 +21,7 @@ Your project is a folder of `.md` files. Flynt indexes them, links them, and get
 - **Query blocks** — `TABLE`, `LIST`, `TASK` queries inline in your documents (like Dataview).
 - **Daily notes & templates** — date-indexed journals with variable expansion.
 - **Git sync** — auto-commit + push/pull in the background. Multi-device, no server.
-- **AI agent** — Omegon in the sidebar with full project read/write access.
+- **AI agent** — Omegon in the sidebar with full project read/write access, project-scoped runtime diagnostics, and a dedicated Project → Omegon surface for agent artifacts.
 - **iOS Share Extension** — share links, text, and images from any iOS app into your project.
 - **Cross-platform** — macOS (DMG + TestFlight), iOS (TestFlight), Linux amd64/aarch64.
 
@@ -34,7 +34,9 @@ Your project is a folder of `.md` files. Flynt indexes them, links them, and get
 Download the latest DMG or PKG from [Releases](https://github.com/styrene-lab/flynt/releases/latest).
 
 - **DMG:** open it and drag `Flynt.app` to Applications.
-- **PKG:** run the installer to install `Flynt.app` into Applications.
+- **PKG:** run the installer to install `Flynt.app` into Applications. This is the preferred direct-download path when using Flynt's built-in update checks.
+
+After install, open Flynt from Applications. The embedded Omegon agent panel checks for a compatible local `omegon` binary and project-scoped Flynt extension. If runtime setup is incomplete, open **Settings → Omegon → Runtime** or use the Agent panel preflight card.
 
 Homebrew cask:
 
@@ -122,14 +124,20 @@ All crates share a workspace at the repo root. The desktop and mobile apps depen
 my-project/
   .flynt/
     config.toml          # project settings (name, sync, appearance)
+    omegon.toml          # project-scoped Omegon ACP deployment contract
     templates/           # note templates (Note.md, Daily.md, Meeting.md)
     notifications/       # git-synced notification queue
+  .omegon/
+    agent-journal.md     # project-local agent session journal
+    plugins/             # project-local Omegon plugin/runtime artifacts
   .flynt-local/          # SQLite index (auto-generated, gitignored)
   notes.md
   guides/
   daily/
   drawings/
 ```
+
+The Files sidebar hides dot-prefixed paths such as `.omegon/` by default. Use the `.hidden` toggle in the Files header to inspect them, or use **Project → Omegon** for the purpose-built agent/runtime surface.
 
 ### Frontmatter
 

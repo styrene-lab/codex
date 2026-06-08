@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.12.1 — 2026-06-08
+
+### Added
+- **Project Omegon surface** — Project navigation now includes an Omegon view for project-local agent artifacts, including the agent journal, ACP deployment manifest, and plugin cache actions.
+- **Dot-prefixed file toggle** — the Files sidebar hides dot-prefixed paths such as `.omegon/` by default, with a compact `.hidden` toggle for inspection.
+
+### Fixed
+- **ACP tool liveness** — tool calls that stop producing ACP updates are marked stalled and cancelled so the agent panel does not remain trapped in an indefinite running state.
+- **Stop Agent containment** — stopping the agent detaches the panel immediately and moves process cleanup into bounded asynchronous cleanup so a stuck agent transport cannot freeze the panel.
+- **ACP deployment manifest setup** — Flynt now writes the project ACP deployment manifest when missing instead of running indefinitely from in-memory defaults.
+- **Agent rail theme tokens** — agent/tool/preflight styling now uses shadcn/tweakcn-compatible component tokens with derived defaults instead of hardcoded status colors.
+
 ## 0.12.0 — 2026-06-08
 
 ### Added

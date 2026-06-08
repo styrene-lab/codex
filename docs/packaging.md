@@ -81,6 +81,20 @@ and release artifacts remain compatible with `0.10.x`.
 
 ## Local macOS Release Validation
 
+For local direct-download validation of a patch build:
+
+```sh
+cargo check -p flynt-app
+cargo test -p flynt-app sidebar_file_badge_tests --lib
+just pkg
+sudo installer -pkg dist/Flynt-{version}-macos.pkg -target /
+pkill -x flynt 2>/dev/null || pkill -x Flynt 2>/dev/null || true
+open -a /Applications/Flynt.app
+/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /Applications/Flynt.app/Contents/Info.plist
+```
+
+The 0.12.1 local validation path specifically exercises ACP tool-stall containment, Stop Agent process-boundary containment, the `.hidden` sidebar toggle, and the Project → Omegon surface.
+
 Local DMG validation:
 
 ```sh
