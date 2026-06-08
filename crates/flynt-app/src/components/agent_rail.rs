@@ -1050,6 +1050,14 @@ pub fn AgentRail() -> Element {
                     *settings_open.write() = crate::state::SettingsOpen(true);
                 }
             }
+            div { class: "agent-surface-link-row",
+                button {
+                    class: "btn btn-ghost btn-xs",
+                    title: "Open project-local Omegon artifacts",
+                    onclick: move |_| *active_route.write() = Route::Omegon,
+                    "Open Omegon surface"
+                }
+            }
 
             // ── Inline session status ──────────────────────────────
             if session.read().is_some() {

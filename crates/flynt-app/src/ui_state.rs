@@ -66,6 +66,7 @@ fn route_label(route: &Route) -> &'static str {
         Route::Lenses => "lenses",
         Route::Kanban => "kanban",
         Route::Graph => "graph",
+        Route::Omegon => "omegon",
         Route::TerminalLab => "terminal",
     }
 }

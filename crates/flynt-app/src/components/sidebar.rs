@@ -360,6 +360,7 @@ fn DualLaneTree(
     mut create_err: Signal<Option<String>>,
 ) -> Element {
     let mut tree_sort = use_signal(|| TreeSortMode::TitleAsc);
+    let mut hide_dotfiles = use_signal(|| true);
     let doc_by_id: BTreeMap<_, _> = docs
         .into_iter()
         .map(|doc| (doc.id.0.to_string(), doc))
@@ -399,6 +400,15 @@ fn DualLaneTree(
                             }
                         }
                         button {
+                            class: if *hide_dotfiles.read() { "file-tree-filter-toggle active" } else { "file-tree-filter-toggle" },
+                            title: if *hide_dotfiles.read() { "Show dot-prefixed files and folders" } else { "Hide dot-prefixed files and folders" },
+                            onclick: move |_| {
+                                let next = !*hide_dotfiles.peek();
+                                hide_dotfiles.set(next);
+                            },
+                            ".hidden"
+                        }
+                        button {
                             class: "file-tree-new-btn file-tree-section-action",
                             title: "New file (⌘N)",
                             onclick: move |_| {
@@ -415,7 +425,7 @@ fn DualLaneTree(
                     if projection.text_files.is_empty() {
                         div { class: "tree-empty", "No text files" }
                     } else {
-                        { build_text_file_tree(&projection.text_files, &doc_by_id, current_sort) }
+                        { build_text_file_tree(&projection.text_files, &doc_by_id, current_sort, *hide_dotfiles.read()) }
                     }
                 }
             },
@@ -447,8 +457,10 @@ fn build_text_file_tree(
     items: &[TextFileNavItem],
     doc_by_id: &BTreeMap<String, DocumentMeta>,
     sort_mode: TreeSortMode,
+    hide_dotfiles: bool,
 ) -> Element {
     let mut root: BTreeMap<String, TreeNode> = BTreeMap::new();
+    let mut hidden_count = 0usize;
     for item in items {
         let Some(id) = &item.id else {
             continue;
@@ -456,9 +468,31 @@ fn build_text_file_tree(
         let Some(doc) = doc_by_id.get(&id.0.to_string()) else {
             continue;
         };
+        if hide_dotfiles && is_dot_prefixed_path(&doc.path) {
+            hidden_count += 1;
+            continue;
+        }
         insert_document_tree_node(&mut root, doc, sort_mode);
     }
+    if root.is_empty() {
+        let message = if hidden_count > 0 {
+            format!("No visible files ({hidden_count} dot-prefixed hidden)")
+        } else {
+            "No text files".to_string()
+        };
+        return rsx! { div { class: "tree-empty", "{message}" } };
+    }
+
     rsx! { { render_tree_level(&root, 0, "") } }
+}
+
+fn is_dot_prefixed_path(path: &std::path::Path) -> bool {
+    path.components().any(|component| {
+        component
+            .as_os_str()
+            .to_str()
+            .is_some_and(|part| part.starts_with('.') && part != ".")
+    })
 }
 
 fn insert_document_tree_node(
@@ -1316,6 +1350,14 @@ mod sidebar_visual_tests {
 #[cfg(test)]
 mod sidebar_file_badge_tests {
     use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn dot_prefixed_path_detection_checks_any_component() {
+        assert!(is_dot_prefixed_path(Path::new(".omegon/agent-journal.md")));
+        assert!(is_dot_prefixed_path(Path::new("docs/.draft/note.md")));
+        assert!(!is_dot_prefixed_path(Path::new("docs/regular.md")));
+    }
 
     #[test]
     fn file_type_badge_marks_non_markdown_text_files() {

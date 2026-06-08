@@ -77,6 +77,7 @@ pub enum Route {
     Design,
     Search,
     Lenses,
+    Omegon,
     Kanban,
     Graph,
     TerminalLab,

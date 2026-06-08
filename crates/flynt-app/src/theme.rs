@@ -717,6 +717,7 @@ fn normalize_vars(mut vars: BTreeMap<String, String>) -> BTreeMap<String, String
     default_var(&mut vars, "--design-artifact-meta-gap", "var(--radius-xs)");
     default_var(&mut vars, "--design-micro-font", "var(--agent-micro-font)");
     default_var(&mut vars, "--design-action-min-height", "30px");
+    default_var(&mut vars, "--omegon-surface-card-min", "220px");
     default_var(
         &mut vars,
         "--design-empty-state-bg",

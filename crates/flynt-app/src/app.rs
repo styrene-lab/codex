@@ -9,8 +9,8 @@ use crate::{
         ThemeName,
     },
     views::{
-        DesignView, GraphView, KanbanView, LensesView, NotesView, SearchView, SettingsView,
-        TerminalLabView, WelcomeView,
+        DesignView, GraphView, KanbanView, LensesView, NotesView, OmegonProjectView, SearchView,
+        SettingsView, TerminalLabView, WelcomeView,
     },
 };
 use dioxus::prelude::*;
@@ -839,7 +839,7 @@ pub fn App() -> Element {
                                 }
                             }
                         },
-                        Route::Notes | Route::Lenses | Route::Graph => rsx! {
+                        Route::Notes | Route::Lenses | Route::Graph | Route::Omegon => rsx! {
                             ProjectView { active_route }
                         },
                         Route::Design   => rsx! { DesignView {} },
@@ -1193,11 +1193,18 @@ fn ProjectView(mut active_route: Signal<Route>) -> Element {
                     title: "Graph — explore project links",
                     onclick: move |_| *active_route.write() = Route::Graph,
                 }
+                ProjectSubnavButton {
+                    active: *active_route.read() == Route::Omegon,
+                    label: "Omegon",
+                    title: "Omegon — inspect project-local agent memory and runtime artifacts",
+                    onclick: move |_| *active_route.write() = Route::Omegon,
+                }
             }
             match *active_route.read() {
                 Route::Notes => rsx! { NotesView {} },
                 Route::Lenses => rsx! { LensesView {} },
                 Route::Graph => rsx! { GraphView {} },
+                Route::Omegon => rsx! { OmegonProjectView {} },
                 _ => rsx! { NotesView {} },
             }
         }
@@ -1228,7 +1235,7 @@ fn WorkspaceFooter(mut active_route: Signal<Route>) -> Element {
         footer { class: "workspace-footer",
             nav { class: "workspace-footer-nav", aria_label: "Workspace modes",
                 WorkspaceFooterButton {
-                    active: matches!(*active_route.read(), Route::Notes | Route::Lenses | Route::Graph),
+                    active: matches!(*active_route.read(), Route::Notes | Route::Lenses | Route::Graph | Route::Omegon),
                     label: "Project",
                     title: "Project — write, query, and explore project knowledge",
                     icon: WorkspaceFooterIcon::Project,
