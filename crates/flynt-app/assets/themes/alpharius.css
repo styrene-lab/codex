@@ -97,6 +97,13 @@
   --radius-lg:             12px;
   --radius-xl:             16px;
   --radius-full:           9999px;
+  --border-width-hairline: 1px;
+  --compact-gap:           6px;
+  --micro-font-size:       10px;
+  --icon-size-md:          20px;
+  --opacity-full:          1;
+  --letter-spacing-normal: 0.03em;
+  --letter-spacing-wide:   0.05em;
 
   /* ── Spacing (4-point grid) ───────────────────────────────────────────────── */
   --space-px:              1px;
@@ -112,6 +119,79 @@
   --space-10:              40px;
   --space-12:              48px;
   --space-16:              64px;
+
+  /* ── Agent rail component metrics ───────────────────────────────────────── */
+  --agent-rail-inset:       var(--space-3);
+  --agent-card-padding:     var(--space-2);
+  --agent-card-gap:         var(--space-2);
+  --agent-status-column:    6rem;
+  --agent-tool-name-column: 9rem;
+  --agent-tool-badge-width: 5.75rem;
+  --agent-tool-badge-height: 22px;
+  --agent-tool-accent-width: 3px;
+  --agent-output-max-height: 200px;
+  --agent-compact-font:     var(--font-size-xs);
+  --agent-micro-font:       10px;
+  --agent-tool-status-idle-fg: var(--muted-foreground);
+  --agent-tool-status-idle-bg: color-mix(in srgb, var(--card) 86%, transparent);
+  --agent-tool-status-idle-border: var(--border);
+  --agent-tool-status-running-fg: var(--primary);
+  --agent-tool-status-running-bg: color-mix(in srgb, var(--primary) 14%, transparent);
+  --agent-tool-status-running-border: color-mix(in srgb, var(--primary) 55%, transparent);
+  --agent-tool-status-success-fg: color-mix(in srgb, var(--success) 30%, var(--foreground));
+  --agent-tool-status-success-bg: color-mix(in srgb, var(--success) 24%, var(--card));
+  --agent-tool-status-success-border: color-mix(in srgb, var(--success) 65%, transparent);
+  --agent-tool-status-danger-fg: color-mix(in srgb, var(--error) 30%, var(--foreground));
+  --agent-tool-status-danger-bg: color-mix(in srgb, var(--error) 24%, var(--card));
+  --agent-tool-status-danger-border: color-mix(in srgb, var(--error) 75%, transparent);
+  --agent-tool-status-warning-fg: var(--warning);
+  --agent-tool-status-warning-bg: color-mix(in srgb, var(--warning) 18%, var(--card));
+  --agent-tool-status-warning-border: color-mix(in srgb, var(--warning) 70%, transparent);
+  --agent-preflight-ready-border: color-mix(in srgb, var(--success) 35%, var(--border));
+  --agent-preflight-warning-border: color-mix(in srgb, var(--warning) 50%, var(--border));
+  --agent-preflight-blocked-border: color-mix(in srgb, var(--error) 55%, var(--border));
+  --agent-status-connected-bg: color-mix(in srgb, var(--success) 16%, transparent);
+  --agent-status-disconnected-bg: color-mix(in srgb, var(--error) 16%, transparent);
+  --agent-status-connecting-bg: color-mix(in srgb, var(--warning) 16%, transparent);
+  --agent-status-active-bg: color-mix(in srgb, var(--primary) 16%, transparent);
+  --agent-plan-active-bg: color-mix(in srgb, var(--primary) 8%, transparent);
+  --agent-alert-bg: color-mix(in srgb, var(--error) 12%, transparent);
+  --agent-alert-border: color-mix(in srgb, var(--error) 28%, transparent);
+  --agent-queued-warning-bg: color-mix(in srgb, var(--warning) 12%, transparent);
+  --agent-queued-success-bg: color-mix(in srgb, var(--success) 12%, transparent);
+  --agent-queued-error-bg: color-mix(in srgb, var(--error) 12%, transparent);
+  --agent-tool-border: color-mix(in srgb, var(--border) 70%, transparent);
+  --agent-tool-accent: color-mix(in srgb, var(--primary) 65%, var(--border));
+  --agent-tool-bg: color-mix(in srgb, var(--surface) 76%, transparent);
+  --agent-tool-args-fg: color-mix(in srgb, var(--foreground) 88%, var(--muted-foreground));
+  --agent-modal-overlay-bg: color-mix(in srgb, var(--background) 72%, transparent);
+  --agent-modal-error-bg: color-mix(in srgb, var(--error) 12%, transparent);
+  --agent-modal-error-border: color-mix(in srgb, var(--error) 32%, transparent);
+  --agent-flow-save-bg: color-mix(in srgb, var(--card) 88%, transparent);
+
+  --agent-icon-size:        var(--space-5);
+  --agent-dot-size:         var(--space-2);
+  --agent-plan-icon-width:  var(--space-4);
+  --agent-message-inset:    var(--space-3);
+  --agent-message-padding:  var(--space-3);
+  --agent-message-gap:      var(--space-2);
+  --agent-border-width:     var(--space-px);
+  --agent-code-radius:      var(--radius-sm);
+  --agent-line-height:      var(--line-height-tight);
+  --agent-prose-gap:        0.5em;
+  --agent-prose-heading-gap: 0.8em;
+  --agent-select-caret-width: 8px;
+  --agent-select-caret-height: 5px;
+  --agent-select-caret-offset: var(--space-2);
+  --agent-select-padding-right: var(--space-6);
+  --agent-modal-width: 480px;
+  --agent-modal-max-width: 90vw;
+  --agent-modal-padding-y: var(--space-7);
+  --agent-modal-padding-x: var(--space-8);
+  --agent-backdrop-blur: var(--space-1);
+  --agent-modal-z-index: 9000;
+
+
 
   /* ── Shadows ──────────────────────────────────────────────────────────────── */
   --shadow-sm:             0 1px 3px rgba(0,0,0,.4);

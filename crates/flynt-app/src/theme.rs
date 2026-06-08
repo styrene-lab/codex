@@ -526,6 +526,207 @@ fn normalize_vars(mut vars: BTreeMap<String, String>) -> BTreeMap<String, String
     alias(&mut vars, "--error-foreground", "--destructive-foreground");
     alias(&mut vars, "--info", "--primary");
     alias(&mut vars, "--info-foreground", "--primary-foreground");
+
+    // Component semantic tokens: keep agent rail meanings distinct while
+    // deriving defaults from the shadcn/tweak.cn semantic palette. Imported
+    // themes may override any of these directly without losing the broader
+    // shadcn color vocabulary.
+    alias_from_any(
+        &mut vars,
+        "--agent-tool-status-idle-fg",
+        &["--muted-foreground"],
+    );
+    alias_from_any(&mut vars, "--agent-tool-status-idle-border", &["--border"]);
+    alias_from_any(&mut vars, "--agent-tool-status-running-fg", &["--primary"]);
+    alias_from_any(
+        &mut vars,
+        "--agent-tool-status-running-border",
+        &["--primary"],
+    );
+    alias_from_any(
+        &mut vars,
+        "--agent-tool-status-success-fg",
+        &["--success-foreground", "--primary-foreground"],
+    );
+    alias_from_any(
+        &mut vars,
+        "--agent-tool-status-success-border",
+        &["--success", "--primary"],
+    );
+    alias_from_any(
+        &mut vars,
+        "--agent-tool-status-danger-fg",
+        &["--error-foreground", "--destructive-foreground"],
+    );
+    alias_from_any(
+        &mut vars,
+        "--agent-tool-status-danger-border",
+        &["--error", "--destructive"],
+    );
+    alias_from_any(
+        &mut vars,
+        "--agent-tool-status-warning-fg",
+        &["--warning", "--destructive"],
+    );
+    alias_from_any(
+        &mut vars,
+        "--agent-tool-status-warning-border",
+        &["--warning", "--destructive"],
+    );
+    alias_from_any(
+        &mut vars,
+        "--agent-preflight-ready-border",
+        &["--success", "--primary"],
+    );
+    alias_from_any(
+        &mut vars,
+        "--agent-preflight-warning-border",
+        &["--warning", "--destructive"],
+    );
+    alias_from_any(
+        &mut vars,
+        "--agent-preflight-blocked-border",
+        &["--error", "--destructive"],
+    );
+
+    default_var(
+        &mut vars,
+        "--agent-status-connected-bg",
+        "color-mix(in srgb, var(--success, var(--primary)) 16%, transparent)",
+    );
+    default_var(
+        &mut vars,
+        "--agent-status-disconnected-bg",
+        "color-mix(in srgb, var(--error, var(--destructive)) 16%, transparent)",
+    );
+    default_var(
+        &mut vars,
+        "--agent-status-connecting-bg",
+        "color-mix(in srgb, var(--warning, var(--destructive)) 16%, transparent)",
+    );
+    default_var(
+        &mut vars,
+        "--agent-status-active-bg",
+        "color-mix(in srgb, var(--primary) 16%, transparent)",
+    );
+    default_var(
+        &mut vars,
+        "--agent-plan-active-bg",
+        "color-mix(in srgb, var(--primary) 8%, transparent)",
+    );
+    default_var(
+        &mut vars,
+        "--agent-alert-bg",
+        "color-mix(in srgb, var(--error, var(--destructive)) 12%, transparent)",
+    );
+    default_var(
+        &mut vars,
+        "--agent-alert-border",
+        "color-mix(in srgb, var(--error, var(--destructive)) 28%, transparent)",
+    );
+    default_var(
+        &mut vars,
+        "--agent-queued-warning-bg",
+        "color-mix(in srgb, var(--warning, var(--destructive)) 12%, transparent)",
+    );
+    default_var(
+        &mut vars,
+        "--agent-queued-success-bg",
+        "color-mix(in srgb, var(--success, var(--primary)) 12%, transparent)",
+    );
+    default_var(
+        &mut vars,
+        "--agent-queued-error-bg",
+        "color-mix(in srgb, var(--error, var(--destructive)) 12%, transparent)",
+    );
+    default_var(
+        &mut vars,
+        "--agent-tool-border",
+        "color-mix(in srgb, var(--border) 70%, transparent)",
+    );
+    default_var(
+        &mut vars,
+        "--agent-tool-accent",
+        "color-mix(in srgb, var(--primary) 65%, var(--border))",
+    );
+    default_var(
+        &mut vars,
+        "--agent-tool-bg",
+        "color-mix(in srgb, var(--surface, var(--card)) 76%, transparent)",
+    );
+    default_var(
+        &mut vars,
+        "--agent-tool-args-fg",
+        "color-mix(in srgb, var(--foreground) 88%, var(--muted-foreground))",
+    );
+    default_var(
+        &mut vars,
+        "--agent-modal-overlay-bg",
+        "color-mix(in srgb, var(--background) 72%, transparent)",
+    );
+    default_var(
+        &mut vars,
+        "--agent-modal-error-bg",
+        "color-mix(in srgb, var(--error, var(--destructive)) 12%, transparent)",
+    );
+    default_var(
+        &mut vars,
+        "--agent-modal-error-border",
+        "color-mix(in srgb, var(--error, var(--destructive)) 32%, transparent)",
+    );
+    default_var(
+        &mut vars,
+        "--agent-flow-save-bg",
+        "color-mix(in srgb, var(--card) 88%, transparent)",
+    );
+    default_var(
+        &mut vars,
+        "--agent-preflight-bg",
+        "color-mix(in srgb, var(--card) 92%, var(--background))",
+    );
+
+    default_var(&mut vars, "--border-width-hairline", "1px");
+    default_var(&mut vars, "--compact-gap", "6px");
+    default_var(&mut vars, "--micro-font-size", "10px");
+    default_var(&mut vars, "--icon-size-md", "20px");
+    default_var(&mut vars, "--opacity-full", "1");
+    default_var(&mut vars, "--letter-spacing-normal", "0.03em");
+    default_var(&mut vars, "--letter-spacing-wide", "0.05em");
+    default_var(&mut vars, "--design-hero-width", "760px");
+    default_var(
+        &mut vars,
+        "--design-hero-title-size",
+        "var(--font-size-2xl)",
+    );
+    default_var(&mut vars, "--design-hero-title-line-height", "1.1");
+    default_var(&mut vars, "--design-tab-gap", "var(--radius-xs)");
+    default_var(&mut vars, "--design-tab-padding", "var(--radius-xs)");
+    default_var(&mut vars, "--design-tab-height", "var(--space-6)");
+    default_var(
+        &mut vars,
+        "--design-tab-radius",
+        "calc(var(--radius) - var(--radius-xs))",
+    );
+    default_var(&mut vars, "--design-artifact-gap", "var(--space-2)");
+    default_var(&mut vars, "--design-artifact-icon-column", "58px");
+    default_var(
+        &mut vars,
+        "--design-artifact-padding-y",
+        "calc(var(--space-2) - var(--space-px))",
+    );
+    default_var(&mut vars, "--design-artifact-meta-gap", "var(--radius-xs)");
+    default_var(&mut vars, "--design-micro-font", "var(--agent-micro-font)");
+    default_var(&mut vars, "--design-action-min-height", "30px");
+    default_var(
+        &mut vars,
+        "--design-empty-state-bg",
+        "color-mix(in srgb, var(--card) 65%, transparent)",
+    );
+    default_var(
+        &mut vars,
+        "--design-primary-action-border",
+        "color-mix(in srgb, var(--primary) 60%, var(--border))",
+    );
     alias_from_any(
         &mut vars,
         "--sidebar-bg",
@@ -660,6 +861,12 @@ fn alias_from_any(vars: &mut BTreeMap<String, String>, target: &str, sources: &[
             vars.insert(target.to_string(), value);
             return;
         }
+    }
+}
+
+fn default_var(vars: &mut BTreeMap<String, String>, target: &str, value: &str) {
+    if !vars.contains_key(target) {
+        vars.insert(target.to_string(), value.to_string());
     }
 }
 

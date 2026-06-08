@@ -210,6 +210,46 @@ fn cleanup_project_omegon_acp(project: &Path, agent_id: Option<&str>) {
     }
 }
 
+async fn cleanup_project_omegon_acp_nonblocking(project: PathBuf, agent_id: Option<String>) {
+    let mut pattern = format!("omegon acp --cwd {}", project.display());
+    if let Some(agent_id) = agent_id.as_deref() {
+        pattern.push_str(&format!(".*--agent {agent_id}"));
+    }
+
+    let mut child = match tokio::process::Command::new("pkill")
+        .args(["-f", &pattern])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(error) => {
+            tracing::warn!(pattern, "Could not start stale Omegon ACP cleanup: {error}");
+            return;
+        }
+    };
+
+    match tokio::time::timeout(std::time::Duration::from_secs(2), child.wait()).await {
+        Ok(Ok(status)) if status.success() => {
+            tracing::warn!(pattern, "Cleaned up stale Omegon ACP process(es)");
+        }
+        Ok(Ok(_)) => {}
+        Ok(Err(error)) => {
+            tracing::warn!(
+                pattern,
+                "Could not clean up stale Omegon ACP process(es): {error}"
+            );
+        }
+        Err(_) => {
+            let _ = child.kill().await;
+            tracing::warn!(
+                pattern,
+                "Timed out cleaning up stale Omegon ACP process(es)"
+            );
+        }
+    }
+}
+
 fn reconnect_acp_session(
     ctx: AppContext,
     mut session: Signal<Option<Rc<AcpSession>>>,
@@ -504,6 +544,64 @@ struct ToolCallBlock {
     /// Text output from the tool. Populated by ToolCallUpdated.content
     /// once omegon ships it. Empty until the tool produces output.
     output: String,
+    /// Transport generation that created this row. Watchdogs use this to avoid
+    /// marking stale rows after reconnect/Stop agent detached the transport.
+    generation: u64,
+}
+
+fn update_tool_call<F>(items: &mut Signal<Vec<ChatItem>>, id: &str, mut f: F)
+where
+    F: FnMut(&mut ToolCallBlock),
+{
+    for item in items.write().iter_mut() {
+        if let ChatItem::ToolCall(tc) = item {
+            if tc.id == id {
+                f(tc);
+                return;
+            }
+        }
+    }
+}
+
+fn mark_stalled_tool_call(
+    items: &mut Signal<Vec<ChatItem>>,
+    id: &str,
+    generation: u64,
+    transport_generation: u64,
+) -> bool {
+    if generation != transport_generation {
+        return false;
+    }
+    let mut stalled = false;
+    update_tool_call(items, id, |tc| {
+        if tc.generation == generation && tc.status == "InProgress" {
+            tc.status = "Stalled".into();
+            if !tc.output.is_empty() {
+                tc.output.push_str("\n\n");
+            }
+            tc.output.push_str(
+                "⚠ No tool update for 15s. Flynt requested cancellation to keep the agent panel responsive. Use Stop agent if the transport does not recover.",
+            );
+            stalled = true;
+        }
+    });
+    stalled
+}
+
+fn mark_unfinished_tool_calls(items: &mut Signal<Vec<ChatItem>>, status: &str, note: &str) {
+    for item in items.write().iter_mut() {
+        if let ChatItem::ToolCall(tc) = item {
+            if matches!(tc.status.as_str(), "InProgress" | "Stalled") {
+                tc.status = status.to_string();
+                if !note.is_empty() {
+                    if !tc.output.is_empty() {
+                        tc.output.push_str("\n\n");
+                    }
+                    tc.output.push_str(note);
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -1055,7 +1153,6 @@ pub fn AgentRail() -> Element {
                                 transport_generation.set(generation);
                                 session.set(None);
                                 shared_session.set(None);
-                                cleanup_project_omegon_acp(&project_root, agent_id.as_deref());
                                 available_commands.write().clear();
                                 config_options.write().clear();
                                 *session_title.write() = None;
@@ -1063,8 +1160,16 @@ pub fn AgentRail() -> Element {
                                     role: ChatRole::Assistant,
                                     content: "Stopped the Omegon agent transport. Use Start agent to reconnect.".into(),
                                 });
-                                *session_lifecycle_msg.write() = Some("Agent transport stopped.".into());
+                                *session_lifecycle_msg.write() = Some("Stopping agent transport…".into());
                                 *agent_status.write() = AgentStatus::Idle;
+
+                                let project_root = project_root.clone();
+                                let agent_id = agent_id.clone();
+                                let mut session_lifecycle_msg = session_lifecycle_msg;
+                                spawn(async move {
+                                    cleanup_project_omegon_acp_nonblocking(project_root, agent_id).await;
+                                    *session_lifecycle_msg.write() = Some("Agent transport stopped.".into());
+                                });
                             }
                         },
                         "Stop agent"
@@ -1735,6 +1840,20 @@ fn preflight_is_blocked(
 fn load_deployment_for_agent_rail(
     omegon: &crate::bootstrap::OmegonRuntimeContext,
 ) -> LoadedDeploymentManifest {
+    if !omegon.deployment_path.exists() {
+        if let Err(error) = omegon.ensure_deployment_manifest() {
+            tracing::warn!("Failed to create Flynt ACP deployment manifest: {error}");
+            return LoadedDeploymentManifest {
+                manifest: flynt_core::omegon_deployment::OmegonDeploymentManifest::default(),
+                source: DeploymentManifestSource::Invalid {
+                    error: format!(
+                        "deployment manifest is missing and could not be created: {error}"
+                    ),
+                },
+            };
+        }
+    }
+
     match std::fs::read_to_string(&omegon.deployment_path) {
         Ok(content) => {
             match flynt_core::omegon_deployment::OmegonDeploymentManifest::from_toml(&content) {
@@ -1772,8 +1891,12 @@ fn AgentPreflightCard(
     let cli_ready = cli_status == "Ready";
     let deployment_unknown =
         deployment.status == crate::omegon_deployment_diagnostics::DeploymentStatus::Unknown;
+    let deployment_warning =
+        deployment.status == crate::omegon_deployment_diagnostics::DeploymentStatus::Warning;
     let deployment_label = if deployment_unknown {
         "Not verified"
+    } else if deployment_warning && cli_ready && !blocked {
+        "Usable"
     } else {
         deployment.status.label()
     };
@@ -1781,7 +1904,8 @@ fn AgentPreflightCard(
         "agent-preflight blocked"
     } else if cli_ready
         && (deployment.status == crate::omegon_deployment_diagnostics::DeploymentStatus::Ok
-            || deployment_unknown)
+            || deployment_unknown
+            || deployment_warning)
     {
         "agent-preflight ok"
     } else {
@@ -1789,7 +1913,7 @@ fn AgentPreflightCard(
     };
     let pill = if blocked {
         "Blocked"
-    } else if cli_ready && deployment_unknown {
+    } else if cli_ready && (deployment_unknown || deployment_warning) {
         "Usable"
     } else {
         "Checked"
@@ -1813,6 +1937,8 @@ fn AgentPreflightCard(
                 div { class: "agent-preflight-summary", "Prompting is disabled until blocked runtime diagnostics are resolved." }
             } else if deployment_unknown && cli_ready {
                 div { class: "agent-preflight-summary", "ACP is connected; deployment metadata has not been observed yet." }
+            } else if deployment_warning && cli_ready {
+                div { class: "agent-preflight-summary", "Runtime is usable; Flynt-specific deployment provenance is still being verified." }
             } else if deployment.status != crate::omegon_deployment_diagnostics::DeploymentStatus::Ok || !cli_ready {
                 div { class: "agent-preflight-summary", "Some runtime checks are still pending; prompting remains enabled." }
             }
@@ -1928,7 +2054,35 @@ fn handle_acp_event(
                 status: "InProgress".into(),
                 args_summary: summarize_tool_args(args.as_ref()),
                 output: String::new(),
+                generation: *transport_generation.read(),
             }));
+
+            let id_for_watchdog = id.clone();
+            let mut items_for_watchdog = *items;
+            let transport_generation_for_watchdog = transport_generation;
+            let generation_for_watchdog = *transport_generation_for_watchdog.peek();
+            let session_for_watchdog = session;
+            let mut status_for_watchdog = *status;
+            spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+                let stalled = mark_stalled_tool_call(
+                    &mut items_for_watchdog,
+                    &id_for_watchdog,
+                    generation_for_watchdog,
+                    *transport_generation_for_watchdog.read(),
+                );
+                if stalled {
+                    if let Some(sess) = session_for_watchdog.read().clone() {
+                        if let Err(error) = sess.cancel_current_turn() {
+                            items_for_watchdog.write().push(ChatItem::Message {
+                                role: ChatRole::Assistant,
+                                content: format!("Tool stall cancellation failed: {error}"),
+                            });
+                        }
+                    }
+                    *status_for_watchdog.write() = AgentStatus::Idle;
+                }
+            });
         }
         AcpEvent::ToolCallUpdated {
             ref id,
@@ -1952,6 +2106,18 @@ fn handle_acp_event(
                             }
                             if let Some(o) = output {
                                 tc.output = o.clone();
+                            }
+                            if !terminal_ids.is_empty() {
+                                let summary = terminal_ids
+                                    .iter()
+                                    .map(|id| format!("terminal `{id}`"))
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+                                if !tc.output.is_empty() {
+                                    tc.output.push_str("\n");
+                                }
+                                tc.output
+                                    .push_str(&format!("Terminal output attached: {summary}."));
                             }
                             break;
                         }
@@ -2102,6 +2268,11 @@ fn handle_acp_event(
         }
         AcpEvent::Done => {
             tracing::info!("ACP Done");
+            mark_unfinished_tool_calls(
+                items,
+                "Ended",
+                "Turn ended without a final tool status update from ACP.",
+            );
             *status.write() = AgentStatus::Idle;
             if let Some(next) = queued_prompts.write().pop_front() {
                 items.write().push(ChatItem::Message {
@@ -2143,6 +2314,11 @@ fn handle_acp_event(
                 role: ChatRole::Assistant,
                 content: format!("✖ {provider} failed: {message}"),
             });
+            mark_unfinished_tool_calls(
+                items,
+                "Failed",
+                "Provider failed before ACP closed active tool calls.",
+            );
             *status.write() = AgentStatus::Idle;
             if let Some(next) = queued_prompts.write().pop_front() {
                 items.write().push(ChatItem::Message {
@@ -2164,6 +2340,11 @@ fn handle_acp_event(
                 role: ChatRole::Assistant,
                 content: format!("Turn cancelled: {reason}"),
             });
+            mark_unfinished_tool_calls(
+                items,
+                "Cancelled",
+                "Turn was cancelled before ACP closed active tool calls.",
+            );
             *status.write() = AgentStatus::Idle;
             if let Some(next) = queued_prompts.write().pop_front() {
                 items.write().push(ChatItem::Message {
@@ -2179,6 +2360,11 @@ fn handle_acp_event(
         AcpEvent::Error(ref msg) => {
             tracing::error!("ACP Error: {msg}");
             if is_transport_disconnect(msg) {
+                mark_unfinished_tool_calls(
+                    items,
+                    "Disconnected",
+                    "Agent transport disconnected before ACP closed active tool calls.",
+                );
                 items.write().push(ChatItem::Message {
                     role: ChatRole::Assistant,
                     content: format!(
@@ -2215,6 +2401,11 @@ fn handle_acp_event(
                 role: ChatRole::Assistant,
                 content: display,
             });
+            mark_unfinished_tool_calls(
+                items,
+                "Failed",
+                "ACP reported an error before closing active tool calls.",
+            );
             *status.write() = AgentStatus::Idle;
         }
     }
