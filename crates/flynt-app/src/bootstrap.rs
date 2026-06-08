@@ -1005,6 +1005,23 @@ fn run_project_watcher(
                             match p.strip_prefix(&project.root) {
                                 Ok(rel) => match project.store.get_document_by_path(rel) {
                                     Ok(Some(doc)) => {
+                                        let rel_str = rel.to_string_lossy().to_string();
+                                        match project.store.task_id_by_file_path(&rel_str) {
+                                            Ok(Some(task_id)) => {
+                                                if let Err(e) = project.store.delete_task(&task_id)
+                                                {
+                                                    warn!(
+                                                        "Remove deleted task from index failed for {}: {e}",
+                                                        rel.display()
+                                                    );
+                                                }
+                                            }
+                                            Ok(None) => {}
+                                            Err(e) => warn!(
+                                                "Lookup deleted task failed for {}: {e}",
+                                                rel.display()
+                                            ),
+                                        }
                                         if let Err(e) = project.store.delete_document(&doc.id) {
                                             warn!(
                                                 "Remove deleted document from index failed for {}: {e}",

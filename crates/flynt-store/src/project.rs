@@ -410,7 +410,7 @@ impl Project {
             .and_then(|v| flynt_core::datum::Entity::from_frontmatter(&v));
         let doc = Document {
             id,
-            path: rel_path,
+            path: rel_path.clone(),
             title,
             content: body,
             frontmatter,
@@ -420,6 +420,47 @@ impl Project {
             entity,
         };
         self.store.save_document(&doc)?;
+        self.index_task_entity_from_markdown(&rel_path, &raw, doc.frontmatter.kind.as_deref())?;
+        Ok(())
+    }
+
+    /// Import a task markdown file into the task table without rewriting the file.
+    ///
+    /// `index_file` is the live filesystem-ingestion path used by startup reindex and
+    /// the project watcher. Task files are source-of-truth markdown entities, so this
+    /// path updates SQLite rows and task_file_path mappings directly instead of calling
+    /// `save_any_task`, which would canonicalize/relocate the operator-authored file
+    /// and can trigger watcher write loops.
+    fn index_task_entity_from_markdown(
+        &self,
+        rel_path: &Path,
+        raw: &str,
+        kind: Option<&str>,
+    ) -> Result<()> {
+        let should_try = kind == Some("task")
+            || rel_path
+                .components()
+                .next()
+                .and_then(|component| match component {
+                    std::path::Component::Normal(value) => value.to_str(),
+                    _ => None,
+                })
+                .is_some_and(|component| component.eq_ignore_ascii_case("Tasks"));
+        if !should_try {
+            return Ok(());
+        }
+
+        match task_file::parse_task_from_markdown(raw) {
+            Ok(task) => {
+                self.store.save_task(&task)?;
+                self.store
+                    .set_task_file_path(&task.id, &rel_path.to_string_lossy())?;
+            }
+            Err(e) if kind == Some("task") => return Err(e).context("index task file"),
+            Err(e) => {
+                debug!(path = %rel_path.display(), error = %e, "skipping non-task markdown in Tasks directory")
+            }
+        }
         Ok(())
     }
 
@@ -4238,6 +4279,66 @@ Design for the authentication subsystem.
         assert!(p2.to_string_lossy().ends_with("same-title-2.md"));
         assert!(project.root.join(&p1).exists());
         assert!(project.root.join(&p2).exists());
+    }
+
+    #[test]
+    fn index_file_materializes_task_markdown_without_rewriting_path() {
+        let (_tmp, project, board) = project_with_board();
+        let rel = std::path::PathBuf::from("Tasks/manual/imported-task.md");
+        let abs = project.root.join(&rel);
+        std::fs::create_dir_all(abs.parent().unwrap()).unwrap();
+        let task_id = uuid::Uuid::new_v4();
+        std::fs::write(
+            &abs,
+            format!(
+                r#"+++
+id = "{task_id}"
+kind = "task"
+
+[data]
+title = "Imported task"
+board = "{}"
+column = "Backlog"
+priority = 2
+status = "todo"
+position = 7
+tags = ["qa"]
++++
+
+Imported body.
+"#,
+                board.id.0
+            ),
+        )
+        .unwrap();
+
+        project.index_file(&abs).unwrap();
+
+        let task = project
+            .store
+            .get_task(&flynt_core::models::TaskId(task_id))
+            .unwrap()
+            .unwrap();
+        assert_eq!(task.title, "Imported task");
+        assert_eq!(task.column, "Backlog");
+        assert_eq!(task.description.trim(), "Imported body.");
+        assert_eq!(
+            project.store.task_file_path(&task.id).unwrap().as_deref(),
+            Some("Tasks/manual/imported-task.md")
+        );
+        assert!(abs.exists(), "indexing must not relocate task files");
+    }
+
+    #[test]
+    fn task_id_by_file_path_finds_indexed_task_file() {
+        let (_tmp, project, board) = project_with_board();
+        let task = flynt_core::models::Task::new(board.id.clone(), "Backlog", "Lookup me");
+        let rel = project.save_any_task(&task).unwrap();
+        let found = project
+            .store
+            .task_id_by_file_path(&rel.to_string_lossy())
+            .unwrap();
+        assert_eq!(found, Some(task.id));
     }
 
     #[test]

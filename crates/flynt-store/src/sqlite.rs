@@ -3,7 +3,7 @@ use flynt_core::{
     models::*,
     store::{DocumentMetadataFilter, ProjectStore, TaskFilter},
 };
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::{path::Path, sync::Mutex};
 
 /// SQLite-backed `ProjectStore`.
@@ -40,6 +40,26 @@ impl SqliteStore {
             .ok()
             .flatten();
         Ok(path)
+    }
+
+    pub fn task_id_by_file_path(&self, path: &str) -> Result<Option<TaskId>> {
+        let conn = self.conn.lock().unwrap();
+        Ok(conn
+            .query_row(
+                "SELECT id FROM tasks WHERE task_file_path = ?1",
+                params![path],
+                |row| {
+                    let id: String = row.get(0)?;
+                    uuid::Uuid::parse_str(&id).map(TaskId).map_err(|e| {
+                        rusqlite::Error::FromSqlConversionFailure(
+                            0,
+                            rusqlite::types::Type::Text,
+                            Box::new(e),
+                        )
+                    })
+                },
+            )
+            .optional()?)
     }
 
     /// Update the on-disk file path for a task. Called by Project after
