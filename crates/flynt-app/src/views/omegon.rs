@@ -25,10 +25,12 @@ pub fn OmegonProjectView() -> Element {
     let journal_size = journal_meta.as_ref().map(|meta| meta.len()).unwrap_or(0);
     let deployment_size = deployment_meta.as_ref().map(|meta| meta.len()).unwrap_or(0);
     let journal_projection = load_journal_projection(&journal);
-    let journal_doc = ctx.project().store.list_documents().ok().and_then(|docs| {
-        docs.into_iter()
-            .find(|doc| doc.path == std::path::Path::new(".omegon/agent-journal.md"))
-    });
+    let journal_doc = ctx
+        .project()
+        .store
+        .get_document_by_path(std::path::Path::new(".omegon/agent-journal.md"))
+        .ok()
+        .flatten();
     let journal_available = journal_meta.is_some();
 
     rsx! {
