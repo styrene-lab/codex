@@ -146,6 +146,7 @@ pub fn TerminalSnapshotView(props: TerminalSnapshotViewProps) -> Element {
             onmousedown: move |evt| {
                 evt.prevent_default();
                 evt.stop_propagation();
+                document::eval("document.getElementById('flynt-terminal-active')?.focus();");
                 if evt.data().trigger_button() == Some(MouseButton::Primary) {
                     let point = event_cell_position(&evt, cell_width, cell_height, row_count, col_count);
                     selection.set(Some(TerminalSelection::new(point)));
@@ -189,7 +190,7 @@ pub fn TerminalSnapshotView(props: TerminalSnapshotViewProps) -> Element {
                 evt.stop_propagation();
                 if let dioxus::prelude::Key::Character(s) = evt.key() {
                     let modifiers = evt.modifiers();
-                    if (modifiers.meta() || modifiers.ctrl()) && s.eq_ignore_ascii_case("c") {
+                    if modifiers.meta() && s.eq_ignore_ascii_case("c") {
                         let text = visible_text_for_key.clone();
                         spawn(async move {
                             let script = format!(
@@ -201,7 +202,33 @@ pub fn TerminalSnapshotView(props: TerminalSnapshotViewProps) -> Element {
                         });
                         return;
                     }
-                    if (modifiers.meta() || modifiers.ctrl()) && s.eq_ignore_ascii_case("v") {
+                    if modifiers.ctrl() && modifiers.shift() && s.eq_ignore_ascii_case("c") {
+                        let text = visible_text_for_key.clone();
+                        spawn(async move {
+                            let script = format!(
+                                "navigator.clipboard.writeText({});",
+                                serde_json::to_string(&text)
+                                    .unwrap_or_else(|_| "\"\"".to_string())
+                            );
+                            let _ = document::eval(&script).await;
+                        });
+                        return;
+                    }
+                    if modifiers.meta() && s.eq_ignore_ascii_case("v") {
+                        let on_paste = on_paste.clone();
+                        spawn(async move {
+                            if let Ok(text) = document::eval("navigator.clipboard.readText()")
+                                .recv::<String>()
+                                .await
+                            {
+                                if !text.is_empty() {
+                                    on_paste.call(text);
+                                }
+                            }
+                        });
+                        return;
+                    }
+                    if modifiers.ctrl() && modifiers.shift() && s.eq_ignore_ascii_case("v") {
                         let on_paste = on_paste.clone();
                         spawn(async move {
                             if let Ok(text) = document::eval("navigator.clipboard.readText()")
@@ -226,7 +253,8 @@ pub fn TerminalSnapshotView(props: TerminalSnapshotViewProps) -> Element {
                 div { key: "row-{row_idx}", class: "flynt-terminal-row",
                     for (col_idx, cell) in row.iter().enumerate() {
                         {
-                            let is_cursor = props.snapshot.cursor == (row_idx, col_idx);
+                            let is_cursor = props.snapshot.cursor_visible
+                                && props.snapshot.cursor == (row_idx, col_idx);
                             let is_selected = selection
                                 .read()
                                 .as_ref()

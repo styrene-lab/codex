@@ -100,6 +100,8 @@ pub fn TerminalLabView() -> Element {
     let manager_for_input = manager.clone();
     let manager_for_paste = manager.clone();
     let manager_for_scroll = manager.clone();
+    let manager_for_input_scroll = manager.clone();
+    let manager_for_paste_scroll = manager.clone();
     let manager_for_resize = manager.clone();
 
     rsx! {
@@ -186,11 +188,17 @@ pub fn TerminalLabView() -> Element {
                     class: "flynt-terminal".to_string(),
                     on_key: move |input: String| {
                         if let Some(id) = terminal_id.read().clone() {
+                            if let Ok(next) = manager_for_input_scroll.scroll_to_bottom(&id) {
+                                snapshot.set(next);
+                            }
                             let _ = manager_for_input.send_input(&id, &input);
                         }
                     },
                     on_paste: move |input: String| {
                         if let Some(id) = terminal_id.read().clone() {
+                            if let Ok(next) = manager_for_paste_scroll.scroll_to_bottom(&id) {
+                                snapshot.set(next);
+                            }
                             let _ = manager_for_paste.send_input(&id, &input);
                         }
                     },

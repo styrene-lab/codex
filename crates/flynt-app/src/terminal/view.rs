@@ -32,6 +32,7 @@ pub const DEFAULT_COLS: usize = 120;
 pub struct TerminalSnapshot {
     pub(crate) rows: Vec<Vec<RenderCell>>,
     pub(crate) cursor: (usize, usize),
+    pub(crate) cursor_visible: bool,
 }
 
 impl TerminalSnapshot {
@@ -39,6 +40,7 @@ impl TerminalSnapshot {
         Self {
             rows: vec![vec![RenderCell::default(); cols]; rows],
             cursor: (0, 0),
+            cursor_visible: false,
         }
     }
 }
@@ -145,6 +147,10 @@ impl AlacrittyTerminalSession {
         }
     }
 
+    pub fn scroll_bottom(&mut self) {
+        self.term.grid_mut().scroll_display(Scroll::Bottom);
+    }
+
     pub fn resize(&mut self, rows: usize, cols: usize) -> anyhow::Result<()> {
         let rows = rows.max(1) as u16;
         let cols = cols.max(1) as u16;
@@ -203,6 +209,7 @@ impl AlacrittyTerminalSession {
             };
         }
         snapshot.cursor = cursor;
+        snapshot.cursor_visible = content.display_offset == 0;
         snapshot
     }
     pub fn try_wait_status(&self) -> TerminalStatus {
