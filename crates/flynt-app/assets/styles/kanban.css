@@ -2,6 +2,33 @@
    Kanban board
    ───────────────────────────────────────────────────────────────────────────── */
 
+/* ── Semantic task badge tokens ─────────────────────────────────────────────
+ * Defaults derive from theme tokens first, with fixed fallbacks only where the
+ * app theme does not yet expose a named semantic color. */
+.view-kanban {
+  --task-tag-docs-fg: var(--tag-docs-fg, var(--primary-bright));
+  --task-tag-docs-bg: var(--tag-docs-bg, color-mix(in srgb, var(--primary) 18%, transparent));
+  --task-tag-docs-border: var(--tag-docs-border, color-mix(in srgb, var(--primary-bright) 62%, transparent));
+  --task-tag-release-fg: var(--tag-release-fg, var(--warning-fg, #ffe8ad));
+  --task-tag-release-bg: var(--tag-release-bg, color-mix(in srgb, var(--warning, #b89020) 20%, transparent));
+  --task-tag-release-border: var(--tag-release-border, color-mix(in srgb, var(--warning, #b89020) 68%, transparent));
+  --task-tag-design-fg: var(--tag-design-fg, var(--accent-fg, #eee8ff));
+  --task-tag-design-bg: var(--tag-design-bg, color-mix(in srgb, var(--accent, #6060c0) 24%, transparent));
+  --task-tag-design-border: var(--tag-design-border, color-mix(in srgb, var(--accent, #6060c0) 72%, transparent));
+  --task-tag-agent-fg: var(--tag-agent-fg, var(--success-fg, #caffea));
+  --task-tag-agent-bg: var(--tag-agent-bg, color-mix(in srgb, var(--success, #1ab878) 18%, transparent));
+  --task-tag-agent-border: var(--tag-agent-border, color-mix(in srgb, var(--success, #1ab878) 72%, transparent));
+  --task-tag-done-fg: var(--tag-done-fg, var(--success-fg, #dafbe9));
+  --task-tag-done-bg: var(--tag-done-bg, color-mix(in srgb, var(--success, #1ab878) 10%, transparent));
+  --task-tag-done-border: var(--tag-done-border, color-mix(in srgb, var(--success, #1ab878) 46%, transparent));
+  --task-tag-risk-fg: var(--tag-risk-fg, var(--warning-fg, #ffd8b8));
+  --task-tag-risk-bg: var(--tag-risk-bg, color-mix(in srgb, var(--warning, #c86418) 20%, transparent));
+  --task-tag-risk-border: var(--tag-risk-border, color-mix(in srgb, var(--warning, #c86418) 72%, transparent));
+  --task-tag-neutral-fg: var(--tag-neutral-fg, var(--muted-foreground));
+  --task-tag-neutral-bg: var(--tag-neutral-bg, color-mix(in srgb, var(--muted-foreground) 14%, transparent));
+  --task-tag-neutral-border: var(--tag-neutral-border, color-mix(in srgb, var(--muted-foreground) 50%, transparent));
+}
+
 /* ── View shell ───────────────────────────────────────────────────────────── */
 .view-kanban {
   display:        flex;
@@ -451,23 +478,21 @@
 .task-priority.critical { background: var(--priority-critical-fg); }
 
 .task-menu-btn {
-  font-size:     14px;
-  font-weight:   600;
+  font-size:     16px;
+  font-weight:   700;
   color:         var(--muted-foreground);
-  width:         20px;
-  height:        20px;
+  width:         22px;
+  height:        22px;
   border-radius: var(--radius-sm);
   flex-shrink:   0;
   display:       flex;
   align-items:   center;
   justify-content: center;
-  /* Always visible — expand is the primary card action. The previous
-   * opacity:0 + hover-reveal made the button discoverable only after
-   * users figured out the click target existed; on a card with many
-   * chips the button got pushed off-screen entirely. */
-  opacity:       0.5;
+  opacity:       0.72;
+  line-height:   1;
   transition:    opacity var(--duration-fast) var(--ease),
-                 color   var(--duration-fast) var(--ease);
+                 color   var(--duration-fast) var(--ease),
+                 background var(--duration-fast) var(--ease);
 }
 .task-card:hover .task-menu-btn { opacity: 1; }
 .task-menu-btn:hover { color: var(--foreground); background: var(--accent); opacity: 1; }
@@ -919,4 +944,102 @@
   color: #d8edf6;
   background: rgba(96, 120, 136, 0.14);
   border-color: rgba(96, 120, 136, 0.50);
+}
+
+
+/* Expanded card internals: compact, readable, and visually subordinate to the
+ * task title. */
+.task-details {
+  gap: var(--space-3);
+  padding: var(--space-3);
+  margin-top: var(--space-3);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--kanban-card-bg) 82%, var(--surface));
+}
+.task-details .field > span {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.task-details .field input,
+.task-details .field select {
+  min-height: 34px;
+  background: color-mix(in srgb, var(--surface) 78%, var(--kanban-card-bg));
+  border-color: var(--border);
+}
+.task-detail-hint {
+  margin: 0;
+  padding: var(--space-2);
+  border-left: 2px solid var(--primary-muted);
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.task-detail-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  align-items: stretch;
+}
+.task-detail-actions .btn {
+  min-width: 0;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* Token-backed semantic tag categories. */
+.task-card .task-tag,
+.task-card .task-tags-inline .task-tag {
+  color: var(--task-tag-neutral-fg);
+  background: var(--task-tag-neutral-bg);
+  border: 1px solid var(--task-tag-neutral-border);
+  font-weight: 700;
+  text-shadow: none;
+}
+.task-card .task-tag.tag-docs,
+.task-card .task-tags-inline .task-tag.tag-docs {
+  color: var(--task-tag-docs-fg);
+  background: var(--task-tag-docs-bg);
+  border-color: var(--task-tag-docs-border);
+}
+.task-card .task-tag.tag-release,
+.task-card .task-tags-inline .task-tag.tag-release {
+  color: var(--task-tag-release-fg);
+  background: var(--task-tag-release-bg);
+  border-color: var(--task-tag-release-border);
+}
+.task-card .task-tag.tag-design,
+.task-card .task-tags-inline .task-tag.tag-design {
+  color: var(--task-tag-design-fg);
+  background: var(--task-tag-design-bg);
+  border-color: var(--task-tag-design-border);
+}
+.task-card .task-tag.tag-agent,
+.task-card .task-tags-inline .task-tag.tag-agent {
+  color: var(--task-tag-agent-fg);
+  background: var(--task-tag-agent-bg);
+  border-color: var(--task-tag-agent-border);
+}
+.task-card .task-tag.tag-done,
+.task-card .task-tags-inline .task-tag.tag-done {
+  color: var(--task-tag-done-fg);
+  background: var(--task-tag-done-bg);
+  border-color: var(--task-tag-done-border);
+}
+.task-card .task-tag.tag-risk,
+.task-card .task-tags-inline .task-tag.tag-risk {
+  color: var(--task-tag-risk-fg);
+  background: var(--task-tag-risk-bg);
+  border-color: var(--task-tag-risk-border);
+}
+.task-card .task-tag.tag-neutral,
+.task-card .task-tags-inline .task-tag.tag-neutral {
+  color: var(--task-tag-neutral-fg);
+  background: var(--task-tag-neutral-bg);
+  border-color: var(--task-tag-neutral-border);
 }

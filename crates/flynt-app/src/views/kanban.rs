@@ -887,7 +887,7 @@ fn TaskCard(
                         let is_open = *open.read();
                         *open.write() = !is_open;
                     },
-                    if *open.read() { "−" } else { "+" }
+                    if *open.read() { "▾" } else { "▸" }
                 }
             }
             div { class: "task-card-meta",
@@ -1065,7 +1065,7 @@ fn TaskCard(
                     }
 
 
-                    div { class: "row gap-2",
+                    div { class: "task-detail-actions",
                         // Save: title + priority + engagement only.
                         // Everything else is in the .md file — open it
                         // to edit description, sentry config, etc.
