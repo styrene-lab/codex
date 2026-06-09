@@ -493,8 +493,10 @@
 
 .task-tag {
   font-size:     var(--font-size-xs);
-  color:         var(--primary-muted);
-  background:    color-mix(in srgb, var(--primary) 8%, transparent);
+  font-weight:   650;
+  color:         #d8edf6;
+  background:    rgba(26, 52, 72, 0.72);
+  border:        1px solid rgba(110, 202, 216, 0.38);
   border-radius: var(--radius-full);
   padding:       1px 6px;
 }
@@ -858,4 +860,16 @@
 
 .kanban-empty-form .input {
   flex: 1;
+}
+
+
+/* Release screenshot/readability guard: task badges must remain legible on
+ * dark kanban cards. Keep this override after the legacy tag rules. */
+.task-card .task-tag,
+.task-card .task-tags-inline .task-tag {
+  color: #e8f7ff;
+  background: rgba(42, 180, 200, 0.18);
+  border: 1px solid rgba(110, 202, 216, 0.72);
+  font-weight: 700;
+  text-shadow: none;
 }

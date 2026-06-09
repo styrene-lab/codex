@@ -1,0 +1,47 @@
+{
+  "sourceProject": "demo-vault",
+  "outputDir": "site/public/screenshots",
+  "scenarios": [
+    {
+      "id": "write-surface",
+      "title": "Write surface",
+      "surface": "write",
+      "doc": "Welcome.md",
+      "output": "write-surface.png",
+      "placeholder": "write-surface.svg",
+      "description": "Markdown editing with project navigation and document context."
+    },
+    {
+      "id": "graph-surface",
+      "title": "Graph surface",
+      "surface": "graph",
+      "output": "graph-surface.png",
+      "placeholder": "graph-surface.svg",
+      "description": "Project graph across notes, tasks, boards, and visual artifacts."
+    },
+    {
+      "id": "tasks-surface",
+      "title": "Tasks surface",
+      "surface": "tasks",
+      "output": "tasks-surface.png",
+      "placeholder": "tasks-surface.svg",
+      "description": "Kanban board and task markdown indexing."
+    },
+    {
+      "id": "design-surface",
+      "title": "Design surface",
+      "surface": "design",
+      "output": "design-surface.png",
+      "placeholder": "design-surface.svg",
+      "description": "Visual artifacts including drawings, D2 diagrams, design boards, and flows."
+    },
+    {
+      "id": "omegon-surface",
+      "title": "Omegon surface",
+      "surface": "omegon",
+      "output": "omegon-surface.png",
+      "placeholder": "omegon-surface.svg",
+      "description": "Project-local embedded Omegon runtime and agent state."
+    }
+  ]
+}

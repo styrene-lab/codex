@@ -166,6 +166,28 @@ pub fn KanbanView() -> Element {
     let ctx = use_context::<AppContext>();
     let mut refresh = use_signal(|| 0_u64);
 
+    // External file changes must refresh the kanban in-place. Task markdown
+    // can be edited by agents, git sync, or another editor; forcing the
+    // operator to navigate away and back leaves the board stale and breaks
+    // screenshot/release workflows.
+    use_effect(move || {
+        let project_events = ctx.project_events();
+        spawn(async move {
+            let mut rx = project_events.subscribe();
+            while let Ok(evt) = rx.recv().await {
+                let path = match evt {
+                    flynt_store::watcher::ProjectChangeEvent::FileCreated(p)
+                    | flynt_store::watcher::ProjectChangeEvent::FileModified(p)
+                    | flynt_store::watcher::ProjectChangeEvent::FileDeleted(p) => p,
+                };
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                if ext == "md" {
+                    *refresh.write() += 1;
+                }
+            }
+        });
+    });
+
     let boards = use_resource(move || {
         let _ = refresh(); // reactive dep
         let project = ctx.project();

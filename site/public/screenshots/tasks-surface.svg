@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="title desc">
+  <title id="title">Flynt tasks surface placeholder</title><desc id="desc">Generated placeholder for the Flynt documentation screenshot pipeline.</desc>
+  <rect width="1440" height="900" fill="#070a10"/><rect x="48" y="44" width="1344" height="812" rx="24" fill="#0b111c" stroke="#1b2a3d"/>
+  <text x="90" y="95" font-family="Inter, system-ui" font-size="22" font-weight="700" fill="#e8eef4">Tasks</text>
+  <g font-family="Inter, system-ui"><rect x="100" y="150" width="380" height="650" rx="18" fill="#0d1420" stroke="#1b2a3d"/><rect x="520" y="150" width="380" height="650" rx="18" fill="#0d1420" stroke="#1b2a3d"/><rect x="940" y="150" width="340" height="650" rx="18" fill="#0d1420" stroke="#1b2a3d"/><text x="130" y="200" font-size="18" font-weight="700" fill="#36c3d4">Active</text><text x="550" y="200" font-size="18" font-weight="700" fill="#36c3d4">In progress</text><text x="970" y="200" font-size="18" font-weight="700" fill="#36c3d4">Archive</text></g>
+  <g fill="#121b2a" stroke="#1b2a3d"><rect x="130" y="235" width="320" height="120" rx="14"/><rect x="130" y="380" width="320" height="120" rx="14"/><rect x="550" y="235" width="320" height="150" rx="14"/><rect x="550" y="410" width="320" height="120" rx="14"/><rect x="970" y="235" width="250" height="100" rx="14"/></g>
+  <g fill="#8fa0af"><rect x="160" y="270" width="210" height="16" rx="8"/><rect x="160" y="306" width="260" height="14" rx="7"/><rect x="580" y="270" width="230" height="16" rx="8"/><rect x="580" y="306" width="260" height="14" rx="7"/><rect x="1000" y="270" width="170" height="16" rx="8"/></g>
+  <text x="90" y="810" font-family="Inter, system-ui" font-size="18" fill="#8fa0af">Replace with generated screenshot: tasks-surface.png</text>
+</svg>

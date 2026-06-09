@@ -5,7 +5,7 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
   <h1>Getting started</h1>
   <p class="lead">A Flynt project is a folder. Markdown is the source of truth; Flynt indexes it and adds project surfaces on top.</p>
   <h2>Project layout</h2>
-  <p>Flynt owns <code>.flynt/</code>. Omegon owns <code>.omegon/</code>. A project can start as an ordinary markdown folder; runtime folders appear as features need them.</p>
+  <p>Flynt owns <code>.flynt/</code>. Omegon owns <code>.omegon/</code>. Portable Flynt settings stay at the top of <code>.flynt/</code>; generated local state belongs under <code>.flynt/local/</code>; runtime integration contracts and caches belong under <code>.flynt/runtime/</code>.</p>
   <pre><code>my-project/
   notes.md
   guides/

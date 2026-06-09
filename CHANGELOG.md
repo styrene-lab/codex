@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.12.2 — 2026-06-09
+
+### Added
+- **Repository release-surface guard** — added `scripts/check-release-surfaces.py` and CI hooks so version bumps keep `Cargo.toml`, the Flynt agent manifest, the static site package metadata, `CHANGELOG.md`, and public release-site copy in sync.
+- **Agent release guidance** — added repository-level `AGENTS.md` instructions for site updates, manual changelog maintenance, and the currently dormant `release-plz` workflow.
+- **Refreshed public site** — replaced the stale landing page with curated 0.12.x docs for installation, project surfaces, embedded Omegon, sync posture, and release notes.
+
+### Changed
+- **Flynt state ownership model** — consolidated Flynt-owned generated/local/runtime paths under `.flynt/local/` and `.flynt/runtime/`, while keeping Omegon-owned project-local agent state under `.omegon/`.
+- **Agent surface guide** — updated Flynt's embedded agent guidance to document the `.flynt/` / `.omegon/` ownership model and avoid recreating stale legacy local-state paths.
+
 ## 0.12.1 — 2026-06-08
 
 ### Added

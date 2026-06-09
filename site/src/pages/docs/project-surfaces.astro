@@ -1,5 +1,7 @@
 ---
 import DocsLayout from "../../layouts/DocsLayout.astro";
+import ScreenshotCard from "../../components/ScreenshotCard.astro";
+import screenshots from "../../data/screenshots.json";
 ---
 <DocsLayout title="Project surfaces — Flynt" description="Flynt project surfaces in 0.12.x.">
   <h1>Project surfaces</h1><p class="lead">Flynt presents one project through multiple surfaces instead of forcing every workflow into a file tree.</p>
@@ -7,4 +9,5 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
   <h2>Tasks</h2><p>Kanban boards and task markdown are indexed into the project store so tasks are navigable project knowledge, not disconnected UI state.</p>
   <h2>Design and visual artifacts</h2><p>Flynt supports Excalidraw drawings, D2 diagrams, design boards, and flow graphs. 0.12.x continues the work of making visual artifacts discoverable as coherent project objects.</p>
   <h2>Terminal</h2><p>Terminal Lab keeps shell sessions inside the workspace. Agent terminal-backed tool calls are surfaced in the ACP panel when attached.</p>
+  <h2>Demo vault screenshots</h2><p>These images are controlled by the repository screenshot manifest. Placeholder SVGs keep the site layout stable until the demo-vault screenshot generator replaces them with captured app screenshots.</p><div class="screenshot-grid">{screenshots.map((shot) => <ScreenshotCard {...shot} />)}</div>
 </DocsLayout>

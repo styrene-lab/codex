@@ -1,0 +1,8 @@
+project_name = "Flynt Demo Vault"
+
+[appearance]
+theme = "alpharius"
+
+[indexing]
+write_frontmatter = false
+track_index_snapshot = false

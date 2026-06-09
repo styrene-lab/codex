@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "id": "release-flow",
+  "meta": {
+    "title": "Release Flow"
+  },
+  "nodes": [
+    {
+      "id": "brief",
+      "kind": "input",
+      "position": [
+        80,
+        160
+      ],
+      "data": {
+        "name": "Brief"
+      },
+      "sockets": [
+        {
+          "name": "out",
+          "direction": "output"
+        }
+      ]
+    },
+    {
+      "id": "tasks",
+      "kind": "step",
+      "position": [
+        340,
+        160
+      ],
+      "data": {
+        "name": "Tasks"
+      },
+      "sockets": [
+        {
+          "name": "in",
+          "direction": "input"
+        },
+        {
+          "name": "out",
+          "direction": "output"
+        }
+      ]
+    },
+    {
+      "id": "screens",
+      "kind": "step",
+      "position": [
+        600,
+        160
+      ],
+      "data": {
+        "name": "Screenshots"
+      },
+      "sockets": [
+        {
+          "name": "in",
+          "direction": "input"
+        },
+        {
+          "name": "out",
+          "direction": "output"
+        }
+      ]
+    },
+    {
+      "id": "release",
+      "kind": "output",
+      "position": [
+        860,
+        160
+      ],
+      "data": {
+        "name": "Release"
+      },
+      "sockets": [
+        {
+          "name": "in",
+          "direction": "input"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": {
+        "node": "brief",
+        "socket": "out"
+      },
+      "target": {
+        "node": "tasks",
+        "socket": "in"
+      }
+    },
+    {
+      "id": "e2",
+      "source": {
+        "node": "tasks",
+        "socket": "out"
+      },
+      "target": {
+        "node": "screens",
+        "socket": "in"
+      }
+    },
+    {
+      "id": "e3",
+      "source": {
+        "node": "screens",
+        "socket": "out"
+      },
+      "target": {
+        "node": "release",
+        "socket": "in"
+      }
+    }
+  ]
+}

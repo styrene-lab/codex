@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="title desc">
+  <title id="title">Flynt Omegon surface placeholder</title><desc id="desc">Generated placeholder for the Flynt documentation screenshot pipeline.</desc>
+  <rect width="1440" height="900" fill="#070a10"/><rect x="48" y="44" width="1344" height="812" rx="24" fill="#0b111c" stroke="#1b2a3d"/>
+  <text x="90" y="95" font-family="Inter, system-ui" font-size="22" font-weight="700" fill="#e8eef4">Project → Omegon</text>
+  <rect x="95" y="145" width="500" height="665" rx="18" fill="#0d1420" stroke="#1b2a3d"/><rect x="635" y="145" width="695" height="665" rx="18" fill="#0d1420" stroke="#1b2a3d"/>
+  <text x="135" y="205" font-family="Inter, system-ui" font-size="28" font-weight="760" fill="#e8eef4">Agent runtime</text><rect x="135" y="248" width="380" height="16" rx="8" fill="#8fa0af"/><rect x="135" y="286" width="300" height="16" rx="8" fill="#5f7180"/>
+  <g fill="#121b2a" stroke="#1b2a3d"><rect x="135" y="360" width="400" height="90" rx="14"/><rect x="135" y="480" width="400" height="90" rx="14"/><rect x="675" y="190" width="590" height="120" rx="14"/><rect x="675" y="345" width="590" height="120" rx="14"/><rect x="675" y="500" width="590" height="120" rx="14"/></g>
+  <g fill="#36c3d4"><rect x="165" y="392" width="170" height="16" rx="8"/><rect x="705" y="228" width="230" height="16" rx="8"/><rect x="705" y="383" width="260" height="16" rx="8"/><rect x="705" y="538" width="210" height="16" rx="8"/></g>
+  <text x="90" y="810" font-family="Inter, system-ui" font-size="18" fill="#8fa0af">Replace with generated screenshot: omegon-surface.png</text>
+</svg>

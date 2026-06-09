@@ -1,0 +1,42 @@
+[
+  {
+    "id": "write-surface",
+    "title": "Write surface",
+    "image": "/screenshots/write-surface.svg",
+    "alt": "Flynt Write surface showing markdown project notes and tabbed editing",
+    "caption": "Markdown stays as files while Flynt adds tabs, project navigation, and document context.",
+    "docHref": "/docs/project-surfaces/"
+  },
+  {
+    "id": "graph-surface",
+    "title": "Graph surface",
+    "image": "/screenshots/graph-surface.svg",
+    "alt": "Flynt graph surface showing project relationships",
+    "caption": "Documents, tasks, boards, and visual artifacts resolve into a navigable project graph.",
+    "docHref": "/docs/project-surfaces/"
+  },
+  {
+    "id": "tasks-surface",
+    "title": "Tasks surface",
+    "image": "/screenshots/tasks-surface.svg",
+    "alt": "Flynt Tasks surface showing a kanban board",
+    "caption": "Kanban boards and task markdown are indexed as project knowledge, not detached app state.",
+    "docHref": "/docs/project-surfaces/"
+  },
+  {
+    "id": "design-surface",
+    "title": "Design surface",
+    "image": "/screenshots/design-surface.svg",
+    "alt": "Flynt Design surface showing visual artifacts",
+    "caption": "Drawings, D2 diagrams, design boards, and flows are treated as first-class artifacts.",
+    "docHref": "/docs/project-surfaces/"
+  },
+  {
+    "id": "omegon-surface",
+    "title": "Omegon surface",
+    "image": "/screenshots/omegon-surface.svg",
+    "alt": "Flynt Project Omegon surface showing project-local agent state",
+    "caption": "Embedded Omegon sessions operate inside the active project with inspectable runtime state.",
+    "docHref": "/docs/agent/"
+  }
+]

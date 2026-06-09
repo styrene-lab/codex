@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="title desc">
+  <title id="title">Flynt design surface placeholder</title><desc id="desc">Generated placeholder for the Flynt documentation screenshot pipeline.</desc>
+  <rect width="1440" height="900" fill="#070a10"/><rect x="48" y="44" width="1344" height="812" rx="24" fill="#0b111c" stroke="#1b2a3d"/>
+  <text x="90" y="95" font-family="Inter, system-ui" font-size="22" font-weight="700" fill="#e8eef4">Design</text>
+  <rect x="95" y="145" width="260" height="665" rx="18" fill="#0d1420" stroke="#1b2a3d"/><rect x="390" y="145" width="900" height="665" rx="18" fill="#0d1420" stroke="#1b2a3d"/>
+  <g fill="#121b2a" stroke="#1b2a3d"><rect x="430" y="190" width="360" height="210" rx="18"/><rect x="830" y="190" width="400" height="210" rx="18"/><rect x="430" y="440" width="800" height="230" rx="18"/></g>
+  <g fill="#36c3d4" opacity="0.9"><rect x="470" y="235" width="160" height="18" rx="9"/><rect x="470" y="276" width="250" height="14" rx="7"/><rect x="870" y="235" width="180" height="18" rx="9"/><rect x="870" y="276" width="290" height="14" rx="7"/><rect x="470" y="492" width="280" height="18" rx="9"/></g>
+  <text x="125" y="195" font-family="Inter, system-ui" font-size="18" font-weight="700" fill="#36c3d4">Artifacts</text><rect x="125" y="235" width="170" height="14" rx="7" fill="#8fa0af"/><rect x="125" y="275" width="130" height="14" rx="7" fill="#5f7180"/><rect x="125" y="315" width="150" height="14" rx="7" fill="#5f7180"/>
+  <text x="90" y="810" font-family="Inter, system-ui" font-size="18" fill="#8fa0af">Replace with generated screenshot: design-surface.png</text>
+</svg>

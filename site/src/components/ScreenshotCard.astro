@@ -1,0 +1,20 @@
+---
+export interface Props {
+  title: string;
+  image: string;
+  alt: string;
+  caption: string;
+  docHref?: string;
+}
+
+const { title, image, alt, caption, docHref } = Astro.props;
+---
+<figure class="screenshot-card">
+  <a class="screenshot-frame" href={docHref ?? image}>
+    <img src={image} alt={alt} loading="lazy" />
+  </a>
+  <figcaption>
+    <strong>{title}</strong>
+    <span>{caption}</span>
+  </figcaption>
+</figure>

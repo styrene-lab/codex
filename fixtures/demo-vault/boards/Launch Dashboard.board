@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "theme": "default",
+  "grid": {
+    "cols": 12,
+    "rows": 8,
+    "gap": 10
+  },
+  "cells": [
+    {
+      "id": "hero",
+      "x": 0,
+      "y": 0,
+      "w": 7,
+      "h": 3,
+      "content": {
+        "kind": "html",
+        "html": "<div class='h-full flex flex-col justify-center gap-3 rounded-xl border border-border bg-card p-6'><div class='text-sm uppercase tracking-widest text-primary'>0.12.2 Launch</div><div class='text-3xl font-bold text-foreground'>Demo vault screenshot pass</div><p class='text-muted-foreground'>Release surfaces, docs, tasks, and visual artifacts are staged for public screenshots.</p></div>"
+      }
+    },
+    {
+      "id": "metrics",
+      "x": 7,
+      "y": 0,
+      "w": 5,
+      "h": 3,
+      "content": {
+        "kind": "html",
+        "html": "<div class='h-full grid grid-cols-2 gap-3 p-3'><div class='rounded-lg bg-card border border-border p-4'><div class='text-2xl font-bold'>5</div><div class='text-sm text-muted-foreground'>screenshots</div></div><div class='rounded-lg bg-card border border-border p-4'><div class='text-2xl font-bold'>8</div><div class='text-sm text-muted-foreground'>site pages</div></div><div class='rounded-lg bg-card border border-border p-4'><div class='text-2xl font-bold'>3</div><div class='text-sm text-muted-foreground'>guards</div></div><div class='rounded-lg bg-card border border-border p-4'><div class='text-2xl font-bold'>0</div><div class='text-sm text-muted-foreground'>cloud deps</div></div></div>"
+      }
+    },
+    {
+      "id": "flow",
+      "x": 0,
+      "y": 3,
+      "w": 6,
+      "h": 3,
+      "content": {
+        "kind": "html",
+        "html": "<div class='h-full rounded-xl border border-border bg-card p-5'><div class='font-semibold mb-3'>Release flow</div><p class='text-sm text-muted-foreground'>Brief \u2192 Tasks \u2192 Site docs \u2192 Screenshot capture \u2192 Release tag</p><p class='mt-4 text-primary'>![[diagrams/surface-map.d2]]</p></div>"
+      }
+    },
+    {
+      "id": "artifact",
+      "x": 6,
+      "y": 3,
+      "w": 6,
+      "h": 3,
+      "content": {
+        "kind": "html",
+        "html": "<div class='h-full rounded-xl border border-border bg-card p-5'><div class='font-semibold mb-3'>Visual artifacts</div><p class='text-sm text-muted-foreground'>Design board, drawing, D2 diagram, and flow graph are present for Design surface screenshots.</p><p class='mt-4 text-primary'>![[drawings/System Map.excalidraw]]</p></div>"
+      }
+    }
+  ]
+}
