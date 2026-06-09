@@ -1,7 +1,9 @@
 //! Dioxus rendering helpers for terminal snapshots.
 
 use dioxus::html::geometry::WheelDelta;
+use dioxus::html::input_data::MouseButton;
 use dioxus::prelude::*;
+use dioxus::prelude::{InteractionElementOffset, PointerInteraction};
 
 use super::view::{DEFAULT_COLS, DEFAULT_ROWS, TerminalSnapshot, key_to_terminal_input};
 
@@ -52,7 +54,12 @@ pub fn TerminalSnapshotView(props: TerminalSnapshotViewProps) -> Element {
     let on_paste = props.on_paste.clone();
     let on_scroll = props.on_scroll.clone();
     let on_size = props.on_size.clone();
-    let visible_text = snapshot_visible_text(&props.snapshot);
+    let mut selection = use_signal(|| None::<TerminalSelection>);
+    let cell_width = props.font_size as f64 * 0.60;
+    let cell_height = props.font_size as f64 * 1.20;
+    let row_count = props.snapshot.rows.len();
+    let col_count = props.snapshot.rows.first().map_or(0, Vec::len);
+    let visible_text = selected_or_visible_text(&props.snapshot, *selection.read());
     let visible_text_for_copy = visible_text.clone();
     let visible_text_for_key = visible_text.clone();
 
@@ -95,6 +102,34 @@ pub fn TerminalSnapshotView(props: TerminalSnapshotViewProps) -> Element {
                     );
                     let _ = document::eval(&script).await;
                 });
+            },
+            onmousedown: move |evt| {
+                evt.prevent_default();
+                evt.stop_propagation();
+                if evt.data().trigger_button() == Some(MouseButton::Primary) {
+                    let point = event_cell_position(&evt, cell_width, cell_height, row_count, col_count);
+                    selection.set(Some(TerminalSelection::new(point)));
+                }
+            },
+            onmousemove: move |evt| {
+                if evt.data().held_buttons().contains(MouseButton::Primary) {
+                    evt.prevent_default();
+                    evt.stop_propagation();
+                    let current = *selection.read();
+                    if let Some(mut current) = current {
+                        current.end = event_cell_position(&evt, cell_width, cell_height, row_count, col_count);
+                        selection.set(Some(current));
+                    }
+                }
+            },
+            onmouseup: move |evt| {
+                evt.prevent_default();
+                evt.stop_propagation();
+                let current = *selection.read();
+                if let Some(mut current) = current {
+                    current.end = event_cell_position(&evt, cell_width, cell_height, row_count, col_count);
+                    selection.set(Some(current));
+                }
             },
             onwheel: move |evt| {
                 evt.prevent_default();
@@ -151,9 +186,14 @@ pub fn TerminalSnapshotView(props: TerminalSnapshotViewProps) -> Element {
                     for (col_idx, cell) in row.iter().enumerate() {
                         {
                             let is_cursor = props.snapshot.cursor == (row_idx, col_idx);
+                            let is_selected = selection
+                                .read()
+                                .as_ref()
+                                .map(|range| range.contains(row_idx, col_idx))
+                                .unwrap_or(false);
                             let mut fg = cell.fg;
                             let mut bg = cell.bg;
-                            if is_cursor {
+                            if is_cursor || is_selected {
                                 std::mem::swap(&mut fg, &mut bg);
                             }
                             let decoration = if cell.underline { "text-decoration: underline;" } else { "" };
@@ -175,6 +215,15 @@ pub fn TerminalSnapshotView(props: TerminalSnapshotViewProps) -> Element {
     }
 }
 
+fn selected_or_visible_text(snapshot: &TerminalSnapshot, selection: Option<TerminalSelection>) -> String {
+    if let Some(selection) = selection {
+        if !selection.is_empty() {
+            return snapshot_selected_text(snapshot, selection);
+        }
+    }
+    snapshot_visible_text(snapshot)
+}
+
 fn snapshot_visible_text(snapshot: &TerminalSnapshot) -> String {
     snapshot
         .rows
@@ -189,6 +238,87 @@ fn snapshot_visible_text(snapshot: &TerminalSnapshot) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn snapshot_selected_text(snapshot: &TerminalSnapshot, selection: TerminalSelection) -> String {
+    let (start, end) = selection.normalized();
+    (start.row..=end.row)
+        .filter_map(|row_idx| {
+            let row = snapshot.rows.get(row_idx)?;
+            let start_col = if row_idx == start.row { start.col } else { 0 };
+            let end_col = if row_idx == end.row {
+                end.col
+            } else {
+                row.len().saturating_sub(1)
+            };
+            Some(
+                row.iter()
+                    .enumerate()
+                    .filter(|(col_idx, cell)| {
+                        *col_idx >= start_col && *col_idx <= end_col && !cell.wide_spacer
+                    })
+                    .map(|(_, cell)| cell.text.as_str())
+                    .collect::<String>()
+                    .trim_end()
+                    .to_string(),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn event_cell_position(
+    evt: &MouseEvent,
+    cell_width: f64,
+    cell_height: f64,
+    row_count: usize,
+    col_count: usize,
+) -> TerminalCellPosition {
+    let coordinates = evt.data().element_coordinates();
+    let row = (coordinates.y / cell_height).floor().max(0.0) as usize;
+    let col = (coordinates.x / cell_width).floor().max(0.0) as usize;
+    TerminalCellPosition {
+        row: row.min(row_count.saturating_sub(1)),
+        col: col.min(col_count.saturating_sub(1)),
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct TerminalCellPosition {
+    row: usize,
+    col: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct TerminalSelection {
+    start: TerminalCellPosition,
+    end: TerminalCellPosition,
+}
+
+impl TerminalSelection {
+    fn new(position: TerminalCellPosition) -> Self {
+        Self {
+            start: position,
+            end: position,
+        }
+    }
+
+    fn is_empty(self) -> bool {
+        self.start == self.end
+    }
+
+    fn normalized(self) -> (TerminalCellPosition, TerminalCellPosition) {
+        if (self.start.row, self.start.col) <= (self.end.row, self.end.col) {
+            (self.start, self.end)
+        } else {
+            (self.end, self.start)
+        }
+    }
+
+    fn contains(self, row: usize, col: usize) -> bool {
+        let (start, end) = self.normalized();
+        (row, col) >= (start.row, start.col) && (row, col) <= (end.row, end.col)
+    }
 }
 
 #[derive(Props, Clone, PartialEq)]
