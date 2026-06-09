@@ -65,6 +65,7 @@ pub fn TerminalSnapshotView(props: TerminalSnapshotViewProps) -> Element {
 
     rsx! {
         div {
+            id: "flynt-terminal-active",
             class: "flynt-alacritty-terminal {props.class}",
             tabindex: "0",
             onmounted: move |evt| {
@@ -75,6 +76,45 @@ pub fn TerminalSnapshotView(props: TerminalSnapshotViewProps) -> Element {
                         let rows = (rect.size.height / (props.font_size as f64 * 1.20)).floor().max(5.0) as usize;
                         on_size.call((rows, cols));
                         let _ = evt.set_focus(true).await;
+                    }
+
+                    let mut resize_bridge = document::eval(
+                        r#"
+                        (function() {
+                            var el = document.getElementById('flynt-terminal-active');
+                            if (!el) { dioxus.send(''); return; }
+                            if (window._flyntTerminalResizeObserver) {
+                                window._flyntTerminalResizeObserver.disconnect();
+                            }
+                            var last = '';
+                            function emit(rect) {
+                                var payload = JSON.stringify({ width: rect.width, height: rect.height });
+                                if (payload !== last) {
+                                    last = payload;
+                                    dioxus.send(payload);
+                                }
+                            }
+                            window._flyntTerminalResizeObserver = new ResizeObserver(function(entries) {
+                                if (entries && entries[0]) emit(entries[0].contentRect);
+                            });
+                            window._flyntTerminalResizeObserver.observe(el);
+                            emit(el.getBoundingClientRect());
+                        })();
+                        "#,
+                    );
+
+                    while let Ok(payload) = resize_bridge.recv::<String>().await {
+                        if payload.is_empty() {
+                            break;
+                        }
+                        let Ok(value) = serde_json::from_str::<serde_json::Value>(&payload) else {
+                            continue;
+                        };
+                        let width = value.get("width").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                        let height = value.get("height").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                        let cols = (width / (props.font_size as f64 * 0.60)).floor().max(20.0) as usize;
+                        let rows = (height / (props.font_size as f64 * 1.20)).floor().max(5.0) as usize;
+                        on_size.call((rows, cols));
                     }
                 });
             },
