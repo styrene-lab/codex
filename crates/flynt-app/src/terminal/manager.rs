@@ -139,8 +139,13 @@ impl TerminalManager {
             .sessions
             .get_mut(terminal_id)
             .ok_or_else(|| anyhow!("terminal '{terminal_id}' was not found"))?;
-        record.rows = rows.max(1);
-        record.cols = cols.max(1);
+        let rows = rows.max(1);
+        let cols = cols.max(1);
+        if record.rows == rows && record.cols == cols {
+            return Ok(());
+        }
+        record.rows = rows;
+        record.cols = cols;
         record.session.resize(record.rows, record.cols)
     }
 
