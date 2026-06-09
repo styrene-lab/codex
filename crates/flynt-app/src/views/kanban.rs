@@ -894,7 +894,7 @@ fn TaskCard(
                 if !task.tags.is_empty() {
                     div { class: "task-tags-inline",
                         for tag in task.tags.iter() {
-                            span { class: "task-tag", "{tag}" }
+                            span { class: "task-tag {task_tag_class(tag)}", "{tag}" }
                         }
                     }
                 }
@@ -1238,6 +1238,20 @@ fn priority_badge_class(priority: Priority) -> &'static str {
         Priority::Medium => "medium",
         Priority::High => "high",
         Priority::Critical => "critical",
+    }
+}
+
+fn task_tag_class(tag: &str) -> &'static str {
+    match tag.to_ascii_lowercase().as_str() {
+        "docs" | "doc" | "site" | "screenshot" | "screenshots" | "write" | "review" => "tag-docs",
+        "release" | "validation" | "validate" | "guard" | "guards" | "check" => "tag-release",
+        "design" | "board" | "drawing" | "drawings" | "flow" | "flows" | "diagram" | "diagrams" => {
+            "tag-design"
+        }
+        "omegon" | "agent" | "runtime" | "acp" => "tag-agent",
+        "done" | "archive" | "archived" | "shipped" => "tag-done",
+        "sync" | "conflict" | "migration" | "breaking" | "risk" => "tag-risk",
+        _ => "tag-neutral",
     }
 }
 

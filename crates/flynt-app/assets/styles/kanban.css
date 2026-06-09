@@ -873,3 +873,50 @@
   font-weight: 700;
   text-shadow: none;
 }
+
+
+/* Semantic tag categories. Color communicates category, not individual tag
+ * decoration: docs/content, release/validation, design/artifacts,
+ * agent/runtime, done/archive, risk/sync, and neutral fallback. */
+.task-card .task-tag.tag-docs,
+.task-card .task-tags-inline .task-tag.tag-docs {
+  color: #e8f7ff;
+  background: rgba(42, 180, 200, 0.18);
+  border-color: rgba(110, 202, 216, 0.72);
+}
+.task-card .task-tag.tag-release,
+.task-card .task-tags-inline .task-tag.tag-release {
+  color: #ffe8ad;
+  background: rgba(184, 144, 32, 0.18);
+  border-color: rgba(184, 144, 32, 0.72);
+}
+.task-card .task-tag.tag-design,
+.task-card .task-tags-inline .task-tag.tag-design {
+  color: #eee8ff;
+  background: rgba(96, 96, 192, 0.22);
+  border-color: rgba(128, 118, 230, 0.72);
+}
+.task-card .task-tag.tag-agent,
+.task-card .task-tags-inline .task-tag.tag-agent {
+  color: #caffea;
+  background: rgba(26, 184, 120, 0.18);
+  border-color: rgba(26, 184, 120, 0.72);
+}
+.task-card .task-tag.tag-done,
+.task-card .task-tags-inline .task-tag.tag-done {
+  color: #dafbe9;
+  background: rgba(26, 184, 120, 0.10);
+  border-color: rgba(26, 184, 120, 0.46);
+}
+.task-card .task-tag.tag-risk,
+.task-card .task-tags-inline .task-tag.tag-risk {
+  color: #ffd8b8;
+  background: rgba(200, 100, 24, 0.18);
+  border-color: rgba(200, 100, 24, 0.72);
+}
+.task-card .task-tag.tag-neutral,
+.task-card .task-tags-inline .task-tag.tag-neutral {
+  color: #d8edf6;
+  background: rgba(96, 120, 136, 0.14);
+  border-color: rgba(96, 120, 136, 0.50);
+}
