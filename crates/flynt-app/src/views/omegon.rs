@@ -56,16 +56,15 @@ pub fn OmegonProjectView() -> Element {
                     }
                 }
             }
-            div { class: "omegon-surface-grid",
-                div { class: "omegon-surface-card omegon-journal-card",
-                    div { class: "omegon-surface-card-head",
-                        div {
-                            span { class: "omegon-surface-kicker", "Journal" }
-                            h2 { "Agent Journal" }
-                        }
-                        span { class: "omegon-surface-meta", "{journal_size} bytes" }
+            section { class: "omegon-journal-panel",
+                div { class: "omegon-surface-card-head",
+                    div {
+                        span { class: "omegon-surface-kicker", "Journal" }
+                        h2 { "Agent Journal" }
                     }
-                    p { if journal_available { "Chronological record of agent sessions and outcomes." } else { "No project agent journal found yet." } }
+                    span { class: "omegon-surface-meta", "{journal_size} bytes" }
+                }
+                p { if journal_available { "Chronological record of agent sessions and outcomes." } else { "No project agent journal found yet." } }
                     if journal_available {
                         div { class: "omegon-journal-timeline-label", "Timeline preview" }
                         div { class: "omegon-journal-timeline",
@@ -118,6 +117,7 @@ pub fn OmegonProjectView() -> Element {
                         button { class: "btn btn-xs btn-ghost", disabled: !journal_available, onclick: move |_| reveal_path(&journal), "Reveal" }
                     }
                 }
+            div { class: "omegon-surface-grid",
                 div { class: "omegon-surface-card",
                     span { class: "omegon-surface-kicker", "Deployment" }
                     h2 { "ACP Manifest" }

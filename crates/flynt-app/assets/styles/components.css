@@ -2633,6 +2633,13 @@
   background: var(--card);
   padding: var(--space-4);
 }
+.omegon-journal-panel {
+  margin-bottom: var(--space-3);
+  border: var(--border-width-hairline) solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  padding: var(--space-4);
+}
 .omegon-surface-card-head {
   display: flex;
   align-items: flex-start;
@@ -2655,6 +2662,7 @@
 .omegon-journal-projection {
   position: relative;
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: var(--space-3);
   margin-top: var(--space-2);
   padding-left: var(--space-4);
