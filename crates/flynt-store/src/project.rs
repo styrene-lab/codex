@@ -1830,13 +1830,17 @@ impl Project {
 
     fn walk_markdown(&self, cb: &mut impl FnMut(&Path)) -> Result<()> {
         let flynt_dir = self.root.join(".flynt");
+        let omegon_dir = self.root.join(".omegon");
         for entry in walkdir::WalkDir::new(&self.root)
             .follow_links(false)
             .into_iter()
-            .filter_entry(|e| e.path() != flynt_dir && !is_hidden(e))
+            .filter_entry(|e| e.path() != flynt_dir && (!is_hidden(e) || e.path() == omegon_dir))
             .filter_map(|e| e.ok())
             .filter(|e| {
-                e.file_type().is_file() && e.path().extension().map(|x| x == "md").unwrap_or(false)
+                e.file_type().is_file()
+                    && e.path().extension().map(|x| x == "md").unwrap_or(false)
+                    && (!has_hidden_component(e.path().strip_prefix(&self.root).unwrap_or(e.path()))
+                        || e.path() == self.root.join(".omegon/agent-journal.md"))
             })
         {
             cb(entry.path());
@@ -2391,6 +2395,16 @@ fn is_hidden(entry: &walkdir::DirEntry) -> bool {
         .to_str()
         .map(|s| s.starts_with('.'))
         .unwrap_or(false)
+}
+
+fn has_hidden_component(path: &Path) -> bool {
+    path.components().any(|component| {
+        component
+            .as_os_str()
+            .to_str()
+            .map(|s| s.starts_with('.'))
+            .unwrap_or(false)
+    })
 }
 
 /// Heuristic: directory has `.git` plus at least one build manifest → code repo.

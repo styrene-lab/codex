@@ -24,7 +24,7 @@ pub fn OmegonProjectView() -> Element {
         .unwrap_or(0);
     let journal_size = journal_meta.as_ref().map(|meta| meta.len()).unwrap_or(0);
     let deployment_size = deployment_meta.as_ref().map(|meta| meta.len()).unwrap_or(0);
-    let journal_projection = load_journal_projection(&journal);
+    let journal_entries = load_journal_timeline(&journal);
     let journal_doc = ctx
         .project()
         .store
@@ -67,9 +67,35 @@ pub fn OmegonProjectView() -> Element {
                     }
                     p { if journal_available { "Chronological record of agent sessions and outcomes." } else { "No project agent journal found yet." } }
                     if journal_available {
-                        div { class: "omegon-journal-projection",
-                            for item in journal_projection.iter() {
-                                div { class: "omegon-journal-line", "{item}" }
+                        div { class: "omegon-journal-timeline",
+                            for entry in journal_entries.iter() {
+                                article { class: "omegon-journal-entry",
+                                    div { class: "omegon-journal-entry-head",
+                                        span { class: "omegon-journal-entry-title", "{entry.title}" }
+                                        if let Some(timestamp) = entry.timestamp.as_ref() {
+                                            span { class: "omegon-journal-entry-time", "{timestamp}" }
+                                        }
+                                    }
+                                    if let Some(objective) = entry.objective.as_ref() {
+                                        div { class: "omegon-journal-field",
+                                            span { "Objective" }
+                                            p { "{objective}" }
+                                        }
+                                    }
+                                    if let Some(outcome) = entry.outcome.as_ref() {
+                                        div { class: "omegon-journal-field",
+                                            span { "Outcome" }
+                                            p { "{outcome}" }
+                                        }
+                                    }
+                                    if !entry.notes.is_empty() {
+                                        div { class: "omegon-journal-notes",
+                                            for note in entry.notes.iter() {
+                                                div { class: "omegon-journal-line", "{note}" }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -111,32 +137,129 @@ pub fn OmegonProjectView() -> Element {
     }
 }
 
-fn load_journal_projection(path: &std::path::Path) -> Vec<String> {
-    std::fs::read_to_string(path)
-        .ok()
-        .map(|content| {
-            content
-                .lines()
-                .filter_map(|line| {
-                    let trimmed = line.trim();
-                    if trimmed.is_empty()
-                        || trimmed == "---"
-                        || trimmed.starts_with("title:")
-                        || trimmed.starts_with("tags:")
-                        || trimmed.starts_with("# ")
-                    {
-                        None
-                    } else if let Some(item) = trimmed.strip_prefix("- ") {
-                        Some(item.to_string())
-                    } else {
-                        Some(trimmed.to_string())
-                    }
-                })
-                .take(5)
-                .collect::<Vec<_>>()
+/// Curated hidden-artifact policy for `.omegon`:
+/// - Agent journal is operator-facing project history and may be indexed/opened.
+/// - Runtime JSON, plugin manifests/personas, workflows, and deployment manifests stay out of
+///   normal Notes/Files and are projected here as structured operational views.
+/// - Reveal actions remain debug affordances, not the primary UX.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct JournalTimelineEntry {
+    timestamp: Option<String>,
+    title: String,
+    objective: Option<String>,
+    outcome: Option<String>,
+    notes: Vec<String>,
+}
+
+fn load_journal_timeline(path: &std::path::Path) -> Vec<JournalTimelineEntry> {
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return vec![empty_journal_entry()];
+    };
+    let entries = parse_journal_entries(&content);
+    if entries.is_empty() {
+        vec![empty_journal_entry()]
+    } else {
+        entries.into_iter().take(4).collect()
+    }
+}
+
+fn parse_journal_entries(content: &str) -> Vec<JournalTimelineEntry> {
+    let body_lines: Vec<&str> = content
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim();
+            !(trimmed == "---" || trimmed.starts_with("title:") || trimmed.starts_with("tags:"))
         })
-        .filter(|items| !items.is_empty())
-        .unwrap_or_else(|| vec!["No journal entries to project yet.".to_string()])
+        .collect();
+
+    let mut entries = Vec::new();
+    let mut current: Option<JournalTimelineEntry> = None;
+    let mut fallback_notes = Vec::new();
+
+    for line in body_lines {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed == "# Agent Journal" {
+            continue;
+        }
+        if let Some(heading) = trimmed.strip_prefix("## ") {
+            if let Some(entry) = current.take() {
+                entries.push(entry);
+            }
+            current = Some(entry_from_heading(heading));
+            continue;
+        }
+
+        let note = trimmed.strip_prefix("- ").unwrap_or(trimmed).trim();
+        if note.is_empty() {
+            continue;
+        }
+        if let Some(entry) = current.as_mut() {
+            apply_journal_line(entry, note);
+        } else {
+            fallback_notes.push(note.to_string());
+        }
+    }
+    if let Some(entry) = current.take() {
+        entries.push(entry);
+    }
+
+    if entries.is_empty() && !fallback_notes.is_empty() {
+        let mut entry = JournalTimelineEntry {
+            timestamp: None,
+            title: "Current journal state".to_string(),
+            objective: None,
+            outcome: None,
+            notes: Vec::new(),
+        };
+        for note in fallback_notes {
+            apply_journal_line(&mut entry, &note);
+        }
+        entries.push(entry);
+    }
+
+    entries.into_iter().rev().collect()
+}
+
+fn entry_from_heading(heading: &str) -> JournalTimelineEntry {
+    let (timestamp, title) = heading
+        .split_once('—')
+        .or_else(|| heading.split_once(" - "))
+        .map(|(left, right)| (Some(left.trim().to_string()), right.trim().to_string()))
+        .unwrap_or((None, heading.trim().to_string()));
+    JournalTimelineEntry {
+        timestamp,
+        title,
+        objective: None,
+        outcome: None,
+        notes: Vec::new(),
+    }
+}
+
+fn apply_journal_line(entry: &mut JournalTimelineEntry, line: &str) {
+    if let Some(value) = strip_field(line, "Objective").or_else(|| strip_field(line, "Current objective")) {
+        entry.objective = Some(value.to_string());
+    } else if let Some(value) = strip_field(line, "Outcome") {
+        entry.outcome = Some(value.to_string());
+    } else {
+        entry.notes.push(line.to_string());
+    }
+}
+
+fn strip_field<'a>(line: &'a str, label: &str) -> Option<&'a str> {
+    line.strip_prefix(&format!("**{label}:**"))
+        .or_else(|| line.strip_prefix(&format!("{label}:")))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn empty_journal_entry() -> JournalTimelineEntry {
+    JournalTimelineEntry {
+        timestamp: None,
+        title: "No journal entries yet".to_string(),
+        objective: None,
+        outcome: None,
+        notes: vec!["Omegon has not recorded project-local agent history yet.".to_string()],
+    }
 }
 
 fn reveal_path(path: &std::path::Path) {
