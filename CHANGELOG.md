@@ -53,7 +53,7 @@
 - **Source task/canvas projection design** — documented how source-backed artifacts project into task and canvas workflows without duplicating source truth.
 - **Eidolon embedded viewer integration design** — defined the boundary for reviewing captured/source-backed evidence through an embedded viewer.
 - **Omegon 0.23 ACP alignment** — Flynt now preserves Omegon-owned profile defaults on ACP session startup and only replays explicit operator-selected config overrides.
-- **Storage policy first pass** — Flynt now documents the portable-metadata/local-runtime-state boundary, defaults new index databases outside the opened content root instead of under `.flynt-local/`, and exposes an opt-in tracked JSONL index snapshot for repos that should carry portable metadata.
+- **Storage policy first pass** — Flynt now documents the portable-metadata/local-runtime-state boundary, defaults new index databases outside the opened content root instead of under `.flynt/local/`, and exposes an opt-in tracked JSONL index snapshot for repos that should carry portable metadata.
 
 ### Fixed
 - **Flynt surface guide execution test** — the agent extension test now calls the executable `execute_flynt_surface_guide` RPC while still advertising the user-facing `flynt_surface_guide` tool.
@@ -113,7 +113,7 @@ UX and perf rewrite of the sidebar + agent rail, Dioxus 0.7.9 upgrade, and a two
 
 ## 0.7.0 — 2026-05-06
 
-First release under the new name. **Codyx is now Flynt.** Binaries, bundle IDs, asset paths, and the project site (https://flynt.styrene.io) all migrated. Existing projects and configuration continue to work unchanged.
+First release under the new name. **Flynt naming is canonical.** Binaries, bundle IDs, asset paths, and the project site (https://flynt.styrene.io) all migrated. Existing projects and configuration continue to work unchanged.
 
 ### Added
 - **Embedded Omegon agent configuration GUI** — configure the agent surface (model, tools, project scope) directly from the desktop app, no separate config file editing
@@ -121,7 +121,7 @@ First release under the new name. **Codyx is now Flynt.** Binaries, bundle IDs, 
 - **Tracing instrumentation** — structured `tracing` spans across project, sync, and ACP layers for diagnostics
 
 ### Changed
-- **Rebrand: Codyx → Flynt** across crates (`flynt-models`, `flynt-store`, `flynt-app`, `flynt-agent`, `flynt-mobile`), binaries, desktop entries, and asset paths
+- **Rebrand: legacy name → Flynt** across crates (`flynt-models`, `flynt-store`, `flynt-app`, `flynt-agent`, `flynt-mobile`), binaries, desktop entries, and asset paths
 - **Bundle ID** remains `io.styrene.flynt` (unchanged from 0.5.0)
 - **Homebrew formula** moved to `Flynt` class on `styrene-lab/homebrew-tap`
 

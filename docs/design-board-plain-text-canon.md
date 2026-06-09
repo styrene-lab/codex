@@ -6,7 +6,7 @@ parent: design-board-visual-substrate
 tags: []
 open_questions:
   - "[assumption] `.board` JSON remains the only editable board-state format through v1; templates and exports derive from it rather than replacing it."
-  - "Should intentional operator exports default to `exports/design/`, while preview/cache exports default to `.flynt-local/exports/design/`?"
+  - "Should intentional operator exports default to `exports/design/`, while preview/cache exports default to `.flynt/local/exports/design/`?"
 dependencies: []
 related: []
 ---
@@ -40,4 +40,4 @@ Keep Design Board backing files as plain-text source of truth. `.board` JSON, wr
 ## Open Questions
 
 - [assumption] `.board` JSON remains the only editable board-state format through v1; templates and exports derive from it rather than replacing it.
-- Should intentional operator exports default to `exports/design/`, while preview/cache exports default to `.flynt-local/exports/design/`?
+- Should intentional operator exports default to `exports/design/`, while preview/cache exports default to `.flynt/local/exports/design/`?

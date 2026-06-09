@@ -16,7 +16,7 @@ Release surfaces:
 Known gaps:
 
 - Confirm Dioxus iOS output path remains stable across CLI updates.
-- Replace remaining `io.styrene.codex` bundle and app group identifiers when
+- Replace remaining `io.styrene.flynt` bundle and app group identifiers when
   TestFlight continuity no longer requires them.
 - Add an App Store release lane when production iOS distribution starts.
 - Add mobile smoke tests that launch the built app on simulator or device.

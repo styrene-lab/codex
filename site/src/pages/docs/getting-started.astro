@@ -1,0 +1,27 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+---
+<DocsLayout title="Getting started — Flynt" description="Start using Flynt with a local-first markdown project.">
+  <h1>Getting started</h1>
+  <p class="lead">A Flynt project is a folder. Markdown is the source of truth; Flynt indexes it and adds project surfaces on top.</p>
+  <h2>Project layout</h2>
+  <p>Flynt owns <code>.flynt/</code>. Omegon owns <code>.omegon/</code>. A project can start as an ordinary markdown folder; runtime folders appear as features need them.</p>
+  <pre><code>my-project/
+  notes.md
+  guides/
+  drawings/
+  boards/
+  flows/
+
+  .flynt/              # Flynt-owned metadata and generated state
+    config.toml        # portable project settings when enabled
+    templates/         # note templates
+    lenses/            # saved live views
+    local/             # Flynt generated local state, gitignored
+    runtime/           # Flynt runtime integration contracts, gitignored
+
+  .omegon/             # Omegon-owned project-local agent/runtime state</code></pre>
+  <h2>First run</h2>
+  <ol><li>Install Flynt for macOS from the latest release.</li><li>Create a project, open an existing markdown folder, or clone a demo vault.</li><li>Use <strong>Project → Write</strong> for notes, <strong>Lenses</strong> for saved views, and <strong>Graph</strong> for relationships.</li><li>Open the Omegon panel when you want the embedded agent to inspect or modify project artifacts.</li></ol>
+  <h2>Dot-prefixed files</h2><p>The Files sidebar hides dot-prefixed metadata/runtime paths by default. Use the <code>.hidden</code> toggle when you need to inspect project-local runtime files.</p>
+</DocsLayout>

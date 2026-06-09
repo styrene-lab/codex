@@ -1,0 +1,9 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+---
+<DocsLayout title="Sync posture — Flynt" description="Flynt sync posture and caveats.">
+  <h1>Sync posture</h1><p class="lead">Flynt is local-first. Sync is explicit infrastructure layered on top of a folder you own.</p>
+  <h2>What exists</h2><p>Flynt has Git-backed project sync paths, background activity indicators, and release work around task/document indexing. This is useful for individual and deliberate multi-device workflows.</p>
+  <h2>What not to overclaim</h2><div class="callout">0.12.x should not be presented as real-time collaborative sync. Pull/merge semantics, conflict handling, and overwrite safety remain active hardening areas.</div>
+  <h2>Practical guidance</h2><ul><li>Use Git history as the audit and rollback layer.</li><li>Keep important projects backed up.</li><li>Treat multi-user collaboration as a deliberate workflow, not invisible magic.</li></ul>
+</DocsLayout>

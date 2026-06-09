@@ -55,7 +55,7 @@ Contract: v1
 A Flynt project may declare deployment state in:
 
 ```text
-<project>/.flynt/omegon.toml
+<project>/.flynt/runtime/omegon.toml
 ```
 
 Shape:
@@ -160,7 +160,7 @@ Costs:
 First implementation slice:
 
 1. Define typed deployment and resolved-artifact data structures in Flynt app.
-2. Parse optional `<project>/.flynt/omegon.toml`.
+2. Parse optional `<project>/.flynt/runtime/omegon.toml`.
 3. Synthesize defaults when the file is absent.
 4. Surface deployment status in the ACP/Omegon settings panel.
 5. Update Armory metadata for the Flynt extension with scope/profile contract.

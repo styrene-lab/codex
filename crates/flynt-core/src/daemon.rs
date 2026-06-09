@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Per-project agent daemon configuration.
-/// Stored in `.flynt/operator-settings.json` under `agent_daemon`.
+/// Stored in `.flynt/runtime/operator-settings.json` under `agent_daemon`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentDaemonConfig {

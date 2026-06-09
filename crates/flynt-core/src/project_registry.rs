@@ -328,7 +328,7 @@ impl ProjectRegistrySnapshot {
     }
 
     pub fn snapshot_path(project_root: &Path) -> PathBuf {
-        project_root.join(".flynt/registry/project-registry.snapshot.json")
+        project_root.join(".flynt/local/registry/project-registry.snapshot.json")
     }
 
     pub fn persist_to_project(&self, project_root: &Path) -> anyhow::Result<()> {
@@ -1369,7 +1369,7 @@ fn should_skip_registry_dir(project_root: &std::path::Path, path: &std::path::Pa
     };
     if matches!(
         first,
-        ".git" | ".flynt" | ".flynt-local" | ".omegon" | "target" | "node_modules" | ".venv"
+        ".git" | ".flynt" | ".omegon" | "target" | "node_modules" | ".venv"
     ) {
         return true;
     }
@@ -2366,13 +2366,13 @@ mod tests {
     #[test]
     fn raw_asset_registry_skips_generated_and_hidden_runtime_dirs() {
         let tmp = tempfile::TempDir::new().unwrap();
-        std::fs::create_dir_all(tmp.path().join(".flynt/registry")).unwrap();
+        std::fs::create_dir_all(tmp.path().join(".flynt/local/registry")).unwrap();
         std::fs::create_dir_all(tmp.path().join(".omegon/evidence")).unwrap();
         std::fs::create_dir_all(tmp.path().join(".hidden")).unwrap();
         std::fs::create_dir_all(tmp.path().join("assets")).unwrap();
         std::fs::write(
             tmp.path()
-                .join(".flynt/registry/project-registry.snapshot.json"),
+                .join(".flynt/local/registry/project-registry.snapshot.json"),
             "{}",
         )
         .unwrap();
@@ -2566,7 +2566,7 @@ mod tests {
         assert_eq!(
             path,
             tmp.path()
-                .join(".flynt/registry/project-registry.snapshot.json")
+                .join(".flynt/local/registry/project-registry.snapshot.json")
         );
         assert!(path.exists());
         let raw = std::fs::read_to_string(&path).unwrap();

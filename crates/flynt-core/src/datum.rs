@@ -458,7 +458,7 @@ impl Entity {
 ///
 /// [data]
 /// name = "flynt"
-/// url = "https://github.com/example-org/codex"
+/// url = "https://github.com/example-org/flynt"
 /// provider = "github"
 /// org = "example-org"
 /// default_branch = "main"
@@ -987,7 +987,7 @@ mod tests {
             .with_field("name", Datum::Text("flynt".into()))
             .with_field(
                 "url",
-                Datum::Text("https://github.com/example-org/codex".into()),
+                Datum::Text("https://github.com/example-org/flynt".into()),
             )
             .with_field("provider", Datum::Text("github".into()))
             .with_field("org", Datum::Text("example-org".into()))
@@ -996,7 +996,7 @@ mod tests {
 
         let view = RepoView::from_entity(&repo).unwrap();
         assert_eq!(view.name(), "flynt");
-        assert_eq!(view.url(), Some("https://github.com/example-org/codex"));
+        assert_eq!(view.url(), Some("https://github.com/example-org/flynt"));
         assert_eq!(view.provider(), Some("github"));
         assert_eq!(view.org(), Some("example-org"));
         assert_eq!(view.default_branch(), "main");

@@ -1,0 +1,9 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+---
+<DocsLayout title="Flynt 0.12.x release" description="Flynt 0.12.x release notes and posture.">
+  <h1>0.12.x release line</h1><p class="lead">0.12.x is the release line where Flynt becomes a packaged project workspace with an embedded, project-aware Omegon agent.</p>
+  <h2>0.12.1</h2><ul><li>ACP tool liveness watchdog: stale tool rows are marked and bounded instead of hanging indefinitely.</li><li>Stop Agent containment: panel detaches immediately; process cleanup is bounded and asynchronous.</li><li>Project → Omegon surface for project-local agent/runtime state.</li><li>Files sidebar hides dot-prefixed paths by default with an inspection toggle.</li><li>Agent panel styling aligned to theme/component tokens.</li></ul>
+  <h2>0.12.0</h2><p>0.12.0 established the packaged ACP path: session controls, runtime diagnostics, release-status polish, task indexing fixes, and visual artifact surface fixes.</p>
+  <h2>Known caveats</h2><ul><li>Sync conflict safety remains a hardening area.</li><li>Some visual surfaces are still maturing.</li><li>The public site uses curated docs rather than dumping internal design notes.</li></ul>
+</DocsLayout>

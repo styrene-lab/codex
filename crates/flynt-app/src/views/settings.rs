@@ -900,7 +900,7 @@ pub fn SettingsView() -> Element {
                                 "Dump summary to log"
                             }
                         }
-                        span { class: "settings-hint muted", ".flynt/registry/project-registry.snapshot.json — generated, portable, safe to delete/rebuild." }
+                        span { class: "settings-hint muted", ".flynt/local/registry/project-registry.snapshot.json — generated local state, safe to delete/rebuild." }
                         if let Some((kind, msg)) = registry_msg.read().as_ref() {
                             div { class: "settings-status {kind}", "{msg}" }
                         }

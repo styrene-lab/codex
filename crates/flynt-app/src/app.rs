@@ -221,7 +221,7 @@ pub fn App() -> Element {
     let mut palette_mode = use_signal(|| crate::components::command_palette::PaletteMode::Command);
     let shared_acp_session = use_context::<Signal<Option<std::rc::Rc<crate::acp::AcpSession>>>>();
 
-    // Mirror tab + view state to <project>/.flynt-local/flynt/ui-state.json so the
+    // Mirror tab + view state to <project>/.flynt/local/flynt/ui-state.json so the
     // embedded omegon agent can answer "what document am I looking at?" via
     // its get_ui_state tool. Re-fires whenever Dioxus detects tab_state /
     // active_route changes.
@@ -237,7 +237,7 @@ pub fn App() -> Element {
     }
 
     // Bootstrap design board assets (tweakcn presets, shadcn primitives) into the
-    // project's .flynt-local directory so flynt-agent can read them via the
+    // project's .flynt/local directory so flynt-agent can read them via the
     // design_board_* tool family. Idempotent and content-aware; safe to re-run on
     // every launch.
     {

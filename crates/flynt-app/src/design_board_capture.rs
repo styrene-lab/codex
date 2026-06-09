@@ -7,7 +7,7 @@
 //! ## Architecture
 //!
 //! Tool side (`omegon-design::design_board_capture_viewport`) writes a request file
-//! to `<project>/.flynt-local/flynt/capture-requests/<id>.json`. Flynt-app's
+//! to `<project>/.flynt/local/flynt/capture-requests/<id>.json`. Flynt-app's
 //! `DesignBoardView` watches that directory via the existing project watcher; on
 //! detection, it:
 //!   1. Queries each cell's iframe via `postMessage` for its body's natural
@@ -16,7 +16,7 @@
 //!      in `views::design_board`.
 //!   2. Computes the design board-pane's screen-relative bounds.
 //!   3. Calls `xcap` to capture the Flynt window, crops to those bounds.
-//!   4. Writes PNG + response JSON to `<project>/.flynt-local/flynt/capture-responses/`.
+//!   4. Writes PNG + response JSON to `<project>/.flynt/local/flynt/capture-responses/`.
 //!
 //! Tool polls for the response file (5s timeout), returns image + metrics.
 //!

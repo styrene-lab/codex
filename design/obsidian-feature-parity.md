@@ -127,7 +127,7 @@ Priority implementation tasks:
 5. Add selective sync policy for generated/heavy content:
    - drawings PNG exports
    - embedded media
-   - `.flynt-local`
+   - `.flynt/local`
    - publication output
    - agent artifacts.
 6. Document the recommended sync lanes:

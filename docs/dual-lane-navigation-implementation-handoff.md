@@ -63,7 +63,7 @@ The Notes/Text Files lane hides by default:
 - artifact wrappers, e.g. `boards/Demo.md`, `drawings/Foo.md`
 - artifact sources, e.g. `*.board`, `*.excalidraw`, `*.d2`, `*.flow`
 - generated sidecars, e.g. `*.png`, `*.html`, rendered SVGs
-- runtime/internal dirs, e.g. `.flynt`, `.flynt-local`, `.omegon`, `.git`, `target`, `node_modules`
+- runtime/internal dirs, e.g. `.flynt`, `.flynt/local`, `.omegon`, `.git`, `target`, `node_modules`
 
 ### Artifacts lane
 
@@ -192,7 +192,7 @@ Project Registry can now discover/project:
 It can persist a generated snapshot:
 
 ```text
-.flynt/registry/project-registry.snapshot.json
+.flynt/local/registry/project-registry.snapshot.json
 ```
 
 Important: the persisted snapshot is diagnostic/generated state only. It is **not UI truth**.

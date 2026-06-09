@@ -17,11 +17,11 @@
 //! | `priority`     | → label `priority:<level>` (configurable prefix)     |
 //! | `tags`         | → labels (passthrough; non-prefixed labels preserved)|
 //! | `due_date`     | → milestone (configurable: milestone / label / skip) |
-//! | `column`       | not pushed (organizational; flynt-local)             |
-//! | `engagement`   | not pushed (project-level; flynt-local)              |
-//! | `design_node`  | not pushed (parent reference; flynt-local)           |
-//! | `decay`        | not pushed (lifecycle-only; flynt-local)             |
-//! | `position`     | not pushed (kanban-only; flynt-local)                |
+//! | `column`       | not pushed (organizational; Flynt-local)             |
+//! | `engagement`   | not pushed (project-level; Flynt-local)              |
+//! | `design_node`  | not pushed (parent reference; Flynt-local)           |
+//! | `decay`        | not pushed (lifecycle-only; Flynt-local)             |
+//! | `position`     | not pushed (kanban-only; Flynt-local)                |
 //!
 //! ## The labels-as-fields contract
 //!

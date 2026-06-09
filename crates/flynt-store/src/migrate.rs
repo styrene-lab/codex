@@ -1,7 +1,7 @@
 //! Project migration — move a project between sync locations.
 //!
 //! Handles: Local ↔ iCloud, Local → Git, iCloud → Git, any → any.
-//! The migration copies project content (all files except `.flynt-local/`),
+//! The migration copies project content (all files except `.flynt/local/`),
 //! writes a new config at the destination, and returns the new root path.
 
 use anyhow::{Context, Result};
@@ -100,7 +100,7 @@ fn destination_for_sync(
     }
 }
 
-/// Copy all project files to a new directory, excluding `.flynt-local/` and `.git/`.
+/// Copy all project files to a new directory, excluding `.flynt/local/` and `.git/`.
 fn copy_project(src: &Path, dst: &Path) -> Result<usize> {
     if dst.exists() {
         // Check if destination is non-empty
@@ -120,8 +120,13 @@ fn copy_project(src: &Path, dst: &Path) -> Result<usize> {
 
     for entry in walkdir::WalkDir::new(src).into_iter().filter_entry(|e| {
         let name = e.file_name().to_string_lossy();
-        // Skip local state and git internals
-        name != ".flynt-local" && name != ".git" && name != ".DS_Store"
+        let path = e.path();
+        let rel = path.strip_prefix(src).unwrap_or(path);
+        // Skip local state and git internals while preserving portable .flynt metadata.
+        name != ".git"
+            && name != ".DS_Store"
+            && !rel.starts_with(Path::new(".flynt/local"))
+            && !rel.starts_with(Path::new(".flynt/runtime"))
     }) {
         let entry = entry?;
         let relative = entry.path().strip_prefix(src)?;
@@ -191,7 +196,7 @@ fn init_git_if_needed(project_root: &Path, remote: &str, _branch: &str) -> Resul
     // Create .gitignore if it doesn't exist
     let gitignore = project_root.join(".gitignore");
     if !gitignore.exists() {
-        std::fs::write(&gitignore, ".flynt-local/\n.DS_Store\n*.swp\n*~\n")?;
+        std::fs::write(&gitignore, ".flynt/local/\n.DS_Store\n*.swp\n*~\n")?;
     }
 
     Ok(())
@@ -233,18 +238,18 @@ mod tests {
         let dst = tmp.path().join("dst-project");
 
         std::fs::create_dir_all(src.join(".flynt")).unwrap();
-        std::fs::create_dir_all(src.join(".flynt-local/db")).unwrap();
+        std::fs::create_dir_all(src.join(".flynt/local/db")).unwrap();
         std::fs::create_dir_all(src.join(".git/objects")).unwrap();
         std::fs::write(src.join("note.md"), "# Note").unwrap();
         std::fs::write(src.join(".flynt/config.toml"), "project_name = \"test\"").unwrap();
-        std::fs::write(src.join(".flynt-local/db/index.db"), "binary").unwrap();
+        std::fs::write(src.join(".flynt/local/db/index.db"), "binary").unwrap();
         std::fs::write(src.join(".git/objects/abc"), "git obj").unwrap();
 
         let count = copy_project(&src, &dst).unwrap();
         assert_eq!(count, 2); // note.md + config.toml
         assert!(dst.join("note.md").exists());
         assert!(dst.join(".flynt/config.toml").exists());
-        assert!(!dst.join(".flynt-local").exists());
+        assert!(!dst.join(".flynt/local").exists());
         assert!(!dst.join(".git").exists());
     }
 

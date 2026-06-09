@@ -37,6 +37,7 @@ crates/flynt-app/profiles/
 
 # Runtime mirrors regenerated on every session — should never be tracked
 ai/lifecycle/state.json
+ai/lifecycle/*.lock
 ai/memory/facts.db
 ai/session/local-launch-status.md
 ai/session/tool-compliance-marker.md

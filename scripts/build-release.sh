@@ -31,7 +31,7 @@ cp crates/flynt-app/assets/vendor/* "$APP/Contents/Resources/assets/vendor/"
 
 SIGN_ID="Developer ID Application: CHRISTOPHER RYAN WILSON (UZBY9DM42N)"
 KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
-ENTITLEMENTS="$ROOT/crates/flynt-app/Codex.entitlements"
+ENTITLEMENTS="$ROOT/crates/flynt-app/Flynt.entitlements"
 
 # Sign all nested binaries first (dylibs, frameworks)
 find "$APP/Contents" -type f \( -name "*.dylib" -o -perm +111 \) ! -name "Info.plist" ! -name "*.plist" | while read -r bin; do

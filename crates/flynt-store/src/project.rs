@@ -152,7 +152,7 @@ impl Project {
                 // Fall through: flynt_dir won't exist, so create_dir_all below will create it
             }
         }
-        // Legacy `.codex-local/` and `.flynt-local/` directories are still
+        // Legacy local-state sibling directories are no longer
         // read when explicitly configured, but opening a folder must not
         // create a second in-project local-state root. Runtime state now
         // defaults to the platform app-data directory.
@@ -2316,13 +2316,13 @@ fn normalized_relative_path(path: &Path) -> String {
         .join("/")
 }
 
-const FLYNT_GITIGNORE_BLOCK: &str = "# Flynt local/generated state\n.flynt-local/\n.codex-local/\n.omegon/\nai/\n.flynt/forge-sync.db\n.flynt/operator-settings.json\n.flynt/omegon.toml\n.flynt/registry/project-registry.snapshot.json\ndrawings/*.svg\n.DS_Store\n*.tmp\n*.swp\n*~\n";
+const FLYNT_GITIGNORE_BLOCK: &str = "# Flynt local/generated state\n.flynt/local/\n.flynt/runtime/\n.omegon/\nai/\ndrawings/*.svg\n.DS_Store\n*.tmp\n*.swp\n*~\n";
 
 fn ensure_flynt_gitignore_block(root: &Path) -> Result<()> {
     let git_dir = root.join(".git");
-    let legacy_local_state_exists =
-        root.join(".flynt-local").exists() || root.join(".codex-local").exists();
-    if !git_dir.exists() && !legacy_local_state_exists {
+    let flynt_local_state_exists =
+        root.join(".flynt/local").exists() || root.join(".flynt/runtime").exists();
+    if !git_dir.exists() && !flynt_local_state_exists {
         return Ok(());
     }
 
@@ -2362,11 +2362,10 @@ fn resolve_index_db_path(root: &Path, runtime: &LocalRuntimeConfig) -> PathBuf {
         return local_state_root.join("flynt").join("flynt-index.db");
     }
 
-    external_project_state_root(root)
-        .join("flynt")
-        .join("flynt-index.db")
+    root.join(".flynt/local/flynt/flynt-index.db")
 }
 
+#[allow(dead_code)]
 fn external_project_state_root(root: &Path) -> PathBuf {
     let project_key = stable_project_key(root);
     dirs::data_local_dir()
@@ -2376,6 +2375,7 @@ fn external_project_state_root(root: &Path) -> PathBuf {
         .join(project_key)
 }
 
+#[allow(dead_code)]
 fn stable_project_key(root: &Path) -> String {
     use std::hash::{Hash, Hasher};
 
@@ -2892,12 +2892,12 @@ Original body content.
         assert!(!root.join(".flynt/templates").exists());
         assert!(
             !root
-                .join(".flynt/registry/project-registry.snapshot.json")
+                .join(".flynt/local/registry/project-registry.snapshot.json")
                 .exists()
         );
-        assert!(!root.join(".flynt/forge-sync.db").exists());
-        assert!(!root.join(".flynt/omegon.toml").exists());
-        assert!(!root.join(".flynt-local").exists());
+        assert!(!root.join(".flynt/runtime/forge-sync.db").exists());
+        assert!(!root.join(".flynt/runtime/omegon.toml").exists());
+        assert!(!root.join(".flynt/local").exists());
         assert_eq!(std::fs::read_to_string(readme).unwrap(), original);
         assert!(!project.config.indexing.write_frontmatter);
     }
@@ -3226,7 +3226,7 @@ position = 0
 
         assert!(resolved.is_absolute());
         assert!(resolved.ends_with("flynt/flynt-index.db"));
-        assert!(!resolved.starts_with(root.join(".flynt-local")));
+        assert!(!resolved.starts_with(root.join(".flynt/local")));
     }
 
     #[test]
@@ -3242,7 +3242,7 @@ position = 0
         assert!(gitignore.contains("target/"));
         assert!(gitignore.contains("# Flynt local/generated state"));
         assert!(gitignore.contains(".omegon/"));
-        assert!(gitignore.contains(".flynt/forge-sync.db"));
+        assert!(gitignore.contains(".flynt/runtime/"));
         assert!(gitignore.contains("drawings/*.svg"));
     }
 

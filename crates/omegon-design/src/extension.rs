@@ -158,7 +158,8 @@ impl DesignExtension {
 
     fn presets_path(&self) -> PathBuf {
         self.project_root
-            .join(".flynt-local")
+            .join(".flynt")
+            .join("local")
             .join("flynt")
             .join("assets")
             .join("tweakcn-presets.json")
@@ -166,7 +167,8 @@ impl DesignExtension {
 
     fn primitives_path(&self) -> PathBuf {
         self.project_root
-            .join(".flynt-local")
+            .join(".flynt")
+            .join("local")
             .join("flynt")
             .join("assets")
             .join("shadcn-primitives.json")
@@ -659,7 +661,7 @@ mod tests {
     fn test_ext() -> (TempDir, DesignExtension) {
         let tmp = TempDir::new().unwrap();
         // Seed the design board-asset files the influence-describer expects.
-        let assets_dir = tmp.path().join(".flynt-local/flynt/assets");
+        let assets_dir = tmp.path().join(".flynt/local/flynt/assets");
         std::fs::create_dir_all(&assets_dir).unwrap();
         std::fs::write(
             assets_dir.join("tweakcn-presets.json"),

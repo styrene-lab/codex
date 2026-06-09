@@ -360,10 +360,14 @@ fn build_client(eng: &Engagement, secrets: &SecretBag) -> ExtResult<Box<dyn Forg
 }
 
 fn sync_store_for(project: &Project) -> ExtResult<SyncStore> {
-    let path = project.root.join(".flynt").join("forge-sync.db");
+    let path = project
+        .root
+        .join(".flynt")
+        .join("runtime")
+        .join("forge-sync.db");
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
-            .map_err(|e| ExtError::internal_error(format!("create .flynt dir: {e}")))?;
+            .map_err(|e| ExtError::internal_error(format!("create .flynt/runtime dir: {e}")))?;
     }
     SyncStore::open(&path).map_err(|e| ExtError::internal_error(e.to_string()))
 }

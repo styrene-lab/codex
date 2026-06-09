@@ -527,13 +527,13 @@ impl Extension for FlyntExtension {
                 {
                     "name": "flynt_surface_guide",
                     "label": "Flynt Surface Guide",
-                    "description": "Return the operational map for Flynt's document surfaces and tool families. Call this when choosing between notes, drawings, D2 diagrams, design_boards, and flow graphs, or when the user asks what is open/current in Flynt.",
+                    "description": "Return the operational map for Flynt's project layout, document surfaces, and tool families. Call this when choosing between notes, drawings, D2 diagrams, design_boards, flow graphs, or when diagnosing project-local state such as .flynt/local, .flynt/runtime, or .omegon.",
                     "parameters": { "type": "object", "properties": {} }
                 },
                 {
                     "name": "get_ui_state",
                     "label": "Get UI State",
-                    "description": "Return what the user is currently looking at in Flynt: the active document (if any), other open document tabs, and the current view (notes/kanban/graph/settings/search/welcome). Call this BEFORE asking the user clarifying questions about 'what they have open' or 'what they're working on' — Flynt mirrors this state to disk on every tab/view change so the answer is always current. Returns {active_document, open_documents, current_view, project_root, updated_at}. The active_document.path can be passed straight to get_document.",
+                    "description": "Return what the user is currently looking at in Flynt: the active document (if any), other open document tabs, and the current view (notes/lenses/graph/omegon/kanban/design/terminal/settings/search/welcome). Call this BEFORE asking the user clarifying questions about 'what they have open' or 'what they're working on' — Flynt mirrors this state to disk on every tab/view change so the answer is always current. Returns {active_document, open_documents, current_view, project_root, updated_at}. The active_document.path can be passed straight to get_document.",
                     "parameters": { "type": "object", "properties": {} }
                 },
                 {
@@ -1650,7 +1650,8 @@ impl Extension for FlyntExtension {
                 let path = self
                     .project
                     .root
-                    .join(".flynt-local")
+                    .join(".flynt")
+                    .join("local")
                     .join("flynt")
                     .join("ui-state.json");
                 match std::fs::read_to_string(&path) {
@@ -1724,13 +1725,42 @@ fn flynt_surface_guide() -> Value {
             "experimental": "Agent/tool surface exists, but UX and schema may still change; avoid implying polish or broad feature completeness.",
             "avoid_direct": "Do not manipulate directly unless a dedicated tool says to."
         },
+        "ownership_model": {
+            "rule": "Flynt owns .flynt/. Omegon owns .omegon/.",
+            "flynt_portable": [".flynt/config.toml", ".flynt/templates/", ".flynt/lenses/", ".flynt/work-logs/", ".flynt/style-guide.md"],
+            "flynt_generated_local": [".flynt/local/"],
+            "flynt_runtime_integration": [".flynt/runtime/"],
+            "omegon_owned": [".omegon/"],
+            "do_not_use": [".flynt-local/", ".codex-local/", ".flynt/omegon.toml", ".flynt/operator-settings.json", ".flynt/forge-sync.db", ".flynt/registry/project-registry.snapshot.json"],
+            "canonical_paths": {
+                "ui_state": ".flynt/local/flynt/ui-state.json",
+                "design_focus": ".flynt/local/flynt/design-focus.json",
+                "design_assets": ".flynt/local/flynt/assets/",
+                "capture_requests": ".flynt/local/flynt/capture-requests/",
+                "capture_responses": ".flynt/local/flynt/capture-responses/",
+                "registry_snapshot": ".flynt/local/registry/project-registry.snapshot.json",
+                "operator_settings": ".flynt/runtime/operator-settings.json",
+                "omegon_deployment_contract": ".flynt/runtime/omegon.toml",
+                "forge_sync_db": ".flynt/runtime/forge-sync.db",
+                "omegon_journal": ".omegon/agent-journal.md",
+                "omegon_plugins": ".omegon/plugins/"
+            },
+            "recovery_guidance": [
+                "If an operator reports a funky Flynt project state, first classify the file by owner: Flynt-owned .flynt versus Omegon-owned .omegon.",
+                "If generated Flynt state is corrupt, prefer deleting/regenerating only .flynt/local/ or the specific file inside it; do not delete portable .flynt/config.toml, templates, lenses, or work logs unless the operator asks.",
+                "If Flynt ACP/runtime settings are corrupt, inspect .flynt/runtime/ and Settings -> Omegon -> Runtime; do not move those files into .omegon.",
+                "If Omegon agent journal/plugin state is corrupt, inspect .omegon/ and explain that Flynt can surface it but does not own it.",
+                "Never recreate .flynt-local or .codex-local. Migrate advice should point to .flynt/local and .flynt/runtime."
+            ]
+        },
         "global_rules": [
             "Prefer the artifact surface the operator already has open; call get_ui_state or the relevant *_active tool before editing.",
             "For Flynt project discovery, prefer get_graph_filtered, list_documents, search_documents, and get_document before bash/find/ls.",
             "Never call read on a directory; read is for known file paths only.",
             "After one shell failure in Flynt ACP, stop retrying shell discovery and switch to graph/document tools.",
             "Do not create wrapper markdown manually for drawings or design boards; use the dedicated create tools.",
-            "Use boards/*.board and design_board_* tools for Flynt design boards; do not introduce alternate design-surface terminology."
+            "Use boards/*.board and design_board_* tools for Flynt design boards; do not introduce alternate design-surface terminology.",
+            "Do not create or recommend .flynt-local or .codex-local; Flynt local/generated state belongs under .flynt/local and Flynt runtime integration state belongs under .flynt/runtime."
         ],
         "discovery_policy": {
             "preferred_order": ["get_ui_state", "flynt_surface_guide", "get_graph_filtered", "list_documents", "search_documents", "get_document", "bash_when_needed"],
@@ -1942,7 +1972,8 @@ impl FlyntExtension {
         let ui_path = self
             .project
             .root
-            .join(".flynt-local")
+            .join(".flynt")
+            .join("local")
             .join("flynt")
             .join("ui-state.json");
         let ui: Value = match std::fs::read_to_string(&ui_path) {
@@ -2134,7 +2165,8 @@ impl FlyntExtension {
         let dir = self
             .project
             .root
-            .join(".flynt-local")
+            .join(".flynt")
+            .join("local")
             .join("flynt")
             .join("assets");
         let primitives_doc = read_json_or_default(
@@ -2219,7 +2251,8 @@ impl FlyntExtension {
         let ui_path = self
             .project
             .root
-            .join(".flynt-local")
+            .join(".flynt")
+            .join("local")
             .join("flynt")
             .join("ui-state.json");
         let ui: Value = match std::fs::read_to_string(&ui_path) {
@@ -2760,7 +2793,7 @@ mod tests {
     }
 
     fn write_ui_state(tmp: &TempDir, active_path: Option<&str>) {
-        let dir = tmp.path().join(".flynt-local").join("flynt");
+        let dir = tmp.path().join(".flynt").join("local").join("flynt");
         std::fs::create_dir_all(&dir).unwrap();
         let body = match active_path {
             Some(p) => json!({
@@ -3354,7 +3387,7 @@ mod tests {
     #[tokio::test]
     async fn design_board_list_primitives_reads_project_assets() {
         let (tmp, ext) = test_extension();
-        let dir = tmp.path().join(".flynt-local/flynt/assets");
+        let dir = tmp.path().join(".flynt/local/flynt/assets");
         std::fs::create_dir_all(&dir).unwrap();
         // Raw-string delimiters need to be longer than any `"#` substring
         // inside — colour values like "#000" force us to use r##"..."## here.

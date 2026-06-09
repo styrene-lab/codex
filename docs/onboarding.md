@@ -157,7 +157,7 @@ For users who chose "Create local project" or "Open existing project" and want t
 
 ### Config boundary
 - `.flynt/config.toml` is project-synced and contains project sync settings such as Git remote, branch, and auto-commit interval.
-- `.flynt-local/` is device-local and gitignored; it contains derived indexes and runtime UI state.
+- `.flynt/local/` is device-local and gitignored; it contains derived indexes and runtime UI state.
 - Operator/theme/provider credentials are device/operator scoped and are not treated as project content.
 
 ### Note recovery
@@ -258,7 +258,7 @@ Future flow (with StyreneIdentity):
 | Launcher profile | `~/.local/share/flynt/launcher-profile.json` | Last project, known projects, wizard state |
 | Project config | `{project}/.flynt/config.toml` | Name, sync, appearance, runtime |
 | Omegon profile | `{project}/.omegon/profile.json` | Model, thinking level, max turns |
-| Operator settings | `{project}/.flynt/operator-settings.json` | Persona, skills, Vox, daemon config |
+| Operator settings | `{project}/.flynt/runtime/operator-settings.json` | Persona, skills, Vox, daemon config |
 | SQLite index | `~/.local/share/flynt/index-{hash}.db` | Document index (auto-rebuilt) |
 
 ---

@@ -12,7 +12,7 @@ related: []
 
 ## Overview
 
-Persist a generated, deterministic, disposable ProjectRegistrySnapshot at .flynt/registry/project-registry.snapshot.json. The snapshot is a portable derived index for startup diagnostics, sync visibility, and graph inspection; plaintext project files and existing stores remain authoritative. The persisted snapshot must never contain absolute paths, raw document content, or proprietary binary payloads.
+Persist a generated, deterministic, disposable ProjectRegistrySnapshot at .flynt/local/registry/project-registry.snapshot.json. The snapshot is a portable derived index for startup diagnostics, sync visibility, and graph inspection; plaintext project files and existing stores remain authoritative. The persisted snapshot must never contain absolute paths, raw document content, or proprietary binary payloads.
 
 ## Decisions
 
@@ -22,7 +22,7 @@ Persist a generated, deterministic, disposable ProjectRegistrySnapshot at .flynt
 
 **Rationale:** The registry snapshot helps startup diagnostics and sync visibility, but making it authoritative would compromise the Obsidian-compatible plaintext project model. The snapshot must be safe to delete and rebuild from source files and stores.
 
-### Use .flynt/registry/project-registry.snapshot.json
+### Use .flynt/local/registry/project-registry.snapshot.json
 
 **Status:** accepted
 

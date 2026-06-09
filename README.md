@@ -123,21 +123,21 @@ All crates share a workspace at the repo root. The desktop and mobile apps depen
 ```
 my-project/
   .flynt/
-    config.toml          # project settings (name, sync, appearance)
-    omegon.toml          # project-scoped Omegon ACP deployment contract
+    config.toml          # portable project settings (name, sync, appearance)
     templates/           # note templates (Note.md, Daily.md, Meeting.md)
-    notifications/       # git-synced notification queue
+    lenses/              # saved live project views
+    local/               # Flynt generated local state (auto-generated, gitignored)
+    runtime/             # Flynt runtime integration contracts (auto-generated, gitignored)
   .omegon/
-    agent-journal.md     # project-local agent session journal
-    plugins/             # project-local Omegon plugin/runtime artifacts
-  .flynt-local/          # SQLite index (auto-generated, gitignored)
+    agent-journal.md     # Omegon-owned project-local agent journal
+    plugins/             # Omegon-owned plugin/runtime state
   notes.md
   guides/
   daily/
   drawings/
 ```
 
-The Files sidebar hides dot-prefixed paths such as `.omegon/` by default. Use the `.hidden` toggle in the Files header to inspect them, or use **Project → Omegon** for the purpose-built agent/runtime surface.
+Flynt owns `.flynt/`; Omegon owns `.omegon/`. The Files sidebar hides dot-prefixed paths by default. Use the `.hidden` toggle to inspect them, or use **Project → Omegon** for the purpose-built agent/runtime surface.
 
 ### Frontmatter
 

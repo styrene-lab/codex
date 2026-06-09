@@ -373,7 +373,7 @@ Assert:
 
 Setup dirty files:
 
-- `.flynt-local/foo`
+- `.flynt/local/foo`
 - `.omegon/runtime/foo`
 - `.DS_Store`
 - `normal.md`
@@ -390,7 +390,7 @@ Assert:
 Verify `Project::open` creates/maintains `.gitignore` with at least:
 
 ```text
-.flynt-local/
+.flynt/local/
 .omegon/runtime/
 .omegon/codescan.db*
 .omegon/*.lock

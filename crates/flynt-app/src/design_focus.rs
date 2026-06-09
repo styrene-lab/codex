@@ -71,7 +71,7 @@ pub struct DesignFocusState {
 }
 
 pub fn write_active_focus(project_root: &Path, focus: &DesignFocusState) -> std::io::Result<()> {
-    let dir = project_root.join(".flynt-local").join("flynt");
+    let dir = project_root.join(".flynt").join("local").join("flynt");
     std::fs::create_dir_all(&dir)?;
     let final_path = dir.join("design-focus.json");
     let tmp_path = dir.join("design-focus.json.tmp");
@@ -84,7 +84,8 @@ pub fn write_active_focus(project_root: &Path, focus: &DesignFocusState) -> std:
 
 pub fn active_focus_path(project_root: &Path) -> PathBuf {
     project_root
-        .join(".flynt-local")
+        .join(".flynt")
+        .join("local")
         .join("flynt")
         .join("design-focus.json")
 }

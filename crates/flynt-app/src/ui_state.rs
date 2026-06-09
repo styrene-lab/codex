@@ -191,7 +191,7 @@ mod tests {
         write_snapshot(&project, runtime_tmp.path(), &tabs, &Route::Notes);
 
         assert!(runtime_tmp.path().join("ui-state.json").exists());
-        assert!(!project_tmp.path().join(".flynt-local").exists());
+        assert!(!project_tmp.path().join(".flynt/local").exists());
     }
 
     #[test]

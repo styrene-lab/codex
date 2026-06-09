@@ -1,0 +1,32 @@
+---
+import "../styles/global.css";
+const {
+  title = "Flynt — Local-first project workspace",
+  description = "Flynt is a local-first project workspace for markdown, tasks, diagrams, saved views, and embedded Omegon agents.",
+} = Astro.props;
+---
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://flynt.styrene.io" />
+    <meta name="theme-color" content="#06080e" />
+    {import.meta.env.PUBLIC_I2P_BUILD ? (
+      <link href="/fonts/fonts.css" rel="stylesheet" />
+    ) : (
+      <>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Tomorrow:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+      </>
+    )}
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

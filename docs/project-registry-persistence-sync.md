@@ -56,7 +56,7 @@ Examples:
 Location candidate:
 
 ```text
-.flynt/registry/project-registry.snapshot.json
+.flynt/local/registry/project-registry.snapshot.json
 ```
 
 Properties:

@@ -296,7 +296,7 @@ pub fn create_design_board(project_root: &Path, name: &str) -> anyhow::Result<Pa
 // The runtime capture (xcap, JS measurement) lives in `flynt-app` since it
 // needs the WebView. The wire types live here so the omegon-design tool
 // (separate binary) and flynt-app's request handler agree on the shape of
-// `<project>/.flynt-local/flynt/capture-{requests,responses}/*.json` files.
+// `<project>/.flynt/local/flynt/capture-{requests,responses}/*.json` files.
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CaptureRequest {
@@ -348,14 +348,14 @@ pub struct CaptureResponse {
 
 pub fn capture_request_dir(project_root: &Path) -> PathBuf {
     project_root
-        .join(".flynt-local")
+        .join(".flynt/local")
         .join("flynt")
         .join("capture-requests")
 }
 
 pub fn capture_response_dir(project_root: &Path) -> PathBuf {
     project_root
-        .join(".flynt-local")
+        .join(".flynt/local")
         .join("flynt")
         .join("capture-responses")
 }
@@ -371,7 +371,7 @@ pub struct DesignBoardSettings {
     /// Grid dimensions used when creating a new design board.
     pub default_grid: Grid,
     /// One-shot bootstrap flag set after design board assets are copied into
-    /// the project's `.flynt-local/flynt/assets/` directory. See Phase 4.
+    /// the project's `.flynt/local/flynt/assets/` directory. See Phase 4.
     pub assets_initialized: bool,
 }
 

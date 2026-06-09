@@ -148,10 +148,10 @@ After opening/configuring the remote vault, `git status` showed:
  M drawings/Sync Sketch.excalidraw
  M drawings/Sync Sketch.md
 ?? .flynt/config.toml
-?? .flynt/forge-sync.db
-?? .flynt/omegon.toml
-?? .flynt/operator-settings.json
-?? .flynt/registry/project-registry.snapshot.json
+?? .flynt/runtime/forge-sync.db
+?? .flynt/runtime/omegon.toml
+?? .flynt/runtime/operator-settings.json
+?? .flynt/local/registry/project-registry.snapshot.json
 ?? .flynt/templates/
 ?? .omegon/
 ?? ai/
@@ -169,15 +169,15 @@ Updated `.gitignore` on the remote validation repo to ignore obvious local/gener
 *.tmp
 
 # Flynt machine-local runtime/cache
-.flynt-local/
+.flynt/local/
 .omegon/
 ai/
-.flynt/forge-sync.db
-.flynt/operator-settings.json
-.flynt/omegon.toml
+.flynt/runtime/forge-sync.db
+.flynt/runtime/operator-settings.json
+.flynt/runtime/omegon.toml
 
 # Generated snapshots/exports; source files remain tracked
-.flynt/registry/project-registry.snapshot.json
+.flynt/local/registry/project-registry.snapshot.json
 drawings/*.svg
 ```
 
@@ -208,13 +208,13 @@ Commit/portable:
 
 Ignore/local/generated:
 
-- `.flynt-local/`
+- `.flynt/local/`
 - `.omegon/`
 - `ai/`
-- `.flynt/forge-sync.db`
-- `.flynt/operator-settings.json`
-- `.flynt/omegon.toml`
-- `.flynt/registry/project-registry.snapshot.json`
+- `.flynt/runtime/forge-sync.db`
+- `.flynt/runtime/operator-settings.json`
+- `.flynt/runtime/omegon.toml`
+- `.flynt/local/registry/project-registry.snapshot.json`
 - generated exports such as `drawings/*.svg`
 
 Needs decision:

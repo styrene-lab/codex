@@ -72,7 +72,7 @@ Flynt 0.11.0 is releasable when all of the following are true:
 | Eidolon embedded viewer | F11-05 | P1 | Eidolon viewer assumptions | Flynt has an integration design for embedded source/artifact viewing. |
 | Source task/Design Board projections | F11-06 | P1 | Design Board/task surfaces | Captured sources can be represented in task/Design Board workflows without duplicating source truth. |
 | Omegon 0.23 ACP integration | F11-07 | P0 | Omegon 0.23.x ACP additions; GitHub issue #21 | Flynt handles Omegon 0.23 ACP additions for structured plan state and profile defaults. |
-| Storage policy first pass | F11-08 | P0 | dogfooding-generated state sprawl | Opening folders starts moving toward external local runtime state instead of implicit in-project `.flynt-local/` creation. |
+| Storage policy first pass | F11-08 | P0 | dogfooding-generated state sprawl | Opening folders starts moving toward external local runtime state instead of implicit in-project `.flynt/local/` creation. |
 
 ## F11-01: Release packaging
 
@@ -165,7 +165,7 @@ Dogfooding Flynt in its own repository exposed a general product issue: opening 
 | F11-08.2 | Index DB default | `crates/flynt-store/src/project.rs` | New default index DB path resolves outside the content root. |
 | F11-08.3 | Compatibility | `crates/flynt-store/src/project.rs` | Explicit absolute `flynt_index_db_path` and `local_state_root` overrides still work. |
 | F11-08.4 | Track index snapshot | `crates/flynt-core/src/models.rs`, `crates/flynt-app/src/views/settings.rs`, `crates/flynt-store/src/project.rs` | Settings expose an opt-in deterministic JSONL metadata snapshot while SQLite remains local runtime state. |
-| F11-08.5 | Follow-up boundary | milestone/changelog | Remaining `.flynt-local` writers are called out as follow-up work, not silently treated as solved. |
+| F11-08.5 | Follow-up boundary | milestone/changelog | Remaining `.flynt/local` writers are called out as follow-up work, not silently treated as solved. |
 
 ## Non-goals for 0.11.0
 

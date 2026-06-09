@@ -278,7 +278,7 @@ Project Lenses are saved views over existing indexed project data. Lens files li
 | | Branch (Git) | Text input | |
 | | Auto-commit (Git) | Number input | Seconds, minimum 30, 0 = manual only |
 
-**Theme import:** Operators can import a tweak.cn JSON file, a public tweak.cn theme URL, a registry slug, or a theme ID from Appearance. Flynt normalizes the tweak.cn variables into the broader UI token set, applies the theme immediately, and persists theme selection plus imported themes in `.flynt/operator-settings.json`.
+**Theme import:** Operators can import a tweak.cn JSON file, a public tweak.cn theme URL, a registry slug, or a theme ID from Appearance. Flynt normalizes the tweak.cn variables into the broader UI token set, applies the theme immediately, and persists theme selection plus imported themes in `.flynt/runtime/operator-settings.json`.
 
 **Sync backend change on Save:** Triggers project migration.
 - **None → iCloud:** Copies all project files to iCloud Drive folder, updates config, switches runtime. **Synchronous — UI blocks during copy, no progress indicator.** Large projects may appear to freeze.
@@ -340,7 +340,7 @@ Project Lenses are saved views over existing indexed project data. Lens files li
 
 | Element | Behavior | Expected Result |
 |---------|----------|-----------------|
-| Save changes | Click | Persists to `.flynt/config.toml` + `.flynt/operator-settings.json` + `.omegon/profile.json` |
+| Save changes | Click | Persists to `.flynt/config.toml` + `.flynt/runtime/operator-settings.json` + `.omegon/profile.json` |
 | Export local preview | Advanced only | Exports publication HTML |
 | Success message | Inline green text | "Settings saved" or "Project migrated and sync updated." |
 | Error message | Inline red text | Validation failures, save errors |
@@ -491,7 +491,7 @@ Bookmarks are project-portable data stored in `.flynt/bookmarks.toml`.
 | File | Format | Location | Notes |
 |------|--------|----------|-------|
 | Project config | TOML | `.flynt/config.toml` | Survives TestFlight upgrades (inside project) |
-| Operator settings | JSON | `.flynt/operator-settings.json` | Daemon config, persona, vox |
+| Operator settings | JSON | `.flynt/runtime/operator-settings.json` | Daemon config, persona, vox |
 | Omegon profile | JSON | `.omegon/profile.json` | Model, thinking level |
 | Notes | Markdown + TOML frontmatter (`+++`) | `*.md` anywhere in project | |
 | Tasks | Markdown + TOML frontmatter (`kind = "task"`) | Project subdirectories | |
@@ -505,7 +505,7 @@ Bookmarks are project-portable data stored in `.flynt/bookmarks.toml`.
 | Launcher profile | JSON | `~/Library/Application Support/flynt/launcher-profile.json` | Known projects, recent, wizard state |
 | Auth tokens | JSON | `~/.config/omegon/auth.json` | 0600 permissions, atomic write + lock file |
 | Identity | Binary (argon2id + ChaCha20Poly1305) | `~/.config/styrene/identity.key` | 97 bytes, STID magic header |
-| SQLite index | SQLite WAL | `.flynt-local/flynt/flynt-index.db` | Ephemeral — rebuilt from project files on reindex |
+| SQLite index | SQLite WAL | `.flynt/local/flynt/flynt-index.db` | Ephemeral — rebuilt from project files on reindex |
 
 ---
 
@@ -538,7 +538,7 @@ Bookmarks are project-portable data stored in `.flynt/bookmarks.toml`.
 
 | Transition | What happens |
 |-----------|-------------|
-| None → iCloud | Copies all files (excluding `.flynt-local/`, `.git/`) to iCloud Drive. Updates config. Switches runtime. Old copy remains. |
+| None → iCloud | Copies all files (excluding `.flynt/local/`, `.git/`) to iCloud Drive. Updates config. Switches runtime. Old copy remains. |
 | None → Git | Stays in place. Inits git repo + adds remote. Creates `.gitignore`. |
 | iCloud → Git | Stays in iCloud location. Adds git repo on top. |
 | Any → None | Copies to `~/Documents/<name>/`. Old location not deleted. |

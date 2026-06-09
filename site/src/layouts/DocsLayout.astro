@@ -1,0 +1,29 @@
+---
+import BaseLayout from "./BaseLayout.astro";
+import TopNav from "../components/TopNav.astro";
+const { title, description } = Astro.props;
+const nav = [
+  ["/docs/", "Overview"],
+  ["/docs/getting-started/", "Getting started"],
+  ["/docs/install/", "Install"],
+  ["/docs/agent/", "Omegon agent"],
+  ["/docs/project-surfaces/", "Project surfaces"],
+  ["/docs/sync/", "Sync posture"],
+  ["/docs/release-0-12/", "0.12.x release"],
+];
+const current = Astro.url.pathname;
+---
+<BaseLayout title={title} description={description}>
+  <TopNav />
+  <main class="docs-shell">
+    <aside class="docs-sidebar">
+      <div class="docs-sidebar-title">Docs</div>
+      {nav.map(([href, label]) => (
+        <a class:list={["docs-nav-link", current === href && "active"]} href={href}>{label}</a>
+      ))}
+    </aside>
+    <article class="docs-content">
+      <slot />
+    </article>
+  </main>
+</BaseLayout>

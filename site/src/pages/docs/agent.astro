@@ -1,0 +1,10 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+---
+<DocsLayout title="Omegon agent — Flynt" description="How Flynt embeds Omegon as a project-scoped agent.">
+  <h1>Omegon agent</h1><p class="lead">Flynt embeds Omegon through ACP as a project-scoped operating surface, not a generic chatbot.</p>
+  <h2>What the agent can see</h2><p>The Flynt agent uses project-local tools for documents, tasks, graph, lenses, visual artifacts, UI state, and runtime diagnostics. The active project root defines its working boundary.</p>
+  <h2>Runtime preflight</h2><p>The agent panel reports deployment and CLI readiness before prompting. A non-blocking warning means Flynt can run but deployment provenance is still being verified; a blocked state requires runtime settings.</p>
+  <h2>Stop Agent and stale tools</h2><p>0.12.1 hardens the panel boundary. Stale tool-call UI states are bounded, and Stop Agent detaches the panel immediately while process cleanup runs asynchronously with a timeout.</p>
+  <h2>Project → Omegon</h2><p>The Project navigation includes an Omegon surface for project-local agent state such as the agent journal, ACP deployment manifest, and plugin/runtime cache state.</p>
+</DocsLayout>

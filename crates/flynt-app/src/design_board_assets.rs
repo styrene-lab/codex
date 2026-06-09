@@ -6,7 +6,7 @@
 //! Why a runtime-side copy? `flynt-app` and `flynt-agent` are two binaries
 //! installed into different locations. The app has the bundled assets
 //! via `include_str!`; the agent needs to find them without depending on
-//! the app's install path. Putting a copy under `.flynt-local/flynt/` is
+//! the app's install path. Putting a copy under `.flynt/local/flynt/` is
 //! the same handoff pattern `ui_state.rs` uses.
 //!
 //! The copy is idempotent and content-aware: we only write when the file

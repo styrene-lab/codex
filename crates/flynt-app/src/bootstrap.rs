@@ -495,7 +495,7 @@ impl OmegonRuntimeContext {
 
         std::fs::write(
             repo_root.join("src/pages/index.astro"),
-            "---\nconst title = 'Flynt Publication Demo';\n---\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n    <title>{title}</title>\n    <style>body{font-family:system-ui,sans-serif;max-width:860px;margin:0 auto;padding:3rem;background:#06080e;color:#c4d8e4}a{color:#6ecad8}code{background:#0e1622;padding:.2rem .4rem;border-radius:4px}</style>\n  </head>\n  <body>\n    <h1>{title}</h1>\n    <p>This Astro site demonstrates what a published Flynt project can look like.</p>\n    <p>Copy local publication preview artifacts into <code>public/preview/</code> or evolve this into a richer adapter over the publication manifest.</p>\n    <ul>\n      <li><a href=\"/preview/home.html\">Preview exported home page</a></li>\n      <li><a href=\"https://github.com/example-org/codex\">Flynt source</a></li>\n    </ul>\n  </body>\n</html>\n",
+            "---\nconst title = 'Flynt Publication Demo';\n---\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n    <title>{title}</title>\n    <style>body{font-family:system-ui,sans-serif;max-width:860px;margin:0 auto;padding:3rem;background:#06080e;color:#c4d8e4}a{color:#6ecad8}code{background:#0e1622;padding:.2rem .4rem;border-radius:4px}</style>\n  </head>\n  <body>\n    <h1>{title}</h1>\n    <p>This Astro site demonstrates what a published Flynt project can look like.</p>\n    <p>Copy local publication preview artifacts into <code>public/preview/</code> or evolve this into a richer adapter over the publication manifest.</p>\n    <ul>\n      <li><a href=\"/preview/home.html\">Preview exported home page</a></li>\n      <li><a href=\"https://github.com/example-org/flynt\">Flynt source</a></li>\n    </ul>\n  </body>\n</html>\n",
         )?;
 
         std::fs::write(
@@ -507,11 +507,12 @@ impl OmegonRuntimeContext {
     }
 
     fn discover(project_root: &std::path::Path, runtime: &LocalRuntimeConfig) -> Self {
-        let default_local_state_root = env_with_fallback("FLYNT_LOCAL_STATE", "CODEX_LOCAL_STATE")
+        let default_local_state_root = std::env::var("FLYNT_LOCAL_STATE")
+            .ok()
             .map(PathBuf::from)
             .filter(|path| path.is_absolute())
             .or_else(dirs::data_local_dir)
-            .unwrap_or_else(|| project_root.join(".flynt-local"))
+            .unwrap_or_else(|| project_root.join(".flynt").join("local"))
             .join("flynt");
         let local_state_root = runtime
             .local_state_root
@@ -550,8 +551,8 @@ impl OmegonRuntimeContext {
             omegon_mind_db_path,
             project_profile_path: project_root.join(".omegon/profile.json"),
             global_profile_path: home_dir.join("profile.json"),
-            deployment_path: project_root.join(".flynt/omegon.toml"),
-            operator_settings_path: project_root.join(".flynt/operator-settings.json"),
+            deployment_path: project_root.join(".flynt/runtime/omegon.toml"),
+            operator_settings_path: project_root.join(".flynt/runtime/operator-settings.json"),
             extensions_dir: home_dir.join("extensions"),
             vox_manifest_path: home_dir.join("extensions/vox/manifest.toml"),
             home_dir,
@@ -766,7 +767,7 @@ mod tests {
             }],
             pending_setup: Some(PendingProjectSetup::LinkGithub {
                 local_path: tmp.path().join("projects/example-org"),
-                repo: "git@github.com:example-org/codex-project.git".into(),
+                repo: "git@github.com:example-org/flynt-project.git".into(),
                 branch: "main".into(),
             }),
             manifest_dir: None,
@@ -787,7 +788,7 @@ mod tests {
         let project = OmegonRuntimeContext::initialize_github_linked_project(
             &local_path,
             "Black Meridian",
-            "git@github.com:example-org/codex-project.git",
+            "git@github.com:example-org/flynt-project.git",
             "main",
         )
         .unwrap();
@@ -796,7 +797,7 @@ mod tests {
         assert_eq!(
             project.config.sync,
             SyncConfig::Git {
-                remote: "git@github.com:example-org/codex-project.git".into(),
+                remote: "git@github.com:example-org/flynt-project.git".into(),
                 branch: "main".into(),
                 auto_commit_seconds: 60,
             }
@@ -859,8 +860,10 @@ mod tests {
             home_dir: tmp.path().join("home"),
             project_profile_path: tmp.path().join("project/.omegon/profile.json"),
             global_profile_path: tmp.path().join("home/profile.json"),
-            deployment_path: tmp.path().join("project/.flynt/omegon.toml"),
-            operator_settings_path: tmp.path().join("project/.flynt/operator-settings.json"),
+            deployment_path: tmp.path().join("project/.flynt/runtime/omegon.toml"),
+            operator_settings_path: tmp
+                .path()
+                .join("project/.flynt/runtime/operator-settings.json"),
             extensions_dir: tmp.path().join("home/extensions"),
             vox_manifest_path: tmp.path().join("home/extensions/vox/manifest.toml"),
             omegon_channel: Default::default(),
@@ -895,8 +898,10 @@ mod tests {
             home_dir: tmp.path().join("home"),
             project_profile_path: tmp.path().join("project/.omegon/profile.json"),
             global_profile_path: tmp.path().join("home/profile.json"),
-            deployment_path: tmp.path().join("project/.flynt/omegon.toml"),
-            operator_settings_path: tmp.path().join("project/.flynt/operator-settings.json"),
+            deployment_path: tmp.path().join("project/.flynt/runtime/omegon.toml"),
+            operator_settings_path: tmp
+                .path()
+                .join("project/.flynt/runtime/operator-settings.json"),
             extensions_dir: tmp.path().join("home/extensions"),
             vox_manifest_path: tmp.path().join("home/extensions/vox/manifest.toml"),
             omegon_channel: Default::default(),
@@ -923,8 +928,10 @@ mod tests {
             home_dir: tmp.path().join("home"),
             project_profile_path: tmp.path().join("project/.omegon/profile.json"),
             global_profile_path: tmp.path().join("home/profile.json"),
-            deployment_path: tmp.path().join("project/.flynt/omegon.toml"),
-            operator_settings_path: tmp.path().join("project/.flynt/operator-settings.json"),
+            deployment_path: tmp.path().join("project/.flynt/runtime/omegon.toml"),
+            operator_settings_path: tmp
+                .path()
+                .join("project/.flynt/runtime/operator-settings.json"),
             extensions_dir: tmp.path().join("home/extensions"),
             vox_manifest_path: tmp.path().join("home/extensions/vox/manifest.toml"),
             omegon_channel: Default::default(),

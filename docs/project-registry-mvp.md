@@ -7,7 +7,7 @@ The Project Registry is a generated index of the open Flynt project. It is desig
 Flynt writes a generated snapshot at:
 
 ```text
-.flynt/registry/project-registry.snapshot.json
+.flynt/local/registry/project-registry.snapshot.json
 ```
 
 This file is derived state. It is safe to delete and rebuild. The snapshot must not be treated as authoritative project truth.

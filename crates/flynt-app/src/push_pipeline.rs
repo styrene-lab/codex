@@ -541,7 +541,12 @@ mod tests {
         let _pipeline = PushPipeline::new(project, sync_db.clone()).unwrap();
 
         assert!(sync_db.exists());
-        assert!(!project_tmp.path().join(".flynt/forge-sync.db").exists());
+        assert!(
+            !project_tmp
+                .path()
+                .join(".flynt/runtime/forge-sync.db")
+                .exists()
+        );
     }
 
     #[tokio::test]

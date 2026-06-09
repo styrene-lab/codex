@@ -633,7 +633,7 @@ impl GitSync {
         Self::ensure_safe_to_sync(&repo)?;
         let mut index = repo.index()?;
         // Stage all changes. IndexAddOption::DEFAULT respects .gitignore.
-        // The .gitignore (created by Project::open) excludes .flynt-local/.
+        // The .gitignore (created by Project::open) excludes .flynt/local/.
         index.add_all(["*"].iter(), IndexAddOption::DEFAULT, None)?;
         index.write()?;
         let tree_oid = index.write_tree()?;
@@ -784,22 +784,26 @@ mod sync_pull_tests {
             .unwrap();
         fs::write(
             repo_path.join(".gitignore"),
-            "# Flynt local/generated state\n.flynt-local/\n.codex-local/\n.omegon/\nai/\n.flynt/forge-sync.db\n.flynt/operator-settings.json\n.flynt/omegon.toml\n.flynt/registry/project-registry.snapshot.json\ndrawings/*.svg\n",
+            "# Flynt local/generated state\n.flynt/local/\n.flynt/runtime/\n.omegon/\nai/\n.flynt/runtime/forge-sync.db\n.flynt/runtime/operator-settings.json\n.flynt/runtime/omegon.toml\n.flynt/local/registry/project-registry.snapshot.json\ndrawings/*.svg\n",
         )
         .unwrap();
-        fs::create_dir_all(repo_path.join(".flynt-local")).unwrap();
+        fs::create_dir_all(repo_path.join(".flynt/local")).unwrap();
         fs::create_dir_all(repo_path.join(".omegon")).unwrap();
         fs::create_dir_all(repo_path.join("ai")).unwrap();
-        fs::create_dir_all(repo_path.join(".flynt/registry")).unwrap();
+        fs::create_dir_all(repo_path.join(".flynt/local/registry")).unwrap();
+        fs::create_dir_all(repo_path.join(".flynt/runtime")).unwrap();
         fs::create_dir_all(repo_path.join("drawings")).unwrap();
-        fs::write(repo_path.join(".flynt-local/ui-state.json"), "local").unwrap();
         fs::write(repo_path.join(".omegon/runtime.json"), "runtime").unwrap();
         fs::write(repo_path.join("ai/log.jsonl"), "log").unwrap();
-        fs::write(repo_path.join(".flynt/forge-sync.db"), "db").unwrap();
-        fs::write(repo_path.join(".flynt/operator-settings.json"), "settings").unwrap();
-        fs::write(repo_path.join(".flynt/omegon.toml"), "deployment").unwrap();
+        fs::write(repo_path.join(".flynt/runtime/forge-sync.db"), "db").unwrap();
         fs::write(
-            repo_path.join(".flynt/registry/project-registry.snapshot.json"),
+            repo_path.join(".flynt/runtime/operator-settings.json"),
+            "settings",
+        )
+        .unwrap();
+        fs::write(repo_path.join(".flynt/runtime/omegon.toml"), "deployment").unwrap();
+        fs::write(
+            repo_path.join(".flynt/local/registry/project-registry.snapshot.json"),
             "registry",
         )
         .unwrap();
@@ -813,21 +817,25 @@ mod sync_pull_tests {
         let tree = head.tree().unwrap();
         assert!(tree.get_path(Path::new("Note.md")).is_ok());
         assert!(tree.get_path(Path::new(".gitignore")).is_ok());
-        assert!(
-            tree.get_path(Path::new(".flynt-local/ui-state.json"))
-                .is_err()
-        );
         assert!(tree.get_path(Path::new(".omegon/runtime.json")).is_err());
         assert!(tree.get_path(Path::new("ai/log.jsonl")).is_err());
-        assert!(tree.get_path(Path::new(".flynt/forge-sync.db")).is_err());
         assert!(
-            tree.get_path(Path::new(".flynt/operator-settings.json"))
+            tree.get_path(Path::new(".flynt/runtime/forge-sync.db"))
                 .is_err()
         );
-        assert!(tree.get_path(Path::new(".flynt/omegon.toml")).is_err());
         assert!(
-            tree.get_path(Path::new(".flynt/registry/project-registry.snapshot.json"))
+            tree.get_path(Path::new(".flynt/runtime/operator-settings.json"))
                 .is_err()
+        );
+        assert!(
+            tree.get_path(Path::new(".flynt/runtime/omegon.toml"))
+                .is_err()
+        );
+        assert!(
+            tree.get_path(Path::new(
+                ".flynt/local/registry/project-registry.snapshot.json"
+            ))
+            .is_err()
         );
         assert!(tree.get_path(Path::new("drawings/generated.svg")).is_err());
     }

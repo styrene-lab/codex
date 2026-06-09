@@ -33,8 +33,8 @@ DEFAULT_IGNORES = (
 )
 
 LOCAL_STATE_IGNORES = (
-    ".flynt-local/",
-    ".codex-local/",
+    ".flynt/local/",
+    ".flynt/runtime/",
     ".omegon/",
     "ai/",
 )
@@ -65,7 +65,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--include-local-state",
         action="store_true",
-        help="Do not ignore .flynt-local/.omegon/ai local-runtime paths",
+        help="Do not ignore .flynt/local/.flynt/runtime/.omegon/ai local-runtime paths",
     )
     parser.add_argument(
         "--json-output",

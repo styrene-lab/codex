@@ -28,12 +28,12 @@ Project-scoped, portable, intentional data:
 
 Machine/runtime/generated state:
 
-- `.flynt-local/flynt/ui-state.json`
-- `.flynt-local/flynt/assets/*.json`
-- `.flynt/forge-sync.db`
-- `.flynt/registry/project-registry.snapshot.json` unless `track_index_snapshot=true`
-- `.flynt/omegon.toml` unless operator explicitly persists deployment config
-- `.flynt/operator-settings.json`
+- `.flynt/local/flynt/ui-state.json`
+- `.flynt/local/flynt/assets/*.json`
+- `.flynt/runtime/forge-sync.db`
+- `.flynt/local/registry/project-registry.snapshot.json` unless `track_index_snapshot=true`
+- `.flynt/runtime/omegon.toml` unless operator explicitly persists deployment config
+- `.flynt/runtime/operator-settings.json`
 - `.omegon/`
 - `ai/`
 - generated SVG exports unless explicitly produced/tracked
@@ -44,14 +44,14 @@ For Git repos, Flynt may append an idempotent managed `.gitignore` block on open
 
 ```gitignore
 # Flynt local/generated state
-.flynt-local/
-.codex-local/
+.flynt/local/
+.flynt/local/
 .omegon/
 ai/
-.flynt/forge-sync.db
-.flynt/operator-settings.json
-.flynt/omegon.toml
-.flynt/registry/project-registry.snapshot.json
+.flynt/runtime/forge-sync.db
+.flynt/runtime/operator-settings.json
+.flynt/runtime/omegon.toml
+.flynt/local/registry/project-registry.snapshot.json
 drawings/*.svg
 .DS_Store
 *.tmp
@@ -69,11 +69,11 @@ Existing-folder idle open no longer creates or mutates:
 
 - Markdown/frontmatter content
 - `.flynt/config.toml`
-- `.flynt/forge-sync.db`
-- `.flynt/omegon.toml`
-- `.flynt/registry/project-registry.snapshot.json`
+- `.flynt/runtime/forge-sync.db`
+- `.flynt/runtime/omegon.toml`
+- `.flynt/local/registry/project-registry.snapshot.json`
 - `.flynt/templates/*.md`
-- `.flynt-local/*` inside the vault
+- `.flynt/local/*` inside the vault
 - `.omegon/*`
 - `ai/*`
 
@@ -90,7 +90,7 @@ Existing-folder idle open no longer creates or mutates:
 ### Registry/deployment/template writes
 
 - Registry snapshot refresh only writes project snapshot when `track_index_snapshot=true`.
-- Omegon deployment manifest is loaded from defaults on idle open; `.flynt/omegon.toml` is not created unless persisted intentionally.
+- Omegon deployment manifest is loaded from defaults on idle open; `.flynt/runtime/omegon.toml` is not created unless persisted intentionally.
 - Default templates are no longer materialized into `.flynt/templates/` on idle open.
 
 ### Drawing no-op behavior
@@ -101,7 +101,7 @@ The drawing no-op audit passed. Opening `drawings/Test.md` and waiting produced 
 - no `.md` rewrite
 - no `.svg` creation/modification
 - no `.flynt/*` creation
-- no `.flynt-local/*` creation in vault
+- no `.flynt/local/*` creation in vault
 - no `.omegon/*`
 - no `ai/*`
 
