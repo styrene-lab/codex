@@ -110,6 +110,10 @@
 .flynt-alacritty-terminal {
     box-sizing: border-box;
     padding: 0;
+    max-width: 100%;
+    max-height: 100%;
+    overflow: hidden;
+    contain: paint;
 }
 
 .flynt-terminal-row {
@@ -118,6 +122,8 @@
     flex-wrap: nowrap;
     height: 1.2em;
     min-height: 1.2em;
+    max-width: 100%;
+    overflow: hidden;
 }
 
 .flynt-terminal-row > span {
@@ -129,7 +135,7 @@
     min-width: 1ch;
     max-width: 1ch;
     height: 1.2em;
-    overflow: visible;
+    overflow: hidden;
 }
 
 .terminal-session-strip {

@@ -13,6 +13,7 @@ use std::thread;
 use dioxus::prelude::ModifiersInteraction;
 
 use alacritty_terminal::event::VoidListener;
+use alacritty_terminal::grid::Scroll;
 use alacritty_terminal::index::Point;
 use alacritty_terminal::term::Term;
 use alacritty_terminal::term::cell::Flags;
@@ -135,6 +136,12 @@ impl AlacrittyTerminalSession {
         if let Ok(mut writer) = self.pty.writer.lock() {
             let _ = writer.write_all(input.as_bytes());
             let _ = writer.flush();
+        }
+    }
+
+    pub fn scroll_lines(&mut self, lines: i32) {
+        if lines != 0 {
+            self.term.grid_mut().scroll_display(Scroll::Delta(lines));
         }
     }
 

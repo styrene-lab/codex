@@ -108,6 +108,17 @@ impl TerminalManager {
         Ok(())
     }
 
+    pub fn scroll_lines(&self, terminal_id: &str, lines: i32) -> Result<TerminalSnapshot> {
+        let mut inner = self.inner.lock().unwrap();
+        let record = inner
+            .sessions
+            .get_mut(terminal_id)
+            .ok_or_else(|| anyhow!("terminal '{terminal_id}' was not found"))?;
+        record.session.poll();
+        record.session.scroll_lines(lines);
+        Ok(record.session.snapshot(self.rows, self.cols))
+    }
+
     pub fn poll_snapshot(&self, terminal_id: &str) -> Result<TerminalSnapshot> {
         let mut inner = self.inner.lock().unwrap();
         let record = inner

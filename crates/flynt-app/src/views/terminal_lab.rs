@@ -99,6 +99,7 @@ pub fn TerminalLabView() -> Element {
     let manager_for_release_exited = manager.clone();
     let manager_for_input = manager.clone();
     let manager_for_paste = manager.clone();
+    let manager_for_scroll = manager.clone();
     let manager_for_resize = manager.clone();
 
     rsx! {
@@ -191,6 +192,13 @@ pub fn TerminalLabView() -> Element {
                     on_paste: move |input: String| {
                         if let Some(id) = terminal_id.read().clone() {
                             let _ = manager_for_paste.send_input(&id, &input);
+                        }
+                    },
+                    on_scroll: move |lines: i32| {
+                        if let Some(id) = terminal_id.read().clone() {
+                            if let Ok(next) = manager_for_scroll.scroll_lines(&id, lines) {
+                                snapshot.set(next);
+                            }
                         }
                     },
                     on_size: move |(rows, cols): (usize, usize)| {
