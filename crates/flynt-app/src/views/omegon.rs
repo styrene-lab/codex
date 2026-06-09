@@ -67,31 +67,35 @@ pub fn OmegonProjectView() -> Element {
                     }
                     p { if journal_available { "Chronological record of agent sessions and outcomes." } else { "No project agent journal found yet." } }
                     if journal_available {
+                        div { class: "omegon-journal-timeline-label", "Timeline preview" }
                         div { class: "omegon-journal-timeline",
                             for entry in journal_entries.iter() {
                                 article { class: "omegon-journal-entry",
-                                    div { class: "omegon-journal-entry-head",
-                                        span { class: "omegon-journal-entry-title", "{entry.title}" }
-                                        if let Some(timestamp) = entry.timestamp.as_ref() {
-                                            span { class: "omegon-journal-entry-time", "{timestamp}" }
+                                    div { class: "omegon-journal-marker", aria_hidden: "true" }
+                                    div { class: "omegon-journal-entry-body",
+                                        div { class: "omegon-journal-entry-head",
+                                            span { class: "omegon-journal-entry-title", "{entry.title}" }
+                                            if let Some(timestamp) = entry.timestamp.as_ref() {
+                                                span { class: "omegon-journal-entry-time", "{timestamp}" }
+                                            }
                                         }
-                                    }
-                                    if let Some(objective) = entry.objective.as_ref() {
-                                        div { class: "omegon-journal-field",
-                                            span { "Objective" }
-                                            p { "{objective}" }
+                                        if let Some(objective) = entry.objective.as_ref() {
+                                            div { class: "omegon-journal-field",
+                                                span { "Objective" }
+                                                p { "{objective}" }
+                                            }
                                         }
-                                    }
-                                    if let Some(outcome) = entry.outcome.as_ref() {
-                                        div { class: "omegon-journal-field",
-                                            span { "Outcome" }
-                                            p { "{outcome}" }
+                                        if let Some(outcome) = entry.outcome.as_ref() {
+                                            div { class: "omegon-journal-field",
+                                                span { "Outcome" }
+                                                p { "{outcome}" }
+                                            }
                                         }
-                                    }
-                                    if !entry.notes.is_empty() {
-                                        div { class: "omegon-journal-notes",
-                                            for note in entry.notes.iter() {
-                                                div { class: "omegon-journal-line", "{note}" }
+                                        if !entry.notes.is_empty() {
+                                            div { class: "omegon-journal-notes",
+                                                for note in entry.notes.iter() {
+                                                    div { class: "omegon-journal-line", "{note}" }
+                                                }
                                             }
                                         }
                                     }

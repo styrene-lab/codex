@@ -2653,11 +2653,48 @@
 }
 .omegon-journal-timeline,
 .omegon-journal-projection {
+  position: relative;
   display: grid;
-  gap: var(--space-2);
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  padding-left: var(--space-4);
+}
+.omegon-journal-timeline::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 5px;
+  width: 1px;
+  background: color-mix(in srgb, var(--primary) 45%, transparent);
+}
+.omegon-journal-timeline-label {
   margin-top: var(--space-3);
+  color: var(--primary);
+  font-size: var(--micro-font-size);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--letter-spacing-wide);
+  text-transform: uppercase;
 }
 .omegon-journal-entry {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-2);
+}
+.omegon-journal-marker {
+  position: relative;
+  z-index: 1;
+  width: 11px;
+  height: 11px;
+  margin-top: 7px;
+  margin-left: -14px;
+  border: 2px solid var(--primary);
+  border-radius: 999px;
+  background: var(--card);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.omegon-journal-entry-body {
   padding: var(--space-3);
   border: var(--border-width-hairline) solid color-mix(in srgb, var(--primary) 35%, var(--border));
   border-radius: var(--radius-md);
