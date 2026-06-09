@@ -24,6 +24,7 @@ pub fn OmegonProjectView() -> Element {
         .unwrap_or(0);
     let journal_size = journal_meta.as_ref().map(|meta| meta.len()).unwrap_or(0);
     let deployment_size = deployment_meta.as_ref().map(|meta| meta.len()).unwrap_or(0);
+    let journal_projection = load_journal_projection(&journal);
     let journal_doc = ctx.project().store.list_documents().ok().and_then(|docs| {
         docs.into_iter()
             .find(|doc| doc.path == std::path::Path::new(".omegon/agent-journal.md"))
@@ -54,11 +55,22 @@ pub fn OmegonProjectView() -> Element {
                 }
             }
             div { class: "omegon-surface-grid",
-                div { class: "omegon-surface-card",
-                    span { class: "omegon-surface-kicker", "Journal" }
-                    h2 { "Agent Journal" }
+                div { class: "omegon-surface-card omegon-journal-card",
+                    div { class: "omegon-surface-card-head",
+                        div {
+                            span { class: "omegon-surface-kicker", "Journal" }
+                            h2 { "Agent Journal" }
+                        }
+                        span { class: "omegon-surface-meta", "{journal_size} bytes" }
+                    }
                     p { if journal_available { "Chronological record of agent sessions and outcomes." } else { "No project agent journal found yet." } }
-                    span { class: "omegon-surface-meta", "{journal_size} bytes" }
+                    if journal_available {
+                        div { class: "omegon-journal-projection",
+                            for item in journal_projection.iter() {
+                                div { class: "omegon-journal-line", "{item}" }
+                            }
+                        }
+                    }
                     div { class: "omegon-surface-card-actions",
                         button {
                             class: "btn btn-xs btn-primary",
@@ -95,6 +107,34 @@ pub fn OmegonProjectView() -> Element {
             }
         }
     }
+}
+
+fn load_journal_projection(path: &std::path::Path) -> Vec<String> {
+    std::fs::read_to_string(path)
+        .ok()
+        .map(|content| {
+            content
+                .lines()
+                .filter_map(|line| {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty()
+                        || trimmed == "---"
+                        || trimmed.starts_with("title:")
+                        || trimmed.starts_with("tags:")
+                        || trimmed.starts_with("# ")
+                    {
+                        None
+                    } else if let Some(item) = trimmed.strip_prefix("- ") {
+                        Some(item.to_string())
+                    } else {
+                        Some(trimmed.to_string())
+                    }
+                })
+                .take(5)
+                .collect::<Vec<_>>()
+        })
+        .filter(|items| !items.is_empty())
+        .unwrap_or_else(|| vec!["No journal entries to project yet.".to_string()])
 }
 
 fn reveal_path(path: &std::path::Path) {
