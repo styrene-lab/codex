@@ -40,3 +40,14 @@ The production site source lives in `site/` and deploys through `.github/workflo
 - config: `release-plz.toml`
 
 Do not assume release-plz updates application release notes today. Until it is enabled, maintain `CHANGELOG.md` manually and use `scripts/check-release-surfaces.py` as the repository-level release-surface guard.
+
+## Local launch discipline
+
+On macOS, do not use `cargo run -p flynt-app` for operator-facing local validation. Raw binaries show the generic `exec` Dock icon and repeatedly regress release screenshots. For local GUI validation, launch through the app bundle wrapper:
+
+```bash
+scripts/launch-local-app.sh fixtures/demo-vault
+```
+
+That script runs `dx build --macos -p flynt-app --bin flynt`, uses the Dioxus-generated bundle at `target/dx/flynt/debug/macos/Flynt.app`, installs `icon.icns`/`AppIcon.icns`, and launches with `open ... --args --project ...`. Use raw `cargo run` only for log-only/debug runs where the Dock icon is irrelevant, and say so explicitly.
+
