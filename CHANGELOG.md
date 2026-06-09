@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.12.4 — 2026-06-09
+
+### Added
+- **Omegon journal timeline** — the Project Omegon surface now projects the project-local agent journal as a horizontal timeline preview while keeping the raw journal openable as an indexed note.
+- **Omegon runtime overview** — the Omegon surface now summarizes common runtime settings, workflow/session state, and project plugins instead of centering raw ACP manifest details.
+
+### Fixed
+- **Embedded terminal viewport** — terminal snapshots now track live resized dimensions, observe DOM resize events, and avoid redundant PTY resize churn.
+- **Embedded terminal interactions** — terminal scrollback, cursor visibility while scrolled back, copy/paste shortcuts, Ctrl-C semantics, focus recovery, and input after scrollback now behave consistently.
+- **Agent journal indexing** — Flynt now indexes the curated `.omegon/agent-journal.md` path so Open journal opens the actual note while other hidden Omegon runtime artifacts remain projected rather than dumped into Files.
+
 ## 0.12.3 — 2026-06-09
 
 ### Fixed
