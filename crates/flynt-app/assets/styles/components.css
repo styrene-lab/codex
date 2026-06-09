@@ -2662,18 +2662,20 @@
 .omegon-journal-projection {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: var(--space-3);
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(320px, 1fr);
+  gap: var(--space-4);
   margin-top: var(--space-2);
-  padding-left: var(--space-4);
+  padding-top: var(--space-4);
+  overflow-x: auto;
 }
 .omegon-journal-timeline::before {
   content: "";
   position: absolute;
-  top: 8px;
-  bottom: 8px;
-  left: 5px;
-  width: 1px;
+  top: 5px;
+  left: 8px;
+  right: 8px;
+  height: 1px;
   background: color-mix(in srgb, var(--primary) 45%, transparent);
 }
 .omegon-journal-timeline-label {
@@ -2687,16 +2689,15 @@
 .omegon-journal-entry {
   position: relative;
   display: grid;
-  grid-template-columns: auto 1fr;
   gap: var(--space-2);
 }
 .omegon-journal-marker {
-  position: relative;
+  position: absolute;
   z-index: 1;
   width: 11px;
   height: 11px;
-  margin-top: 7px;
-  margin-left: -14px;
+  top: -14px;
+  left: 0;
   border: 2px solid var(--primary);
   border-radius: 999px;
   background: var(--card);
@@ -2760,6 +2761,36 @@
   display: inline-block;
   margin-top: var(--space-3);
   font-family: var(--font-mono);
+}
+
+.omegon-settings-list,
+.omegon-plugin-list {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.omegon-settings-list div,
+.omegon-plugin-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: var(--border-width-hairline) solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+.omegon-settings-list span,
+.omegon-plugin-meta,
+.omegon-plugin-empty {
+  color: var(--muted-foreground);
+  font-size: var(--font-size-sm);
+}
+.omegon-settings-list strong,
+.omegon-plugin-name {
+  color: var(--foreground);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+.omegon-plugin-empty {
+  margin-top: var(--space-3);
 }
 
 /* ── Workspace footer ───────────────────────────────────────────────────── */

@@ -16,14 +16,19 @@ pub fn OmegonProjectView() -> Element {
     let root = ctx.project_root().join(".omegon");
     let journal = root.join("agent-journal.md");
     let plugins = root.join("plugins");
+    let workflows = root.join("workflows");
+    let runtime = root.join("runtime");
     let deployment = ctx.omegon().deployment_path;
     let journal_meta = std::fs::metadata(&journal).ok();
     let deployment_meta = std::fs::metadata(&deployment).ok();
-    let plugin_count = std::fs::read_dir(&plugins)
+    let plugin_summaries = load_plugin_summaries(&plugins);
+    let plugin_count = plugin_summaries.len();
+    let workflow_count = std::fs::read_dir(&workflows)
         .map(|entries| entries.filter_map(Result::ok).count())
         .unwrap_or(0);
+    let runtime_summary = load_runtime_summary(&runtime);
     let journal_size = journal_meta.as_ref().map(|meta| meta.len()).unwrap_or(0);
-    let deployment_size = deployment_meta.as_ref().map(|meta| meta.len()).unwrap_or(0);
+    let _deployment_size = deployment_meta.as_ref().map(|meta| meta.len()).unwrap_or(0);
     let journal_entries = load_journal_timeline(&journal);
     let journal_doc = ctx
         .project()
@@ -119,19 +124,40 @@ pub fn OmegonProjectView() -> Element {
                 }
             div { class: "omegon-surface-grid",
                 div { class: "omegon-surface-card",
-                    span { class: "omegon-surface-kicker", "Deployment" }
-                    h2 { "ACP Manifest" }
-                    p { if deployment_meta.is_some() { "Project-scoped ACP profile, memory, and extension contract." } else { "Deployment manifest has not been created yet." } }
-                    span { class: "omegon-surface-meta", "{deployment_size} bytes" }
+                    span { class: "omegon-surface-kicker", "Runtime" }
+                    h2 { "Common Settings" }
+                    p { "Project-scoped Omegon runtime posture, workflow, and session state." }
+                    div { class: "omegon-settings-list",
+                        div { span { "Runtime sessions" } strong { "{runtime_summary.total}" } }
+                        div { span { "Active-ish" } strong { "{runtime_summary.active}" } }
+                        div { span { "Workflows" } strong { "{workflow_count}" } }
+                        div { span { "Manifest" } strong { if deployment_meta.is_some() { "ready" } else { "missing" } } }
+                    }
                     div { class: "omegon-surface-card-actions",
+                        button { class: "btn btn-xs btn-primary", onclick: move |_| {
+                            *settings_page.write() = SettingsPage::OmegonRuntime;
+                            *settings_open.write() = SettingsOpen(true);
+                        }, "Open full settings" }
                         button { class: "btn btn-xs btn-ghost", disabled: deployment_meta.is_none(), onclick: move |_| reveal_path(&deployment), "Reveal manifest" }
                     }
                 }
                 div { class: "omegon-surface-card",
-                    span { class: "omegon-surface-kicker", "Runtime" }
-                    h2 { "Plugins" }
+                    span { class: "omegon-surface-kicker", "Plugins" }
+                    h2 { "Agent Extensions" }
                     p { "Project-scoped Omegon plugin checkout/cache area." }
-                    span { class: "omegon-surface-meta", "{plugin_count} item(s)" }
+                    span { class: "omegon-surface-meta", "{plugin_count} plugin(s)" }
+                    if plugin_summaries.is_empty() {
+                        div { class: "omegon-plugin-empty", "No project plugins materialized yet." }
+                    } else {
+                        div { class: "omegon-plugin-list",
+                            for plugin in plugin_summaries.iter() {
+                                div { class: "omegon-plugin-row",
+                                    span { class: "omegon-plugin-name", "{plugin.name}" }
+                                    span { class: "omegon-plugin-meta", "{plugin.kind} · {plugin.version}" }
+                                }
+                            }
+                        }
+                    }
                     div { class: "omegon-surface-card-actions",
                         button { class: "btn btn-xs btn-ghost", onclick: move |_| reveal_path(&plugins), "Reveal plugins" }
                     }
@@ -139,6 +165,74 @@ pub fn OmegonProjectView() -> Element {
             }
         }
     }
+}
+
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PluginSummary {
+    name: String,
+    kind: String,
+    version: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RuntimeSummary {
+    total: usize,
+    active: usize,
+}
+
+fn load_plugin_summaries(path: &std::path::Path) -> Vec<PluginSummary> {
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let manifest = entry.path().join("plugin.toml");
+            let content = std::fs::read_to_string(manifest).ok()?;
+            Some(PluginSummary {
+                name: toml_string_value(&content, "name").unwrap_or_else(|| entry.file_name().to_string_lossy().into_owned()),
+                kind: toml_string_value(&content, "type").unwrap_or_else(|| "plugin".to_string()),
+                version: toml_string_value(&content, "version").unwrap_or_else(|| "unknown".to_string()),
+            })
+        })
+        .collect()
+}
+
+fn toml_string_value(content: &str, key: &str) -> Option<String> {
+    content.lines().find_map(|line| {
+        let line = line.trim();
+        let (left, right) = line.split_once('=')?;
+        if left.trim() == key {
+            Some(right.trim().trim_matches('"').to_string())
+        } else {
+            None
+        }
+    })
+}
+
+fn load_runtime_summary(path: &std::path::Path) -> RuntimeSummary {
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return RuntimeSummary { total: 0, active: 0 };
+    };
+    let mut total = 0;
+    let mut active = 0;
+    for entry in entries.filter_map(Result::ok) {
+        let workspace = entry.path().join("workspace.json");
+        if !workspace.exists() {
+            continue;
+        }
+        total += 1;
+        if std::fs::read_to_string(workspace)
+            .ok()
+            .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
+            .and_then(|value| value.get("archived").and_then(|archived| archived.as_bool()))
+            == Some(false)
+        {
+            active += 1;
+        }
+    }
+    RuntimeSummary { total, active }
 }
 
 /// Curated hidden-artifact policy for `.omegon`:
