@@ -134,10 +134,11 @@ pub fn TerminalSnapshotView(props: TerminalSnapshotViewProps) -> Element {
             onwheel: move |evt| {
                 evt.prevent_default();
                 evt.stop_propagation();
+                selection.set(None);
                 let lines = match evt.data().delta() {
                     WheelDelta::Pixels(delta) => (delta.y / 18.0).round() as i32,
                     WheelDelta::Lines(delta) => delta.y.round() as i32,
-                    WheelDelta::Pages(delta) => (delta.y * props.snapshot.rows.len() as f64).round() as i32,
+                    WheelDelta::Pages(delta) => (delta.y * row_count as f64).round() as i32,
                 };
                 if lines != 0 {
                     on_scroll.call(lines);

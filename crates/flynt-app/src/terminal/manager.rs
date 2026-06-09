@@ -26,6 +26,8 @@ struct TerminalSessionRecord {
     id: String,
     params: TerminalCreateParams,
     session: AlacrittyTerminalSession,
+    rows: usize,
+    cols: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -87,6 +89,8 @@ impl TerminalManager {
                 id: terminal_id.clone(),
                 params,
                 session,
+                rows: self.rows,
+                cols: self.cols,
             },
         );
 
@@ -116,7 +120,7 @@ impl TerminalManager {
             .ok_or_else(|| anyhow!("terminal '{terminal_id}' was not found"))?;
         record.session.poll();
         record.session.scroll_lines(lines);
-        Ok(record.session.snapshot(self.rows, self.cols))
+        Ok(record.session.snapshot(record.rows, record.cols))
     }
 
     pub fn poll_snapshot(&self, terminal_id: &str) -> Result<TerminalSnapshot> {
@@ -126,7 +130,7 @@ impl TerminalManager {
             .get_mut(terminal_id)
             .ok_or_else(|| anyhow!("terminal '{terminal_id}' was not found"))?;
         record.session.poll();
-        Ok(record.session.snapshot(self.rows, self.cols))
+        Ok(record.session.snapshot(record.rows, record.cols))
     }
 
     pub fn resize(&self, terminal_id: &str, rows: usize, cols: usize) -> Result<()> {
@@ -135,7 +139,9 @@ impl TerminalManager {
             .sessions
             .get_mut(terminal_id)
             .ok_or_else(|| anyhow!("terminal '{terminal_id}' was not found"))?;
-        record.session.resize(rows, cols)
+        record.rows = rows.max(1);
+        record.cols = cols.max(1);
+        record.session.resize(record.rows, record.cols)
     }
 
     pub fn status(&self, terminal_id: &str) -> Result<TerminalStatus> {
