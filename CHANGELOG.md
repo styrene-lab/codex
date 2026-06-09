@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.12.3 — 2026-06-09
+
+### Fixed
+- **Stable update line policy** — Stable update checks now prefer patch releases in the current compatible line, such as `0.12.x`, and surface newer minor/major lines as manual-required updates instead of silently hiding them or auto-installing a potentially breaking release.
+- **Update badge dismissal** — dismissing an update badge now updates toolbar state immediately instead of waiting for a remount.
+
+### Changed
+- **Update settings copy** — Settings now explicitly describes Stable versus Nightly channel behavior, including signed-manifest requirements for Nightly and manual review for incompatible Stable line jumps.
+
 ## 0.12.2 — 2026-06-09
 
 ### Added

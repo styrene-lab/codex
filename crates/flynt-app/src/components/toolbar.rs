@@ -270,6 +270,9 @@ pub fn Toolbar(
     let mut focused = use_signal(|| false);
     let mut active_index = use_signal(|| None::<usize>);
     let mut update_action = use_signal(|| None::<String>);
+    let mut skipped_update = use_signal(|| {
+        crate::bootstrap::OmegonRuntimeContext::load_launcher_profile().skipped_update_version
+    });
     let mut sync_panel_open = use_signal(|| false);
     let mut sync_refresh = use_signal(|| 0u64);
     let mut sync_action_message: Signal<Option<String>> = use_signal(|| None);
@@ -513,8 +516,7 @@ pub fn Toolbar(
                             ..
                         } => {
                             let update_key = format!("{:?}:{latest}", channel);
-                            let skipped = crate::bootstrap::OmegonRuntimeContext::load_launcher_profile()
-                                .skipped_update_version
+                            let skipped = skipped_update.read()
                                 .as_deref()
                                 .is_some_and(|skipped| skipped == update_key || skipped == latest);
                             let verified_artifact = if cfg!(target_os = "macos") && verified && install_source.should_open_direct_artifact() {
@@ -571,6 +573,7 @@ pub fn Toolbar(
                                                 let mut profile = crate::bootstrap::OmegonRuntimeContext::load_launcher_profile();
                                                 profile.skipped_update_version = Some(update_key.clone());
                                                 let _ = crate::bootstrap::OmegonRuntimeContext::save_launcher_profile(&profile);
+                                                *skipped_update.write() = Some(update_key.clone());
                                             },
                                             "×"
                                         }
@@ -578,6 +581,17 @@ pub fn Toolbar(
                                 }
                             }
                         }
+
+                        crate::self_update::UpdateState::ManualRequired { latest, html_url, reason, .. } => rsx! {
+                            button {
+                                class: "update-badge available manual",
+                                title: "Flynt {latest} is outside the current Stable compatibility line. {reason}",
+                                onclick: move |_| {
+                                    let _ = open::that(&html_url);
+                                },
+                                "Manual update {latest}"
+                            }
+                        },
                         crate::self_update::UpdateState::Unknown { channel, message } => rsx! {
                             button {
                                 class: "update-badge unknown",

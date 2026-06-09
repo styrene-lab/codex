@@ -34,6 +34,13 @@ pub enum UpdateState {
         verification: String,
         selected_artifact: Option<ReleaseArtifact>,
     },
+    ManualRequired {
+        channel: UpdateChannel,
+        current: String,
+        latest: String,
+        html_url: String,
+        reason: String,
+    },
     Unknown {
         channel: UpdateChannel,
         message: String,
@@ -65,7 +72,7 @@ impl InstallSource {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct GitHubRelease {
     tag_name: String,
     html_url: String,
@@ -77,7 +84,7 @@ struct GitHubRelease {
     assets: Vec<GitHubAsset>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct GitHubAsset {
     name: String,
     browser_download_url: String,
@@ -161,7 +168,10 @@ pub async fn check_channel(channel: UpdateChannel) -> UpdateState {
 }
 
 async fn check_channel_inner(channel: UpdateChannel, current: &str) -> anyhow::Result<UpdateState> {
-    let release = fetch_release(channel).await?;
+    let release = match channel {
+        UpdateChannel::Stable => fetch_stable_release_for_current_line(current).await?,
+        UpdateChannel::Nightly => fetch_release(channel).await?,
+    };
     let tag_version = normalize_version(&release.tag_name);
 
     let manifest_url = asset_url_exact(&release.assets, MANIFEST_NAME);
@@ -211,6 +221,19 @@ async fn check_channel_inner(channel: UpdateChannel, current: &str) -> anyhow::R
     let release_commit = manifest
         .as_ref()
         .and_then(|manifest| manifest.commit.clone());
+
+    if channel == UpdateChannel::Stable
+        && version_is_newer(&latest, current)
+        && !stable_line_compatible(&latest, current)
+    {
+        return Ok(UpdateState::ManualRequired {
+            channel,
+            current: current.into(),
+            latest,
+            html_url: release.html_url,
+            reason: stable_update_policy_note().into(),
+        });
+    }
 
     if !candidate_is_update(channel, &latest, release_commit.as_deref(), current) {
         return Ok(UpdateState::Current {
@@ -272,6 +295,36 @@ pub fn release_page_url(channel: UpdateChannel) -> &'static str {
 
 pub fn configured_channel() -> UpdateChannel {
     crate::bootstrap::OmegonRuntimeContext::load_launcher_profile().flynt_update_channel
+}
+
+async fn fetch_stable_release_for_current_line(current: &str) -> anyhow::Result<GitHubRelease> {
+    let client = release_client()?;
+    let response = client.get(NIGHTLY_RELEASE_URL).send().await?;
+    if !response.status().is_success() {
+        anyhow::bail!("GitHub release check failed: {}", response.status());
+    }
+    let releases = response.json::<Vec<GitHubRelease>>().await?;
+    select_stable_release_for_current_line(releases, current)
+        .ok_or_else(|| anyhow::anyhow!("no stable release found"))
+}
+
+fn select_stable_release_for_current_line(
+    releases: Vec<GitHubRelease>,
+    current: &str,
+) -> Option<GitHubRelease> {
+    let mut stable: Vec<GitHubRelease> = releases
+        .into_iter()
+        .filter(|release| !release.draft && !release.prerelease)
+        .collect();
+    stable.sort_by(|left, right| {
+        parse_version_key(&normalize_version(&right.tag_name))
+            .cmp(&parse_version_key(&normalize_version(&left.tag_name)))
+    });
+    stable
+        .iter()
+        .position(|release| stable_line_compatible(&normalize_version(&release.tag_name), current))
+        .and_then(|idx| stable.get(idx).cloned())
+        .or_else(|| stable.into_iter().next())
 }
 
 async fn fetch_release(channel: UpdateChannel) -> anyhow::Result<GitHubRelease> {
@@ -495,6 +548,16 @@ fn version_is_newer(candidate: &str, current: &str) -> bool {
     parse_version_key(candidate) > parse_version_key(current)
 }
 
+fn stable_line_compatible(candidate: &str, current: &str) -> bool {
+    let candidate = parse_version_key(candidate);
+    let current = parse_version_key(current);
+    candidate.major == current.major && candidate.minor == current.minor
+}
+
+pub fn stable_update_policy_note() -> &'static str {
+    "Stable checks offer patch updates within the current compatible line. Major/minor line changes are routed to the manual release page for explicit review."
+}
+
 fn candidate_is_update(
     channel: UpdateChannel,
     candidate: &str,
@@ -502,7 +565,9 @@ fn candidate_is_update(
     current: &str,
 ) -> bool {
     match channel {
-        UpdateChannel::Stable => version_is_newer(candidate, current),
+        UpdateChannel::Stable => {
+            stable_line_compatible(candidate, current) && version_is_newer(candidate, current)
+        }
         UpdateChannel::Nightly => {
             let build_hash = env!("FLYNT_BUILD_HASH");
             if let Some(commit) = release_commit {
@@ -516,8 +581,9 @@ fn candidate_is_update(
 #[cfg(test)]
 mod tests {
     use super::{
-        ReleaseArtifact, UpdateChannel, VersionKey, candidate_is_update, normalize_version,
-        parse_version_key, verify_artifact_bytes, version_is_newer,
+        GitHubRelease, ReleaseArtifact, UpdateChannel, VersionKey, candidate_is_update,
+        normalize_version, parse_version_key, select_stable_release_for_current_line,
+        stable_line_compatible, verify_artifact_bytes, version_is_newer,
     };
 
     #[test]
@@ -549,6 +615,67 @@ mod tests {
     fn stable_release_beats_prerelease() {
         assert!(version_is_newer("0.10.0", "0.10.0-rc.1"));
         assert!(!version_is_newer("0.10.0-rc.1", "0.10.0"));
+    }
+
+    #[test]
+    fn stable_updates_are_patch_only_within_current_line() {
+        assert!(stable_line_compatible("0.12.3", "0.12.2"));
+        assert!(!stable_line_compatible("0.13.0", "0.12.2"));
+        assert!(!stable_line_compatible("1.0.0", "0.12.2"));
+        assert!(candidate_is_update(
+            UpdateChannel::Stable,
+            "0.12.3",
+            None,
+            "0.12.2"
+        ));
+        assert!(!candidate_is_update(
+            UpdateChannel::Stable,
+            "0.13.0",
+            None,
+            "0.12.2"
+        ));
+        assert!(!candidate_is_update(
+            UpdateChannel::Stable,
+            "1.0.0",
+            None,
+            "0.12.2"
+        ));
+    }
+
+    fn test_release(tag: &str, prerelease: bool) -> GitHubRelease {
+        GitHubRelease {
+            tag_name: tag.into(),
+            html_url: format!("https://example.invalid/{tag}"),
+            draft: false,
+            prerelease,
+            assets: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn stable_selection_prefers_current_line_over_newer_breaking_line() {
+        let selected = select_stable_release_for_current_line(
+            vec![
+                test_release("v0.13.0", false),
+                test_release("v0.12.3", false),
+            ],
+            "0.12.2",
+        )
+        .expect("stable release selected");
+        assert_eq!(selected.tag_name, "v0.12.3");
+    }
+
+    #[test]
+    fn stable_selection_falls_back_to_newest_for_manual_required_line_jump() {
+        let selected = select_stable_release_for_current_line(
+            vec![
+                test_release("v0.13.0", false),
+                test_release("v0.11.9", false),
+            ],
+            "0.12.2",
+        )
+        .expect("stable release selected");
+        assert_eq!(selected.tag_name, "v0.13.0");
     }
 
     #[test]

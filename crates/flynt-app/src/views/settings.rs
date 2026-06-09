@@ -2,7 +2,7 @@ use crate::omegon_deployment_diagnostics::{
     DeploymentDiagnostic, DeploymentManifestSource, LoadedDeploymentManifest,
     classify_loaded_deployment,
 };
-use crate::self_update::UpdateChannel;
+use crate::self_update::{UpdateChannel, stable_update_policy_note};
 use crate::{
     acp::AcpSession,
     bootstrap::{AppContext, OmegonRuntimeContext, PendingProjectSetup},
@@ -766,7 +766,7 @@ pub fn SettingsView() -> Element {
                     SettingsSection { heading: "Updates",
                         SettingsRow {
                             label: "Channel",
-                            hint: "Which Flynt release stream the update checker uses. Stable follows GitHub's latest production release. Nightly scans timestamped nightly prereleases and requires a signed nightly manifest.",
+                            hint: "Choose the Flynt release stream. Stable offers patch updates only within the current compatible line (for example, 0.12.x); major/minor line changes are manual. Nightly scans timestamped prereleases and requires a signed manifest.",
                             div { class: "radio-group",
                                 for channel in UpdateChannel::all_named() {
                                     {
@@ -790,6 +790,7 @@ pub fn SettingsView() -> Element {
                                     }
                                 }
                             }
+                            span { class: "settings-hint muted", "{stable_update_policy_note()}" }
                         }
                     }
                 }
