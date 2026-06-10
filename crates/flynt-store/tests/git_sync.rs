@@ -6,6 +6,7 @@
 
 use flynt_core::sync::{SyncBackend, SyncStatus};
 use flynt_store::sync::git::GitSync;
+use flynt_store::sync::planner::{FreshnessStatus, TagFetchPolicy, UpstreamRelation};
 use git2::{IndexAddOption, Repository, Signature};
 use std::fs;
 use std::path::Path;
@@ -199,6 +200,109 @@ fn diagnostic_reports_dirty_files_and_ahead_counts() {
     assert!(diagnostic.remote_ref_available);
     assert!(diagnostic.dirty_files.iter().any(|file| file == "dirty.md"));
     assert!(diagnostic.head.is_some());
+}
+
+#[test]
+fn list_refs_reports_branches_and_tags() {
+    let (_tmp, local, _remote) = setup_local_remote();
+    let sync = git_sync(&local);
+    sync.create_tag("v-test", None).unwrap();
+    let repo = Repository::open(&local).unwrap();
+    let head = repo.head().unwrap().peel_to_commit().unwrap();
+    repo.branch("feature/example", &head, false).unwrap();
+
+    let refs = sync.list_refs(TagFetchPolicy::AutoFollow).unwrap();
+
+    assert!(
+        refs.local_branches
+            .iter()
+            .any(|branch| branch.name == "main" && branch.full_ref == "refs/heads/main")
+    );
+    assert!(
+        refs.local_branches
+            .iter()
+            .any(|branch| branch.name == "feature/example")
+    );
+    assert!(refs.remote_branches.iter().any(
+        |branch| branch.name == "origin/main" && branch.full_ref == "refs/remotes/origin/main"
+    ));
+    assert_eq!(refs.current.as_ref().map(|r| r.name.as_str()), Some("main"));
+    assert_eq!(
+        refs.upstream.as_ref().map(|r| r.full_ref.as_str()),
+        Some("refs/remotes/origin/main")
+    );
+    assert!(refs.tags.iter().any(|tag| tag.name == "v-test"));
+}
+
+#[test]
+fn list_refs_honors_do_not_fetch_tags_policy() {
+    let (_tmp, local, _remote) = setup_local_remote();
+    let sync = git_sync(&local);
+    sync.create_tag("v-test", None).unwrap();
+
+    let refs = sync.list_refs(TagFetchPolicy::DoNotFetchTags).unwrap();
+
+    assert!(refs.tags.is_empty());
+}
+
+#[test]
+fn check_upstream_reports_out_of_date_without_mutating_worktree() {
+    let (tmp, local, remote) = setup_local_remote();
+    let second = clone_second(&tmp, &remote);
+    commit_file(&second, "remote.md", "remote\n", "remote commit");
+    Repository::open(&second)
+        .unwrap()
+        .find_remote("origin")
+        .unwrap()
+        .push(&["refs/heads/main:refs/heads/main"], None)
+        .unwrap();
+
+    let sync = git_sync(&local);
+    let before = Repository::open(&local)
+        .unwrap()
+        .head()
+        .unwrap()
+        .peel_to_commit()
+        .unwrap()
+        .id();
+
+    let upstream = sync.check_upstream(TagFetchPolicy::AutoFollow).unwrap();
+
+    let after = Repository::open(&local)
+        .unwrap()
+        .head()
+        .unwrap()
+        .peel_to_commit()
+        .unwrap()
+        .id();
+    assert_eq!(before, after, "check_upstream must not move local HEAD");
+    assert_eq!(upstream.freshness, FreshnessStatus::Fresh);
+    assert_eq!(upstream.relation, UpstreamRelation::OutOfDate { behind: 1 });
+    assert!(
+        !local.join("remote.md").exists(),
+        "check_upstream must not checkout fetched files"
+    );
+}
+
+#[test]
+fn check_upstream_reports_fresh_after_fast_forward_pull() {
+    let (tmp, local, remote) = setup_local_remote();
+    let second = clone_second(&tmp, &remote);
+    commit_file(&second, "remote.md", "remote\n", "remote commit");
+    Repository::open(&second)
+        .unwrap()
+        .find_remote("origin")
+        .unwrap()
+        .push(&["refs/heads/main:refs/heads/main"], None)
+        .unwrap();
+
+    let sync = git_sync(&local);
+    sync.pull().unwrap();
+
+    let upstream = sync.check_upstream(TagFetchPolicy::AutoFollow).unwrap();
+
+    assert_eq!(upstream.freshness, FreshnessStatus::Fresh);
+    assert_eq!(upstream.relation, UpstreamRelation::InSync);
 }
 
 #[test]

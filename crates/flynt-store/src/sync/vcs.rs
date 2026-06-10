@@ -72,6 +72,7 @@ pub trait SyncVcs {
     fn reconcile_local_vcs(&self, branch: &str) -> Result<VcsReconcileOutcome>;
     fn diagnostic(&self) -> Result<GitRepositoryState>;
     fn check_upstream(&self, tag_policy: TagFetchPolicy) -> Result<UpstreamFreshness>;
+    fn list_refs(&self, tag_policy: TagFetchPolicy) -> Result<super::planner::GitRefInventory>;
     fn auto_commit_filtered(&self, message: &str) -> Result<Option<String>>;
     fn pull_fast_forward(&self) -> Result<SyncOutcome>;
     fn push(&self) -> Result<SyncOutcome>;
@@ -106,11 +107,12 @@ impl SyncVcs for GitVcsAdapter {
         diagnostic_to_repository_state(self.git.diagnostic()?)
     }
 
-    fn check_upstream(&self, _tag_policy: TagFetchPolicy) -> Result<UpstreamFreshness> {
-        // Initial slice maps the current fetched remote-tracking ref. A later
-        // slice will make this method perform the fetch-only upstream refresh.
-        let state = self.git.diagnostic()?;
-        Ok(upstream_from_diagnostic(&state))
+    fn check_upstream(&self, tag_policy: TagFetchPolicy) -> Result<UpstreamFreshness> {
+        self.git.check_upstream(tag_policy)
+    }
+
+    fn list_refs(&self, tag_policy: TagFetchPolicy) -> Result<super::planner::GitRefInventory> {
+        self.git.list_refs(tag_policy)
     }
 
     fn auto_commit_filtered(&self, message: &str) -> Result<Option<String>> {
@@ -166,16 +168,9 @@ pub fn diagnostic_to_repository_state(diagnostic: SyncDiagnostic) -> Result<GitR
             diagnostic.behind,
             diagnostic.remote_ref_available,
         ),
+        refs: super::planner::GitRefInventory::default(),
         blockers,
     })
-}
-
-fn upstream_from_diagnostic(diagnostic: &SyncDiagnostic) -> UpstreamFreshness {
-    upstream_from_counts(
-        diagnostic.ahead,
-        diagnostic.behind,
-        diagnostic.remote_ref_available,
-    )
 }
 
 fn upstream_from_counts(

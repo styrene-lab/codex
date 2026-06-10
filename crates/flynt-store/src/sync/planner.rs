@@ -94,7 +94,32 @@ pub struct GitRepositoryState {
     pub auto_commit_supported: bool,
     pub save_quiescence: SaveQuiescence,
     pub upstream: UpstreamFreshness,
+    pub refs: GitRefInventory,
     pub blockers: Vec<SyncBlocker>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct GitRefInventory {
+    pub local_branches: Vec<GitRefSummary>,
+    pub remote_branches: Vec<GitRefSummary>,
+    pub tags: Vec<GitRefSummary>,
+    pub current: Option<GitRefSummary>,
+    pub upstream: Option<GitRefSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitRefSummary {
+    pub name: String,
+    pub full_ref: String,
+    pub target: Option<String>,
+    pub kind: GitRefKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GitRefKind {
+    LocalBranch,
+    RemoteBranch,
+    Tag,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,6 +136,7 @@ impl GitRepositoryState {
             auto_commit_supported: true,
             save_quiescence: SaveQuiescence::Idle,
             upstream: UpstreamFreshness::new(freshness, relation),
+            refs: GitRefInventory::default(),
             blockers: Vec::new(),
         }
     }
@@ -121,6 +147,7 @@ impl GitRepositoryState {
             auto_commit_supported: true,
             save_quiescence: SaveQuiescence::Idle,
             upstream: UpstreamFreshness::new(freshness, relation),
+            refs: GitRefInventory::default(),
             blockers: Vec::new(),
         }
     }

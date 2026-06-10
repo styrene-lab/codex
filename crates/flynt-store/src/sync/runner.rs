@@ -78,6 +78,9 @@ impl<V: SyncVcs> BackgroundSyncRunner<V> {
         events.push(SyncEvent::PhaseChanged(SyncPhase::Observing));
         let mut state = self.vcs.diagnostic()?;
         state.auto_commit_supported = self.vcs.supports_auto_commit();
+        state.refs = self
+            .vcs
+            .list_refs(super::planner::TagFetchPolicy::AutoFollow)?;
         if let Some(save_quiescence) = request.save_quiescence.clone() {
             state.save_quiescence = save_quiescence;
         }
@@ -234,6 +237,13 @@ mod tests {
 
         fn check_upstream(&self, _tag_policy: TagFetchPolicy) -> Result<UpstreamFreshness> {
             Ok(self.upstream.clone())
+        }
+
+        fn list_refs(
+            &self,
+            _tag_policy: TagFetchPolicy,
+        ) -> Result<crate::sync::planner::GitRefInventory> {
+            Ok(crate::sync::planner::GitRefInventory::default())
         }
 
         fn auto_commit_filtered(&self, _message: &str) -> Result<Option<String>> {

@@ -1,12 +1,13 @@
 use anyhow::Result;
 use flynt_core::sync::{SyncBackend, SyncResult, SyncStatus};
 use git2::{
-    Cred, DiffOptions, FetchOptions, IndexAddOption, Oid, PushOptions, RemoteCallbacks, Repository,
-    RepositoryState,
+    AutotagOption, Cred, DiffOptions, FetchOptions, IndexAddOption, Oid, PushOptions,
+    RemoteCallbacks, Repository, RepositoryState,
 };
 use std::path::{Path, PathBuf};
 use tracing::debug;
 
+use super::planner::{FreshnessStatus, TagFetchPolicy, UpstreamFreshness, UpstreamRelation};
 use super::util;
 
 #[derive(Debug, Clone)]
@@ -203,6 +204,16 @@ impl GitSync {
         opts
     }
 
+    fn fetch_options_with_tag_policy(tag_policy: TagFetchPolicy) -> FetchOptions<'static> {
+        let mut opts = Self::fetch_options();
+        match tag_policy {
+            TagFetchPolicy::DoNotFetchTags => opts.download_tags(AutotagOption::None),
+            TagFetchPolicy::AutoFollow => opts.download_tags(AutotagOption::Auto),
+            TagFetchPolicy::AllTags => opts.download_tags(AutotagOption::All),
+        };
+        opts
+    }
+
     fn push_options() -> PushOptions<'static> {
         let mut opts = PushOptions::new();
         opts.remote_callbacks(Self::credential_callbacks());
@@ -325,6 +336,139 @@ impl GitSync {
             index_conflicts,
             blockers,
         })
+    }
+    /// Fetch the configured upstream branch without mutating the worktree,
+    /// index, local branch tip, or pushing anything. The returned relation is
+    /// computed from local HEAD versus the fetched remote-tracking ref.
+    pub fn check_upstream(&self, tag_policy: TagFetchPolicy) -> Result<UpstreamFreshness> {
+        let repo = self.open_repo()?;
+        let mut remote = repo.find_remote(&self.remote)?;
+        let remote_ref = format!("refs/remotes/{}/{}", self.remote, self.branch);
+        let branch_ref = format!("refs/heads/{}", self.branch);
+        let refspec = format!("+{branch_ref}:{remote_ref}");
+
+        if let Err(err) = remote.fetch(
+            &[refspec.as_str()],
+            Some(&mut Self::fetch_options_with_tag_policy(tag_policy)),
+            None,
+        ) {
+            let mut freshness =
+                UpstreamFreshness::new(FreshnessStatus::Unreachable, UpstreamRelation::Unknown);
+            freshness.upstream_head = Some(err.message().to_string());
+            return Ok(freshness);
+        }
+
+        let head_commit = repo.head().ok().and_then(|head| head.peel_to_commit().ok());
+        let remote_commit = repo
+            .find_reference(&remote_ref)
+            .ok()
+            .and_then(|reference| reference.peel_to_commit().ok());
+
+        let mut freshness = match (head_commit.as_ref(), remote_commit.as_ref()) {
+            (Some(local), Some(remote)) => {
+                let (ahead, behind) = repo.graph_ahead_behind(local.id(), remote.id())?;
+                let relation = match (ahead, behind) {
+                    (0, 0) => UpstreamRelation::InSync,
+                    (ahead, 0) => UpstreamRelation::Ahead { ahead },
+                    (0, behind) => UpstreamRelation::OutOfDate { behind },
+                    (ahead, behind) => UpstreamRelation::Diverged { ahead, behind },
+                };
+                let mut freshness = UpstreamFreshness::new(FreshnessStatus::Fresh, relation);
+                freshness.local_head = Some(local.id().to_string());
+                freshness.upstream_head = Some(remote.id().to_string());
+                freshness.ahead = Some(ahead);
+                freshness.behind = Some(behind);
+                freshness
+            }
+            (Some(local), None) => {
+                let mut freshness = UpstreamFreshness::new(
+                    FreshnessStatus::Fresh,
+                    UpstreamRelation::MissingRemoteRef,
+                );
+                freshness.local_head = Some(local.id().to_string());
+                freshness
+            }
+            (None, Some(remote)) => {
+                let mut freshness = UpstreamFreshness::new(
+                    FreshnessStatus::Fresh,
+                    UpstreamRelation::OutOfDate { behind: 1 },
+                );
+                freshness.upstream_head = Some(remote.id().to_string());
+                freshness.behind = Some(1);
+                freshness
+            }
+            (None, None) => {
+                UpstreamFreshness::new(FreshnessStatus::Fresh, UpstreamRelation::MissingRemoteRef)
+            }
+        };
+        freshness.last_checked_at = Some(chrono::Utc::now());
+        Ok(freshness)
+    }
+    pub fn list_refs(&self, tag_policy: TagFetchPolicy) -> Result<super::planner::GitRefInventory> {
+        let repo = self.open_repo()?;
+        let mut inventory = super::planner::GitRefInventory::default();
+        let current_branch = repo
+            .head()
+            .ok()
+            .and_then(|head| head.shorthand().map(str::to_string));
+        let upstream_full_ref = format!("refs/remotes/{}/{}", self.remote, self.branch);
+
+        let branches = repo.branches(None)?;
+        for branch in branches {
+            let (branch, kind) = branch?;
+            let Some(name) = branch.name()?.map(str::to_string) else {
+                continue;
+            };
+            let Some(reference) = branch.get().name().map(str::to_string) else {
+                continue;
+            };
+            let target = branch.get().target().map(|oid| oid.to_string());
+            let ref_kind = match kind {
+                git2::BranchType::Local => super::planner::GitRefKind::LocalBranch,
+                git2::BranchType::Remote => super::planner::GitRefKind::RemoteBranch,
+            };
+            let summary = super::planner::GitRefSummary {
+                name: name.clone(),
+                full_ref: reference.clone(),
+                target,
+                kind: ref_kind,
+            };
+            if matches!(ref_kind, super::planner::GitRefKind::LocalBranch)
+                && current_branch.as_deref() == Some(name.as_str())
+            {
+                inventory.current = Some(summary.clone());
+            }
+            if reference == upstream_full_ref {
+                inventory.upstream = Some(summary.clone());
+            }
+            match ref_kind {
+                super::planner::GitRefKind::LocalBranch => inventory.local_branches.push(summary),
+                super::planner::GitRefKind::RemoteBranch => inventory.remote_branches.push(summary),
+                super::planner::GitRefKind::Tag => {}
+            }
+        }
+
+        if !matches!(tag_policy, TagFetchPolicy::DoNotFetchTags) {
+            repo.tag_foreach(|oid, raw_name| {
+                let name = String::from_utf8_lossy(raw_name)
+                    .trim_start_matches("refs/tags/")
+                    .to_string();
+                inventory.tags.push(super::planner::GitRefSummary {
+                    name,
+                    full_ref: String::from_utf8_lossy(raw_name).to_string(),
+                    target: Some(oid.to_string()),
+                    kind: super::planner::GitRefKind::Tag,
+                });
+                true
+            })?;
+        }
+
+        inventory.local_branches.sort_by(|a, b| a.name.cmp(&b.name));
+        inventory
+            .remote_branches
+            .sort_by(|a, b| a.name.cmp(&b.name));
+        inventory.tags.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(inventory)
     }
 }
 
