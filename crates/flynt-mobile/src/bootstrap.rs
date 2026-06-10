@@ -81,6 +81,7 @@ pub fn bootstrap() -> Result<MobileRuntime> {
                 branch.clone(),
                 interval,
                 Some(reindex_cb),
+                None,
             );
             info!(
                 "Auto-sync started: every {}s to {remote}/{branch}",

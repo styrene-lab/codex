@@ -4,6 +4,7 @@ pub mod git;
 pub mod icloud;
 pub mod planner;
 pub mod runner;
+pub mod save_quiescence;
 pub mod util;
 pub mod vcs;
 pub use auto::{AutoSyncHandle, AutoSyncStatus, start_auto_sync};

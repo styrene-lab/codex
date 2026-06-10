@@ -1310,6 +1310,7 @@ pub(crate) fn runtime_state_for_project_root(project_root: PathBuf) -> RuntimeSt
                 branch.clone(),
                 interval,
                 Some(reindex_cb),
+                None,
             );
             info!(
                 "Auto-sync started: every {}s to {remote}/{branch}",

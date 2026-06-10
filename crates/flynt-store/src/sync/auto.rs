@@ -6,6 +6,7 @@
 use super::git::GitSync;
 use super::planner::SyncRequest;
 use super::runner::{BackgroundSyncRunner, SyncEvent, SyncPhase};
+use super::save_quiescence::SaveQuiescenceTracker;
 use super::vcs::{GitVcsAdapter, SyncOutcome};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -45,6 +46,7 @@ pub fn start_auto_sync(
     branch: String,
     interval: Duration,
     reindex: Option<Arc<dyn Fn() + Send + Sync>>,
+    save_tracker: Option<SaveQuiescenceTracker>,
 ) -> (AutoSyncHandle, watch::Receiver<AutoSyncStatus>) {
     let (cancel_tx, cancel_rx) = watch::channel(false);
     let (status_tx, status_rx) = watch::channel(AutoSyncStatus::Idle);
@@ -52,7 +54,6 @@ pub fn start_auto_sync(
     tokio::spawn(async move {
         let git = GitSync::new(project_root, &remote, &branch);
         let runner = BackgroundSyncRunner::new(GitVcsAdapter::new(git), branch.clone());
-        let save_quiescence = Arc::new(std::sync::Mutex::new(super::planner::SaveQuiescence::Idle));
         let mut cancel = cancel_rx;
         let mut consecutive_failures: u32 = 0;
         let max_backoff = Duration::from_secs(600); // 10 minute cap
@@ -75,12 +76,7 @@ pub fn start_auto_sync(
 
             let _ = status_tx.send(AutoSyncStatus::Committing);
             let request = SyncRequest {
-                save_quiescence: Some(
-                    save_quiescence
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .clone(),
-                ),
+                save_quiescence: save_tracker.as_ref().map(|tracker| tracker.current()),
                 ..SyncRequest::auto_sync_tick()
             };
             match runner.run_once(request) {
