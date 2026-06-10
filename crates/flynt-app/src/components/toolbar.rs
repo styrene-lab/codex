@@ -368,6 +368,62 @@ pub fn Toolbar(
         .sync_status_rx
         .as_ref()
         .map(|rx| rx.borrow().clone());
+    let auto_sync_running = ctx.runtime.read().sync_status_rx.is_some();
+    let (sync_label, sync_class, sync_title) = match &ctx.project().config.sync {
+        flynt_core::models::SyncConfig::Git {
+            remote,
+            branch,
+            auto_commit_seconds,
+        } => match auto_status.as_ref() {
+            Some(AutoSyncStatus::WaitingForSaves) => (
+                "Git · waiting".to_string(),
+                "sync-badge syncing",
+                format!(
+                    "Git sync configured for {remote}/{branch}. Waiting for autosave to settle."
+                ),
+            ),
+            Some(AutoSyncStatus::Committing)
+            | Some(AutoSyncStatus::Pulling)
+            | Some(AutoSyncStatus::Pushing) => (
+                "Git · syncing".to_string(),
+                "sync-badge syncing",
+                format!("Git auto-sync is running for {remote}/{branch}."),
+            ),
+            Some(AutoSyncStatus::Conflict(files)) => (
+                "Git · conflict".to_string(),
+                "sync-badge conflict",
+                format!(
+                    "Git sync conflict for {remote}/{branch}: {} file(s).",
+                    files.len()
+                ),
+            ),
+            Some(AutoSyncStatus::Error(error)) => (
+                "Git · error".to_string(),
+                "sync-badge error",
+                format!("Git sync error for {remote}/{branch}: {error}"),
+            ),
+            Some(AutoSyncStatus::Idle) if *auto_commit_seconds > 0 && auto_sync_running => (
+                "Git · idle".to_string(),
+                "sync-badge synced",
+                format!(
+                    "Git auto-sync is running for {remote}/{branch} every {auto_commit_seconds}s."
+                ),
+            ),
+            _ if *auto_commit_seconds == 0 => (
+                "Git · manual".to_string(),
+                "sync-badge configured",
+                format!("Git sync configured for {remote}/{branch}. Auto-sync is off."),
+            ),
+            _ => (
+                "Git · configured".to_string(),
+                "sync-badge configured",
+                format!(
+                    "Git sync configured for {remote}/{branch}, but background sync is not running."
+                ),
+            ),
+        },
+        _ => (sync_label.to_string(), sync_class, sync_title),
+    };
 
     rsx! {
         div { class: "toolbar",
