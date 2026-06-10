@@ -771,6 +771,12 @@ impl SyncBackend for GitSync {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AutoCommitResult {
+    pub commit: Option<String>,
+    pub files: usize,
+}
+
 fn is_sync_eligible_path(path: &Path) -> bool {
     if path.is_absolute() {
         return false;
@@ -811,11 +817,12 @@ fn is_sync_eligible_path(path: &Path) -> bool {
 
 impl GitSync {
     /// Stage all changes and commit. Safe to call even if working tree is clean.
-    pub fn auto_commit(&self, message: &str) -> Result<()> {
+    pub fn auto_commit(&self, message: &str) -> Result<AutoCommitResult> {
         let repo = self.open_repo()?;
         Self::ensure_safe_to_sync(&repo)?;
         let mut index = repo.index()?;
         let statuses = repo.statuses(None)?;
+        let mut staged_files = 0;
         for status in statuses.iter() {
             let Some(path) = status.path() else {
                 continue;
@@ -827,8 +834,10 @@ impl GitSync {
             let st = status.status();
             if st.is_wt_deleted() || st.is_index_deleted() {
                 let _ = index.remove_path(rel);
+                staged_files += 1;
             } else {
                 index.add_path(rel)?;
+                staged_files += 1;
             }
         }
         index.write()?;
@@ -841,13 +850,23 @@ impl GitSync {
         if !is_empty {
             let parent = repo.head()?.peel_to_commit()?;
             if parent.tree_id() == tree_oid {
-                return Ok(()); // nothing changed
+                return Ok(AutoCommitResult {
+                    commit: None,
+                    files: 0,
+                }); // nothing changed
             }
-            repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &[&parent])?;
+            let oid = repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &[&parent])?;
+            Ok(AutoCommitResult {
+                commit: Some(oid.to_string()),
+                files: staged_files,
+            })
         } else {
-            repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &[])?;
+            let oid = repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &[])?;
+            Ok(AutoCommitResult {
+                commit: Some(oid.to_string()),
+                files: staged_files,
+            })
         }
-        Ok(())
     }
 }
 

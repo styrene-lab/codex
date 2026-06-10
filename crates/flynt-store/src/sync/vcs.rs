@@ -7,7 +7,7 @@
 use anyhow::Result;
 use flynt_core::sync::SyncBackend;
 
-use super::git::{GitSync, SyncDiagnostic};
+use super::git::{AutoCommitResult, GitSync, SyncDiagnostic};
 use super::planner::{
     FreshnessStatus, GitRepositoryState, SyncBlocker, TagFetchPolicy, UpstreamFreshness,
     UpstreamRelation,
@@ -73,7 +73,7 @@ pub trait SyncVcs {
     fn diagnostic(&self) -> Result<GitRepositoryState>;
     fn check_upstream(&self, tag_policy: TagFetchPolicy) -> Result<UpstreamFreshness>;
     fn list_refs(&self, tag_policy: TagFetchPolicy) -> Result<super::planner::GitRefInventory>;
-    fn auto_commit_filtered(&self, message: &str) -> Result<Option<String>>;
+    fn auto_commit_filtered(&self, message: &str) -> Result<AutoCommitResult>;
     fn pull_fast_forward(&self) -> Result<SyncOutcome>;
     fn push(&self) -> Result<SyncOutcome>;
     fn supports_auto_commit(&self) -> bool;
@@ -115,9 +115,8 @@ impl SyncVcs for GitVcsAdapter {
         self.git.list_refs(tag_policy)
     }
 
-    fn auto_commit_filtered(&self, message: &str) -> Result<Option<String>> {
-        self.git.auto_commit(message)?;
-        Ok(None)
+    fn auto_commit_filtered(&self, message: &str) -> Result<AutoCommitResult> {
+        self.git.auto_commit(message)
     }
 
     fn pull_fast_forward(&self) -> Result<SyncOutcome> {

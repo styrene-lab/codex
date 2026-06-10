@@ -120,18 +120,17 @@ impl<V: SyncVcs> BackgroundSyncRunner<V> {
                 relation: state.upstream.relation,
             },
             SyncPlan::CommitOnly => {
-                let commit = self.vcs.auto_commit_filtered("[flynt] auto-sync")?;
-                match commit {
-                    Some(commit) => SyncOutcome::Committed { commit, files: 0 },
-                    None => SyncOutcome::Synced {
-                        committed: true,
-                        pulled: false,
-                        pushed: false,
+                let result = self.vcs.auto_commit_filtered("[flynt] auto-sync")?;
+                match result.commit {
+                    Some(commit) => SyncOutcome::Committed {
+                        commit,
+                        files: result.files,
                     },
+                    None => SyncOutcome::Noop,
                 }
             }
             SyncPlan::CommitThenPush => {
-                let _commit = self.vcs.auto_commit_filtered("[flynt] auto-sync")?;
+                let commit = self.vcs.auto_commit_filtered("[flynt] auto-sync")?;
                 events.push(SyncEvent::PhaseChanged(SyncPhase::RefreshingUpstream));
                 state.upstream = self
                     .vcs
@@ -143,7 +142,11 @@ impl<V: SyncVcs> BackgroundSyncRunner<V> {
                         blockers: preflight.blockers.clone(),
                     }
                 } else {
-                    self.vcs.push()?
+                    let mut outcome = self.vcs.push()?;
+                    if let SyncOutcome::Synced { committed, .. } = &mut outcome {
+                        *committed = commit.commit.is_some();
+                    }
+                    outcome
                 }
             }
             SyncPlan::PullFastForward => self.vcs.pull_fast_forward()?,
@@ -246,9 +249,15 @@ mod tests {
             Ok(crate::sync::planner::GitRefInventory::default())
         }
 
-        fn auto_commit_filtered(&self, _message: &str) -> Result<Option<String>> {
+        fn auto_commit_filtered(
+            &self,
+            _message: &str,
+        ) -> Result<crate::sync::git::AutoCommitResult> {
             self.commit_count.fetch_add(1, Ordering::SeqCst);
-            Ok(Some("commit".into()))
+            Ok(crate::sync::git::AutoCommitResult {
+                commit: Some("commit".into()),
+                files: 1,
+            })
         }
 
         fn pull_fast_forward(&self) -> Result<SyncOutcome> {
