@@ -91,6 +91,7 @@ fn autosync_status_label(status: &AutoSyncStatus) -> (&'static str, String) {
         AutoSyncStatus::Committing => ("Committing", "Staging and committing local changes".into()),
         AutoSyncStatus::Pulling => ("Pulling", "Pulling remote changes".into()),
         AutoSyncStatus::Pushing => ("Pushing", "Pushing local commits".into()),
+        AutoSyncStatus::WaitingForSaves => ("Waiting", "Waiting for autosave to settle".into()),
         AutoSyncStatus::Conflict(files) => {
             ("Conflict", format!("{} conflict file(s)", files.len()))
         }

@@ -1080,6 +1080,8 @@ pub struct RuntimeState {
     pub _sync_handle: Option<Arc<flynt_store::sync::AutoSyncHandle>>,
     /// Sync status receiver — toolbar polls this for live sync state.
     pub sync_status_rx: Option<tokio::sync::watch::Receiver<flynt_store::sync::AutoSyncStatus>>,
+    /// Save quiescence tracker sampled by git auto-sync to avoid committing mid-write.
+    pub save_quiescence: flynt_store::sync::save_quiescence::SaveQuiescenceTracker,
     /// Agent daemon lifecycle manager.
     pub daemon: Arc<crate::daemon_manager::DaemonManager>,
     /// Last Flynt deployment metadata observed from the ACP handshake/session.
@@ -1113,6 +1115,10 @@ impl AppContext {
 
     pub fn omegon(&self) -> OmegonRuntimeContext {
         self.runtime.read().omegon.clone()
+    }
+
+    pub fn save_quiescence(&self) -> flynt_store::sync::save_quiescence::SaveQuiescenceTracker {
+        self.runtime.read().save_quiescence.clone()
     }
 
     pub fn daemon(&self) -> Arc<crate::daemon_manager::DaemonManager> {
@@ -1289,6 +1295,7 @@ pub(crate) fn runtime_state_for_project_root(project_root: PathBuf) -> RuntimeSt
     }
 
     let omegon = OmegonRuntimeContext::discover(&project_root, &project.config.local_runtime);
+    let save_quiescence = flynt_store::sync::save_quiescence::SaveQuiescenceTracker::default();
 
     // Start background git sync if configured
     let (sync_handle, sync_status_rx) = match &project.config.sync {
@@ -1310,7 +1317,7 @@ pub(crate) fn runtime_state_for_project_root(project_root: PathBuf) -> RuntimeSt
                 branch.clone(),
                 interval,
                 Some(reindex_cb),
-                None,
+                Some(save_quiescence.clone()),
             );
             info!(
                 "Auto-sync started: every {}s to {remote}/{branch}",
@@ -1390,6 +1397,7 @@ pub(crate) fn runtime_state_for_project_root(project_root: PathBuf) -> RuntimeSt
         _watcher_handle: watcher_handle,
         _sync_handle: sync_handle,
         sync_status_rx,
+        save_quiescence,
         daemon,
         deployment_metadata: None,
         omegon_cli_probe: None,

@@ -199,6 +199,8 @@ pub fn ExcalidrawView(path: PathBuf) -> Element {
                 };
                 let project = c.project();
                 let abs = project.root.join(&p);
+                let tracker = c.save_quiescence();
+                tracker.mark_active(&p);
                 if std::fs::write(&abs, &data).is_ok() {
                     *save_state.write() = "saved";
 
@@ -221,11 +223,15 @@ pub fn ExcalidrawView(path: PathBuf) -> Element {
                         }
                     }
 
+                    tracker.mark_saved(&p);
+
                     // Clear "saved" after 2 seconds
                     tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
                     if *save_state.read() == "saved" {
                         *save_state.write() = "";
                     }
+                } else {
+                    tracker.mark_idle();
                 }
             }
         });

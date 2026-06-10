@@ -156,6 +156,7 @@ pub fn App() -> Element {
                         flynt_store::sync::AutoSyncStatus::Committing
                         | flynt_store::sync::AutoSyncStatus::Pulling
                         | flynt_store::sync::AutoSyncStatus::Pushing => SyncStatus::Syncing,
+                        flynt_store::sync::AutoSyncStatus::WaitingForSaves => SyncStatus::Idle,
                         flynt_store::sync::AutoSyncStatus::Conflict(files) => {
                             SyncStatus::Conflict(files.len())
                         }
@@ -193,6 +194,12 @@ pub fn App() -> Element {
                                 }
                                 .into(),
                             );
+                        }
+                        flynt_store::sync::AutoSyncStatus::WaitingForSaves => {
+                            if run_active {
+                                let mut activity = sync_activity.write();
+                                activity.current_phase = Some("Waiting for saves".into());
+                            }
                         }
                         flynt_store::sync::AutoSyncStatus::Conflict(files) => {
                             run_active = false;

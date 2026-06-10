@@ -277,6 +277,7 @@ pub fn FlowView(path: PathBuf) -> Element {
 
         let p = path_save.clone();
         let c = ctx;
+        let save_tracker = ctx.save_quiescence();
         let mut last_self_save = last_self_save_at;
         spawn(async move {
             // Document id captured from the initial parse. If the file
@@ -302,6 +303,7 @@ pub fn FlowView(path: PathBuf) -> Element {
                 let project = c.project();
                 let abs = project.root.join(&p);
                 let id = *doc_id.get_or_insert_with(Uuid::new_v4);
+                save_tracker.mark_active(&p);
 
                 let abs_for_blocking = abs.clone();
                 let result = tokio::task::spawn_blocking(move || {
@@ -311,6 +313,7 @@ pub fn FlowView(path: PathBuf) -> Element {
 
                 match result {
                     Ok(Ok(())) => {
+                        save_tracker.mark_saved(&p);
                         // Stamp the self-save timestamp BEFORE the badge
                         // transitions — the watcher subscription will
                         // fire imminently with this write's event, and
@@ -323,10 +326,12 @@ pub fn FlowView(path: PathBuf) -> Element {
                         }
                     }
                     Ok(Err(e)) => {
+                        save_tracker.mark_idle();
                         tracing::error!(error = %e, path = %abs.display(), "save_flow failed");
                         *save_state.write() = "error";
                     }
                     Err(e) => {
+                        save_tracker.mark_idle();
                         tracing::error!(error = %e, "save task panicked");
                         *save_state.write() = "error";
                     }
