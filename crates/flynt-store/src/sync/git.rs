@@ -1,8 +1,8 @@
 use anyhow::Result;
 use flynt_core::sync::{SyncBackend, SyncResult, SyncStatus};
 use git2::{
-    AutotagOption, Cred, DiffOptions, FetchOptions, IndexAddOption, Oid, PushOptions,
-    RemoteCallbacks, Repository, RepositoryState,
+    AutotagOption, Cred, DiffOptions, FetchOptions, Oid, PushOptions, RemoteCallbacks, Repository,
+    RepositoryState,
 };
 use std::path::{Path, PathBuf};
 use tracing::debug;
@@ -771,15 +771,66 @@ impl SyncBackend for GitSync {
     }
 }
 
+fn is_sync_eligible_path(path: &Path) -> bool {
+    if path.is_absolute() {
+        return false;
+    }
+    let path_string = path.to_string_lossy();
+    if path_string == ".gitignore" {
+        return true;
+    }
+    if path_string == ".DS_Store"
+        || path_string.starts_with(".flynt/local/")
+        || path_string.starts_with(".flynt/runtime/")
+        || path_string.starts_with("site-demo-dist/")
+        || path_string.starts_with("dist/")
+        || path_string.starts_with("site/dist/")
+        || path_string.starts_with("target/")
+    {
+        return false;
+    }
+    matches!(
+        path.extension().and_then(|ext| ext.to_str()),
+        Some(
+            "md" | "toml"
+                | "board"
+                | "excalidraw"
+                | "json"
+                | "flow"
+                | "d2"
+                | "canvas"
+                | "png"
+                | "svg"
+                | "jpg"
+                | "jpeg"
+                | "gif"
+                | "webp"
+        )
+    )
+}
+
 impl GitSync {
     /// Stage all changes and commit. Safe to call even if working tree is clean.
     pub fn auto_commit(&self, message: &str) -> Result<()> {
         let repo = self.open_repo()?;
         Self::ensure_safe_to_sync(&repo)?;
         let mut index = repo.index()?;
-        // Stage all changes. IndexAddOption::DEFAULT respects .gitignore.
-        // The .gitignore (created by Project::open) excludes .flynt/local/.
-        index.add_all(["*"].iter(), IndexAddOption::DEFAULT, None)?;
+        let statuses = repo.statuses(None)?;
+        for status in statuses.iter() {
+            let Some(path) = status.path() else {
+                continue;
+            };
+            let rel = Path::new(path);
+            if !is_sync_eligible_path(rel) {
+                continue;
+            }
+            let st = status.status();
+            if st.is_wt_deleted() || st.is_index_deleted() {
+                let _ = index.remove_path(rel);
+            } else {
+                index.add_path(rel)?;
+            }
+        }
         index.write()?;
         let tree_oid = index.write_tree()?;
         let tree = repo.find_tree(tree_oid)?;
@@ -929,7 +980,7 @@ mod sync_pull_tests {
             .unwrap();
         fs::write(
             repo_path.join(".gitignore"),
-            "# Flynt local/generated state\n.flynt/local/\n.flynt/runtime/\n.omegon/\nai/\n.flynt/runtime/forge-sync.db\n.flynt/runtime/operator-settings.json\n.flynt/runtime/omegon.toml\n.flynt/local/registry/project-registry.snapshot.json\ndrawings/*.svg\n",
+            "# Flynt local/generated state\n.flynt/local/\n.flynt/runtime/\n.flynt/runtime/forge-sync.db\n.flynt/runtime/operator-settings.json\n.flynt/runtime/omegon.toml\n.flynt/local/registry/project-registry.snapshot.json\n",
         )
         .unwrap();
         fs::create_dir_all(repo_path.join(".flynt/local")).unwrap();
@@ -939,7 +990,7 @@ mod sync_pull_tests {
         fs::create_dir_all(repo_path.join(".flynt/runtime")).unwrap();
         fs::create_dir_all(repo_path.join("drawings")).unwrap();
         fs::write(repo_path.join(".omegon/runtime.json"), "runtime").unwrap();
-        fs::write(repo_path.join("ai/log.jsonl"), "log").unwrap();
+        fs::write(repo_path.join("ai/profile.md"), "profile").unwrap();
         fs::write(repo_path.join(".flynt/runtime/forge-sync.db"), "db").unwrap();
         fs::write(
             repo_path.join(".flynt/runtime/operator-settings.json"),
@@ -962,8 +1013,8 @@ mod sync_pull_tests {
         let tree = head.tree().unwrap();
         assert!(tree.get_path(Path::new("Note.md")).is_ok());
         assert!(tree.get_path(Path::new(".gitignore")).is_ok());
-        assert!(tree.get_path(Path::new(".omegon/runtime.json")).is_err());
-        assert!(tree.get_path(Path::new("ai/log.jsonl")).is_err());
+        assert!(tree.get_path(Path::new(".omegon/runtime.json")).is_ok());
+        assert!(tree.get_path(Path::new("ai/profile.md")).is_ok());
         assert!(
             tree.get_path(Path::new(".flynt/runtime/forge-sync.db"))
                 .is_err()
@@ -982,7 +1033,7 @@ mod sync_pull_tests {
             ))
             .is_err()
         );
-        assert!(tree.get_path(Path::new("drawings/generated.svg")).is_err());
+        assert!(tree.get_path(Path::new("drawings/generated.svg")).is_ok());
     }
 
     #[test]

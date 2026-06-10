@@ -132,6 +132,45 @@ fn auto_commit_stages_and_commits() {
 }
 
 #[test]
+fn auto_commit_stages_only_sync_eligible_files() {
+    let (_tmp, local, _remote) = setup_local_remote();
+    let sync = git_sync(&local);
+
+    fs::write(local.join("note.md"), "note\n").unwrap();
+    fs::create_dir_all(local.join(".flynt/runtime")).unwrap();
+    fs::write(local.join(".flynt/runtime/operator-settings.json"), "{}\n").unwrap();
+    fs::create_dir_all(local.join(".omegon")).unwrap();
+    fs::write(local.join(".omegon/agent-journal.md"), "journal\n").unwrap();
+    fs::create_dir_all(local.join("ai/docs")).unwrap();
+    fs::write(local.join("ai/docs/profile.md"), "profile\n").unwrap();
+    fs::write(local.join("diagram.svg"), "<svg/>\n").unwrap();
+    fs::write(local.join("pasted.png"), "png\n").unwrap();
+    fs::create_dir_all(local.join("site-demo-dist")).unwrap();
+    fs::write(local.join("site-demo-dist/generated.svg"), "<svg/>\n").unwrap();
+    fs::write(local.join(".DS_Store"), "junk\n").unwrap();
+
+    sync.auto_commit("filtered commit").unwrap();
+
+    let repo = Repository::open(&local).unwrap();
+    let head = repo.head().unwrap().peel_to_commit().unwrap();
+    let tree = head.tree().unwrap();
+    assert!(tree.get_path(Path::new("note.md")).is_ok());
+    assert!(
+        tree.get_path(Path::new(".flynt/runtime/operator-settings.json"))
+            .is_err()
+    );
+    assert!(tree.get_path(Path::new(".omegon/agent-journal.md")).is_ok());
+    assert!(tree.get_path(Path::new("ai/docs/profile.md")).is_ok());
+    assert!(tree.get_path(Path::new("diagram.svg")).is_ok());
+    assert!(tree.get_path(Path::new("pasted.png")).is_ok());
+    assert!(
+        tree.get_path(Path::new("site-demo-dist/generated.svg"))
+            .is_err()
+    );
+    assert!(tree.get_path(Path::new(".DS_Store")).is_err());
+}
+
+#[test]
 fn auto_commit_noop_when_clean() {
     let (_tmp, local, _remote) = setup_local_remote();
     let sync = git_sync(&local);
