@@ -163,11 +163,15 @@ pub fn diagnostic_to_repository_state(diagnostic: SyncDiagnostic) -> Result<GitR
         dirty_eligible_files: diagnostic.dirty_files.len(),
         auto_commit_supported: true,
         save_quiescence: super::planner::SaveQuiescence::Idle,
-        upstream: upstream_from_counts(
-            diagnostic.ahead,
-            diagnostic.behind,
-            diagnostic.remote_ref_available,
-        ),
+        upstream: {
+            let mut upstream = upstream_from_counts(
+                diagnostic.ahead,
+                diagnostic.behind,
+                diagnostic.remote_ref_available,
+            );
+            upstream.freshness = FreshnessStatus::Unknown;
+            upstream
+        },
         refs: super::planner::GitRefInventory::default(),
         blockers,
     })

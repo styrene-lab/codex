@@ -6,7 +6,9 @@
 
 use flynt_core::sync::{SyncBackend, SyncStatus};
 use flynt_store::sync::git::GitSync;
-use flynt_store::sync::planner::{FreshnessStatus, TagFetchPolicy, UpstreamRelation};
+use flynt_store::sync::planner::{FreshnessStatus, SyncPlan, TagFetchPolicy, UpstreamRelation};
+use flynt_store::sync::runner::BackgroundSyncRunner;
+use flynt_store::sync::vcs::{GitVcsAdapter, SyncOutcome};
 use git2::{IndexAddOption, Repository, Signature};
 use std::fs;
 use std::path::Path;
@@ -67,6 +69,10 @@ fn clone_second(tmp: &TempDir, remote_path: &Path) -> std::path::PathBuf {
 
 fn git_sync(local_path: &Path) -> GitSync {
     GitSync::new(local_path.to_path_buf(), "origin", "main")
+}
+
+fn sync_runner(local_path: &Path) -> BackgroundSyncRunner<GitVcsAdapter> {
+    BackgroundSyncRunner::new(GitVcsAdapter::new(git_sync(local_path)), "main")
 }
 
 fn commit_file(repo_path: &Path, filename: &str, content: &str, message: &str) {
@@ -239,6 +245,109 @@ fn diagnostic_reports_dirty_files_and_ahead_counts() {
     assert!(diagnostic.remote_ref_available);
     assert!(diagnostic.dirty_files.iter().any(|file| file == "dirty.md"));
     assert!(diagnostic.head.is_some());
+}
+
+#[test]
+fn runner_clean_remote_ahead_fast_forwards() {
+    let (tmp, local, remote) = setup_local_remote();
+    let second = clone_second(&tmp, &remote);
+    commit_file(&second, "remote.md", "remote\n", "remote commit");
+    Repository::open(&second)
+        .unwrap()
+        .find_remote("origin")
+        .unwrap()
+        .push(&["refs/heads/main:refs/heads/main"], None)
+        .unwrap();
+
+    let runner = sync_runner(&local);
+    let result = runner.manual_sync_plan().unwrap();
+
+    assert_eq!(result.preflight.next_action, SyncPlan::PullFastForward);
+    assert!(matches!(
+        result.outcome,
+        SyncOutcome::Synced { pulled: true, .. }
+    ));
+    assert_eq!(
+        fs::read_to_string(local.join("remote.md")).unwrap(),
+        "remote\n"
+    );
+}
+
+#[test]
+fn runner_clean_local_ahead_pushes() {
+    let (_tmp, local, remote) = setup_local_remote();
+    commit_file(&local, "local.md", "local\n", "local commit");
+
+    let runner = sync_runner(&local);
+    let result = runner.manual_sync_plan().unwrap();
+
+    assert_eq!(result.preflight.next_action, SyncPlan::PushOnly);
+    assert!(matches!(
+        result.outcome,
+        SyncOutcome::Synced { pushed: true, .. }
+    ));
+    let clone_path = local.parent().unwrap().join("verify-runner-push");
+    Repository::clone(remote.to_str().unwrap(), &clone_path).unwrap();
+    assert_eq!(
+        fs::read_to_string(clone_path.join("local.md")).unwrap(),
+        "local\n"
+    );
+}
+
+#[test]
+fn runner_dirty_in_sync_commits_then_pushes() {
+    let (_tmp, local, remote) = setup_local_remote();
+    fs::write(local.join("dirty.md"), "dirty\n").unwrap();
+
+    let runner = sync_runner(&local);
+    let result = runner.manual_sync_plan().unwrap();
+
+    assert_eq!(result.preflight.next_action, SyncPlan::CommitThenPush);
+    assert!(matches!(
+        result.outcome,
+        SyncOutcome::Synced { pushed: true, .. }
+    ));
+    let clone_path = local.parent().unwrap().join("verify-runner-dirty-push");
+    Repository::clone(remote.to_str().unwrap(), &clone_path).unwrap();
+    assert_eq!(
+        fs::read_to_string(clone_path.join("dirty.md")).unwrap(),
+        "dirty\n"
+    );
+}
+
+#[test]
+fn runner_dirty_remote_ahead_blocks_before_commit() {
+    let (tmp, local, remote) = setup_local_remote();
+    fs::write(local.join("dirty.md"), "dirty\n").unwrap();
+    let second = clone_second(&tmp, &remote);
+    commit_file(&second, "remote.md", "remote\n", "remote commit");
+    Repository::open(&second)
+        .unwrap()
+        .find_remote("origin")
+        .unwrap()
+        .push(&["refs/heads/main:refs/heads/main"], None)
+        .unwrap();
+
+    let before = Repository::open(&local)
+        .unwrap()
+        .head()
+        .unwrap()
+        .peel_to_commit()
+        .unwrap()
+        .id();
+    let runner = sync_runner(&local);
+    let result = runner.manual_sync_plan().unwrap();
+    let after = Repository::open(&local)
+        .unwrap()
+        .head()
+        .unwrap()
+        .peel_to_commit()
+        .unwrap()
+        .id();
+
+    assert_eq!(result.preflight.next_action, SyncPlan::Blocked);
+    assert!(matches!(result.outcome, SyncOutcome::Blocked { .. }));
+    assert_eq!(before, after, "runner must not commit before blocking");
 }
 
 #[test]
