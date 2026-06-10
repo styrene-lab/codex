@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.12.5 — 2026-06-10
+
+### Added
+- **Git sync safety model** — documented the fast-forward-only personal sync contract, upstream freshness/relation model, sync blockers, branch/tag inventory, and validation requirements for guarded Git-backed project continuity.
+- **Background sync runner design** — added the shared runner, planner, and VCS adapter contract for manual and auto-sync so stale upstream checks, conflict blockers, filtered commits, and jj-colocated compatibility are handled in one place.
+
+### Changed
+- **Sync release posture** — clarified that Flynt sync remains single-user Git durability, not real-time collaboration, with conservative blocking for divergent or unsafe states.
+
 ## 0.12.4 — 2026-06-09
 
 ### Added
