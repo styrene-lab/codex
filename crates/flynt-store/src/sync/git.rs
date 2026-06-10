@@ -9,6 +9,7 @@ use tracing::debug;
 
 use super::util;
 
+#[derive(Debug, Clone)]
 pub struct GitSync {
     pub project_root: PathBuf,
     pub remote: String,

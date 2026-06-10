@@ -4,7 +4,9 @@
 //! Designed to keep phone and desktop projects in sync via a shared git repo.
 
 use super::git::GitSync;
-use flynt_core::sync::SyncBackend;
+use super::planner::SyncRequest;
+use super::runner::{BackgroundSyncRunner, SyncEvent, SyncPhase};
+use super::vcs::{GitVcsAdapter, SyncOutcome};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -18,6 +20,7 @@ pub enum AutoSyncStatus {
     Committing,
     Pulling,
     Pushing,
+    WaitingForSaves,
     Conflict(Vec<String>),
     Error(String),
 }
@@ -48,6 +51,8 @@ pub fn start_auto_sync(
 
     tokio::spawn(async move {
         let git = GitSync::new(project_root, &remote, &branch);
+        let runner = BackgroundSyncRunner::new(GitVcsAdapter::new(git), branch.clone());
+        let save_quiescence = Arc::new(std::sync::Mutex::new(super::planner::SaveQuiescence::Idle));
         let mut cancel = cancel_rx;
         let mut consecutive_failures: u32 = 0;
         let max_backoff = Duration::from_secs(600); // 10 minute cap
@@ -68,55 +73,89 @@ pub fn start_auto_sync(
                 }
             }
 
-            // Auto-commit
             let _ = status_tx.send(AutoSyncStatus::Committing);
-            if let Err(e) = git.auto_commit("[flynt] auto-sync") {
-                consecutive_failures += 1;
-                warn!("auto-commit failed (attempt {consecutive_failures}): {e}");
-                let _ = status_tx.send(AutoSyncStatus::Error(format!("commit: {e}")));
-                continue;
-            }
+            let request = SyncRequest {
+                save_quiescence: Some(
+                    save_quiescence
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .clone(),
+                ),
+                ..SyncRequest::auto_sync_tick()
+            };
+            match runner.run_once(request) {
+                Ok(result) => {
+                    for event in &result.events {
+                        match event {
+                            SyncEvent::PhaseChanged(SyncPhase::RefreshingUpstream)
+                            | SyncEvent::PhaseChanged(SyncPhase::Observing)
+                            | SyncEvent::PhaseChanged(SyncPhase::Preflight)
+                            | SyncEvent::PhaseChanged(SyncPhase::ReconcilingLocalVcs) => {
+                                let _ = status_tx.send(AutoSyncStatus::Pulling);
+                            }
+                            _ => {}
+                        }
+                    }
 
-            // Pull
-            let _ = status_tx.send(AutoSyncStatus::Pulling);
-            match git.pull() {
-                Ok(result) if !result.conflicts.is_empty() => {
-                    warn!(
-                        "sync conflicts: {:?}; stopping auto-sync until operator resolves them",
-                        result.conflicts
-                    );
-                    let _ = status_tx.send(AutoSyncStatus::Conflict(result.conflicts));
-                    break;
-                }
-                Ok(result) if result.files_pulled > 0 => {
-                    info!("pulled {} file(s)", result.files_pulled);
-                    if let Some(ref cb) = reindex {
-                        cb();
+                    match result.outcome {
+                        SyncOutcome::Blocked { blockers } => {
+                            let conflicts = blockers
+                                .into_iter()
+                                .map(|blocker| format!("{blocker:?}"))
+                                .collect::<Vec<_>>();
+                            warn!(
+                                "sync blocked: {:?}; stopping auto-sync until operator resolves it",
+                                conflicts
+                            );
+                            let _ = status_tx.send(AutoSyncStatus::Conflict(conflicts));
+                            break;
+                        }
+                        SyncOutcome::Failed { message, retryable } => {
+                            consecutive_failures += 1;
+                            warn!(
+                                "sync failed (attempt {consecutive_failures}, retryable={retryable}): {message}"
+                            );
+                            let _ = status_tx.send(AutoSyncStatus::Error(message));
+                            if !retryable {
+                                break;
+                            }
+                            continue;
+                        }
+                        SyncOutcome::Synced { pulled, pushed, .. } => {
+                            if pulled {
+                                if let Some(ref cb) = reindex {
+                                    cb();
+                                }
+                            }
+                            if pushed {
+                                let _ = status_tx.send(AutoSyncStatus::Pushing);
+                            }
+                            if consecutive_failures > 0 {
+                                info!("sync recovered after {consecutive_failures} failures");
+                            }
+                            consecutive_failures = 0;
+                            let _ = status_tx.send(AutoSyncStatus::Idle);
+                        }
+                        SyncOutcome::Noop | SyncOutcome::UpstreamChecked { .. } => {
+                            consecutive_failures = 0;
+                            let _ = status_tx.send(AutoSyncStatus::Idle);
+                        }
+                        SyncOutcome::Deferred { .. } => {
+                            consecutive_failures = 0;
+                            let _ = status_tx.send(AutoSyncStatus::WaitingForSaves);
+                        }
+                        SyncOutcome::Committed { .. }
+                        | SyncOutcome::FastForwarded { .. }
+                        | SyncOutcome::Pushed { .. } => {
+                            consecutive_failures = 0;
+                            let _ = status_tx.send(AutoSyncStatus::Idle);
+                        }
                     }
                 }
-                Ok(_) => {}
                 Err(e) => {
                     consecutive_failures += 1;
-                    warn!("pull failed (attempt {consecutive_failures}): {e}");
-                    let _ = status_tx.send(AutoSyncStatus::Error(format!("pull: {e}")));
-                    continue;
-                }
-            }
-
-            // Push
-            let _ = status_tx.send(AutoSyncStatus::Pushing);
-            match git.push() {
-                Ok(_) => {
-                    if consecutive_failures > 0 {
-                        info!("sync recovered after {consecutive_failures} failures");
-                    }
-                    consecutive_failures = 0;
-                    let _ = status_tx.send(AutoSyncStatus::Idle);
-                }
-                Err(e) => {
-                    consecutive_failures += 1;
-                    warn!("push failed (attempt {consecutive_failures}): {e}");
-                    let _ = status_tx.send(AutoSyncStatus::Error(format!("push: {e}")));
+                    warn!("sync runner failed (attempt {consecutive_failures}): {e}");
+                    let _ = status_tx.send(AutoSyncStatus::Error(format!("sync: {e}")));
                 }
             }
         }
