@@ -52,9 +52,6 @@ fn TabItem(
         div {
             class: if is_active { "tab active" } else { "tab" },
             onclick: move |_| {
-                if let Ok(Some(doc)) = ctx.project().store.get_document(&doc_id) {
-                    let _ = document::eval(&crate::views::notes::cm6_fast_swap_js(&doc.content));
-                }
                 tab_state.write().active = i;
             },
             ondoubleclick: move |_| {

@@ -720,6 +720,26 @@ mod tests {
     }
 
     #[test]
+    fn wrapper_discovery_ignores_large_irrelevant_markdown_tree() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join("drawings")).unwrap();
+        fs::create_dir_all(tmp.path().join("irrelevant/nested")).unwrap();
+        fs::write(tmp.path().join("drawings/map.excalidraw"), "{}").unwrap();
+        fs::write(tmp.path().join("drawings/map.md"), "![[map.excalidraw]]").unwrap();
+        for i in 0..250 {
+            fs::write(
+                tmp.path().join(format!("irrelevant/nested/file-{i}.md")),
+                "![[drawings/map.excalidraw]]",
+            )
+            .unwrap();
+        }
+
+        let artifacts = discover_excalidraw_artifacts(tmp.path());
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(artifacts[0].wrapper_path, Some(PathBuf::from("drawings/map.md")));
+    }
+
+    #[test]
     fn wrapper_discovery_ignores_root_level_markdown() {
         let tmp = TempDir::new().unwrap();
         fs::create_dir_all(tmp.path().join("drawings")).unwrap();

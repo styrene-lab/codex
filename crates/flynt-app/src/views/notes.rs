@@ -738,269 +738,10 @@ fn preprocess(src: &str) -> String {
 
 // ── CM6 init JS ─────────────────────────────────────────────────────────────
 
-pub(crate) fn cm6_fast_swap_js(content: &str) -> String {
-    let escaped = serde_json::to_string(content).unwrap_or_else(|_| "\"\"".into());
-    format!(
-        r#"
-(function() {{
-    const container = document.getElementById('flynt-cm-editor');
-    if (!container || !window.FlyntEditor) return false;
-    const result = window.FlyntEditor.setDocument({{ content: {escaped} }}, {{ force: true }});
-    if (result && result.ok) {{
-        const state = window.FlyntEditor.getEditorState && window.FlyntEditor.getEditorState();
-        if (state) window.FlyntEditor.restoreEditorState({{ ...state, scrollTop: 0, scrollLeft: 0 }});
-        return true;
-    }}
-    return false;
-}})();
-"#
-    )
-}
-
-fn embed_slug(value: &str) -> String {
-    value.trim().to_lowercase().replace([' ', '_'], "-")
-}
-
-fn embed_resolution_identity(value: &serde_json::Value) -> String {
-    let canonical = value
-        .get("canonicalPath")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default();
-    let title = value
-        .get("title")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default();
-    let kind = value
-        .get("kind")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default();
-    format!("{kind}:{canonical}:{title}")
-}
-
-fn merge_embed_resolution(
-    key: &str,
-    existing: serde_json::Value,
-    incoming: serde_json::Value,
-) -> serde_json::Value {
-    if embed_resolution_identity(&existing) == embed_resolution_identity(&incoming) {
-        return existing;
-    }
-
-    let mut candidates = if existing.get("status").and_then(|v| v.as_str()) == Some("ambiguous") {
-        existing
-            .get("candidates")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default()
-    } else {
-        vec![existing]
-    };
-
-    let incoming_id = embed_resolution_identity(&incoming);
-    if !candidates
-        .iter()
-        .any(|candidate| embed_resolution_identity(candidate) == incoming_id)
-    {
-        candidates.push(incoming);
-    }
-
-    serde_json::json!({
-        "status": "ambiguous",
-        "ref": key,
-        "kind": "unknown",
-        "surface": "unknown",
-        "icon": "⚠",
-        "label": format!("Ambiguous: {key}"),
-        "candidates": candidates,
-    })
-}
-
-fn insert_embed_resolution_for_key(
-    map: &mut serde_json::Map<String, serde_json::Value>,
-    key: &str,
-    resolution: serde_json::Value,
-) {
-    if key.trim().is_empty() {
-        return;
-    }
-    match map.remove(key) {
-        Some(existing) => {
-            map.insert(
-                key.to_string(),
-                merge_embed_resolution(key, existing, resolution),
-            );
-        }
-        None => {
-            map.insert(key.to_string(), resolution);
-        }
-    }
-}
-
-fn insert_embed_resolution(
-    map: &mut serde_json::Map<String, serde_json::Value>,
-    key: impl AsRef<str>,
-    resolution: serde_json::Value,
-) {
-    let key = key.as_ref();
-    if key.trim().is_empty() {
-        return;
-    }
-    insert_embed_resolution_for_key(map, key, resolution.clone());
-    insert_embed_resolution_for_key(map, &embed_slug(key), resolution);
-}
-
-fn insert_embed_path_aliases(
-    map: &mut serde_json::Map<String, serde_json::Value>,
-    path: &str,
-    resolution: serde_json::Value,
-) {
-    let path_ref = std::path::Path::new(path);
-    if let Some(file_name) = path_ref.file_name().and_then(|name| name.to_str()) {
-        insert_embed_resolution(map, file_name, resolution.clone());
-    }
-    if let Some(file_stem) = path_ref.file_stem().and_then(|stem| stem.to_str()) {
-        insert_embed_resolution(map, file_stem, resolution);
-    }
-}
-
-fn is_embed_image_path(path: &std::path::Path) -> bool {
-    matches!(
-        path.extension().and_then(|ext| ext.to_str()).map(|ext| ext.to_ascii_lowercase()),
-        Some(ext) if matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp")
-    )
-}
-
-fn collect_embed_image_assets(
-    root: &std::path::Path,
-    rel_dir: &str,
-    out: &mut Vec<std::path::PathBuf>,
-) {
-    let dir = root.join(rel_dir);
-    let Ok(read_dir) = std::fs::read_dir(&dir) else {
-        return;
-    };
-    for entry in read_dir.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            if let Ok(rel) = path.strip_prefix(root) {
-                collect_embed_image_assets(root, &rel.to_string_lossy(), out);
-            }
-        } else if is_embed_image_path(&path) {
-            if let Ok(rel) = path.strip_prefix(root) {
-                out.push(rel.to_path_buf());
-            }
-        }
-    }
-}
-
-fn build_embed_index_json(ctx: &AppContext) -> String {
-    let project = ctx.project();
-    let mut map = serde_json::Map::new();
-
-    if let Ok(docs) = project.store.list_documents() {
-        for doc in docs {
-            let path = doc.path.to_string_lossy().to_string();
-            let title = doc.title.clone();
-            let resolution = serde_json::json!({
-                "status": "resolved",
-                "ref": title,
-                "canonicalPath": path,
-                "title": doc.title,
-                "kind": "note",
-                "surface": "note",
-                "icon": "✎",
-                "label": doc.title,
-            });
-            insert_embed_resolution(&mut map, &title, resolution.clone());
-            insert_embed_resolution(&mut map, &path, resolution.clone());
-            insert_embed_path_aliases(&mut map, &path, resolution);
-        }
-    }
-
-    let root = ctx.project_root();
-    let mut artifacts = Vec::new();
-    artifacts.extend(flynt_core::visual_artifacts::discover_excalidraw_artifacts(
-        &root,
-    ));
-    artifacts.extend(flynt_core::visual_artifacts::discover_design_board_artifacts(&root));
-    artifacts.extend(flynt_core::visual_artifacts::discover_flow_artifacts(&root));
-
-    for artifact in artifacts {
-        let source = artifact.source_path.to_string_lossy().to_string();
-        let wrapper = artifact
-            .wrapper_path
-            .as_ref()
-            .map(|p| p.to_string_lossy().to_string());
-        let (kind, surface, icon) = match artifact.kind {
-            flynt_core::visual_artifacts::VisualArtifactKind::ExcalidrawDrawing => {
-                ("drawing", "drawing", "📐")
-            }
-            flynt_core::visual_artifacts::VisualArtifactKind::DesignBoard => {
-                ("canvas", "canvas", "▦")
-            }
-            flynt_core::visual_artifacts::VisualArtifactKind::Flow => ("flow", "flow", "⛓"),
-            flynt_core::visual_artifacts::VisualArtifactKind::D2Diagram => {
-                ("asset", "asset-preview", "◆")
-            }
-        };
-        let title = artifact.title.clone();
-        let resolution = serde_json::json!({
-            "status": "resolved",
-            "ref": title,
-            "canonicalPath": wrapper.as_deref().unwrap_or(&source),
-            "sourcePath": source,
-            "title": artifact.title,
-            "kind": kind,
-            "surface": surface,
-            "icon": icon,
-            "label": artifact.title,
-        });
-        insert_embed_resolution(&mut map, &title, resolution.clone());
-        insert_embed_resolution(&mut map, &source, resolution.clone());
-        insert_embed_path_aliases(&mut map, &source, resolution.clone());
-        if let Some(wrapper) = wrapper {
-            insert_embed_resolution(&mut map, &wrapper, resolution.clone());
-            insert_embed_path_aliases(&mut map, &wrapper, resolution);
-        }
-    }
-
-    let mut image_assets = Vec::new();
-    collect_embed_image_assets(&root, "assets", &mut image_assets);
-    collect_embed_image_assets(&root, "images", &mut image_assets);
-    collect_embed_image_assets(&root, "drawings", &mut image_assets);
-    image_assets.sort();
-    image_assets.dedup();
-    for asset_path in image_assets {
-        let path = asset_path.to_string_lossy().to_string();
-        let title = asset_path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or(&path)
-            .to_string();
-        let resolution = serde_json::json!({
-            "status": "resolved",
-            "ref": title,
-            "canonicalPath": path,
-            "title": title,
-            "kind": "image",
-            "surface": "asset-preview",
-            "icon": "🖼",
-            "label": title,
-        });
-        insert_embed_resolution(&mut map, &title, resolution.clone());
-        insert_embed_resolution(&mut map, &path, resolution.clone());
-        insert_embed_path_aliases(&mut map, &path, resolution);
-    }
-
-    serde_json::Value::Object(map).to_string()
-}
-
 fn build_artifact_link_index(root: &std::path::Path) -> std::collections::HashMap<String, String> {
     let mut out = std::collections::HashMap::new();
     let mut artifacts = Vec::new();
-    artifacts.extend(flynt_core::visual_artifacts::discover_excalidraw_artifacts(
-        root,
-    ));
+    artifacts.extend(flynt_core::visual_artifacts::discover_excalidraw_artifacts(root));
     artifacts.extend(flynt_core::visual_artifacts::discover_design_board_artifacts(root));
     artifacts.extend(flynt_core::visual_artifacts::discover_flow_artifacts(root));
 
@@ -1014,11 +755,7 @@ fn build_artifact_link_index(root: &std::path::Path) -> std::collections::HashMa
         let source = artifact.source_path.to_string_lossy().to_string();
         insert_artifact_link_alias(&mut out, &artifact.title, kind);
         insert_artifact_link_alias(&mut out, &source, kind);
-        if let Some(name) = artifact
-            .source_path
-            .file_name()
-            .and_then(|name| name.to_str())
-        {
+        if let Some(name) = artifact.source_path.file_name().and_then(|name| name.to_str()) {
             insert_artifact_link_alias(&mut out, name, kind);
         }
         if let Some(wrapper) = artifact.wrapper_path {
@@ -2823,8 +2560,13 @@ pub fn NotesView() -> Element {
             doc_id,
             body.len()
         );
-        let embed_index_json = build_embed_index_json(&init_ctx);
-        document::eval(&cm6_init_js(&doc_id, &body, &embed_index_json));
+        // Keep tab activation hot: building the full embed index touches every
+        // document and artifact, which makes large repositories wait seconds
+        // before CodeMirror receives the selected note. The editor can mount
+        // immediately with an empty index; unresolved embeds remain editable
+        // text until a later indexed enhancement path is added.
+        let _ = &init_ctx;
+        document::eval(&cm6_init_js(&doc_id, &body, "{}"));
     });
 
     // Autosave for Source mode (textarea path). CM6 already has its own
@@ -3850,69 +3592,3 @@ pub fn NotesView() -> Element {
     }
 }
 
-#[cfg(test)]
-mod embed_index_tests {
-    use super::*;
-    use std::fs;
-
-    fn resolved(kind: &str, canonical: &str, title: &str) -> serde_json::Value {
-        serde_json::json!({
-            "status": "resolved",
-            "kind": kind,
-            "canonicalPath": canonical,
-            "title": title,
-            "label": title,
-        })
-    }
-
-    #[test]
-    fn embed_insert_dedupes_same_identity() {
-        let mut map = serde_json::Map::new();
-        let one = resolved("note", "notes/foo.md", "Foo");
-        insert_embed_resolution(&mut map, "Foo", one.clone());
-        insert_embed_resolution(&mut map, "Foo", one);
-
-        let entry = map.get("Foo").expect("entry exists");
-        assert_eq!(entry["status"], "resolved");
-        assert!(entry.get("candidates").is_none());
-    }
-
-    #[test]
-    fn embed_insert_preserves_collisions_as_ambiguous() {
-        let mut map = serde_json::Map::new();
-        insert_embed_resolution(&mut map, "Foo", resolved("note", "notes/foo.md", "Foo"));
-        insert_embed_resolution(&mut map, "Foo", resolved("flow", "flows/foo.flow", "Foo"));
-
-        let entry = map.get("Foo").expect("entry exists");
-        assert_eq!(entry["status"], "ambiguous");
-        let candidates = entry["candidates"].as_array().expect("candidates array");
-        assert_eq!(candidates.len(), 2);
-    }
-
-    #[test]
-    fn embed_image_asset_collection_is_recursive_and_filtered() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        fs::create_dir_all(tmp.path().join("assets/icons")).unwrap();
-        fs::write(tmp.path().join("assets/logo.png"), b"png").unwrap();
-        fs::write(tmp.path().join("assets/icons/mark.svg"), b"svg").unwrap();
-        fs::write(tmp.path().join("assets/readme.txt"), b"txt").unwrap();
-
-        let mut out = Vec::new();
-        collect_embed_image_assets(tmp.path(), "assets", &mut out);
-        out.sort();
-
-        assert_eq!(out.len(), 2);
-        assert!(out.contains(&std::path::PathBuf::from("assets/logo.png")));
-        assert!(out.contains(&std::path::PathBuf::from("assets/icons/mark.svg")));
-    }
-
-    #[test]
-    fn embed_path_aliases_include_file_name_and_stem() {
-        let mut map = serde_json::Map::new();
-        let resolution = resolved("image", "assets/icons/logo.png", "logo.png");
-        insert_embed_path_aliases(&mut map, "assets/icons/logo.png", resolution);
-
-        assert!(map.contains_key("logo.png"));
-        assert!(map.contains_key("logo"));
-    }
-}
