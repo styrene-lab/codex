@@ -1360,6 +1360,46 @@ impl AcpSession {
         parse_projection(value, "capabilities")
     }
 
+    /// Query Omegon lifecycle snapshot through ACP read surfaces.
+    pub async fn omegon_lifecycle_snapshot(
+        &self,
+        include_archived: bool,
+        include_specs: bool,
+    ) -> Result<serde_json::Value> {
+        self.ext_call(
+            "_lifecycle/snapshot",
+            serde_json::json!({
+                "include_archived": include_archived,
+                "include_specs": include_specs,
+            }),
+        )
+        .await
+    }
+
+    /// List active Omegon lifecycle design nodes through ACP read surfaces.
+    pub async fn omegon_lifecycle_design_list(&self) -> Result<serde_json::Value> {
+        self.ext_call("_lifecycle/design/list", serde_json::json!({}))
+            .await
+    }
+
+    /// Query ready Omegon lifecycle design nodes through ACP read surfaces.
+    pub async fn omegon_lifecycle_design_ready(&self) -> Result<serde_json::Value> {
+        self.ext_call("_lifecycle/design/ready", serde_json::json!({}))
+            .await
+    }
+
+    /// Query blocked Omegon lifecycle design nodes through ACP read surfaces.
+    pub async fn omegon_lifecycle_design_blocked(&self) -> Result<serde_json::Value> {
+        self.ext_call("_lifecycle/design/blocked", serde_json::json!({}))
+            .await
+    }
+
+    /// Query frontier Omegon lifecycle design nodes through ACP read surfaces.
+    pub async fn omegon_lifecycle_design_frontier(&self) -> Result<serde_json::Value> {
+        self.ext_call("_lifecycle/design/frontier", serde_json::json!({}))
+            .await
+    }
+
     /// List projected Omegon plans as read-only external planning context.
     pub async fn omegon_plans_list(&self) -> Result<Vec<OmegonPlanSummary>> {
         let value = self.ext_call("_plans/list", serde_json::json!({})).await?;

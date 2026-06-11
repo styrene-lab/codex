@@ -1,9 +1,11 @@
 use crate::{
+    acp::AcpSession,
     bootstrap::AppContext,
     state::{Route, SettingsOpen, SettingsPage, TabState},
 };
 use dioxus::prelude::*;
 use flynt_core::store::ProjectStore;
+use std::rc::Rc;
 
 #[component]
 pub fn OmegonProjectView() -> Element {
@@ -12,6 +14,11 @@ pub fn OmegonProjectView() -> Element {
     let mut active_route = use_context::<Signal<Route>>();
     let mut settings_page = use_context::<Signal<SettingsPage>>();
     let mut settings_open = use_context::<Signal<SettingsOpen>>();
+    let shared_acp_session = use_context::<Signal<Option<Rc<AcpSession>>>>();
+    let lifecycle_status = use_resource(move || {
+        let session = shared_acp_session.read().clone();
+        async move { load_lifecycle_status(session).await }
+    });
 
     let root = ctx.project_root().join(".omegon");
     let journal = root.join("agent-journal.md");
@@ -59,6 +66,36 @@ pub fn OmegonProjectView() -> Element {
                         },
                         "Runtime settings"
                     }
+                }
+            }
+
+            section { class: "omegon-journal-panel",
+                div { class: "omegon-surface-card-head",
+                    div {
+                        span { class: "omegon-surface-kicker", "Lifecycle" }
+                        h2 { "ACP Lifecycle Status" }
+                    }
+                    span { class: "omegon-surface-meta", "read-only" }
+                }
+                match lifecycle_status.read().as_ref() {
+                    None => rsx! { p { "Loading lifecycle status from the connected Omegon ACP runtime…" } },
+                    Some(Err(error)) => rsx! {
+                        p { "Lifecycle status is unavailable." }
+                        div { class: "omegon-plugin-empty", "{error}" }
+                    },
+                    Some(Ok(status)) => rsx! {
+                        p { "Read-only lifecycle status from the connected Omegon ACP runtime." }
+                        div { class: "omegon-settings-list",
+                            div { span { "OpenSpec changes" } strong { "{status.openspec_changes}" } }
+                            div { span { "Tasks" } strong { "{status.done_tasks}/{status.total_tasks}" } }
+                            div { span { "Design nodes" } strong { "{status.design_nodes}" } }
+                            div { span { "Ready" } strong { "{status.ready_nodes}" } }
+                            div { span { "Blocked" } strong { "{status.blocked_nodes}" } }
+                            div { span { "Frontier" } strong { "{status.frontier_nodes}" } }
+                            div { span { "Lifecycle drift" } strong { "{status.drift_count}" } }
+                            div { span { "Linked tasks" } strong { "{status.linked_task_refs}" } }
+                        }
+                    },
                 }
             }
             section { class: "omegon-journal-panel",
@@ -167,6 +204,89 @@ pub fn OmegonProjectView() -> Element {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LifecycleStatusSummary {
+    openspec_changes: usize,
+    total_tasks: u64,
+    done_tasks: u64,
+    drift_count: usize,
+    linked_task_refs: usize,
+    design_nodes: usize,
+    ready_nodes: usize,
+    blocked_nodes: usize,
+    frontier_nodes: usize,
+}
+
+async fn load_lifecycle_status(
+    session: Option<Rc<AcpSession>>,
+) -> anyhow::Result<LifecycleStatusSummary> {
+    let Some(session) = session else {
+        anyhow::bail!("Connect Omegon in the agent rail to load live lifecycle status.");
+    };
+
+    let caps = session.omegon_runtime_capabilities().await?;
+    let lifecycle_advertised = caps.features.get("lifecycle").and_then(|v| v.as_bool())
+        == Some(true)
+        || caps
+            .capabilities
+            .get("surfaces")
+            .and_then(|v| v.get("_lifecycle/snapshot"))
+            .is_some()
+        || caps
+            .extra
+            .get("surfaces")
+            .and_then(|v| v.get("_lifecycle/snapshot"))
+            .is_some();
+    if !lifecycle_advertised {
+        anyhow::bail!(
+            "Connected Omegon runtime does not advertise lifecycle read surfaces. Update Omegon to 0.27.0+."
+        );
+    }
+
+    let snapshot = session.omegon_lifecycle_snapshot(false, false).await?;
+    let design = session.omegon_lifecycle_design_list().await.ok();
+    let ready = session.omegon_lifecycle_design_ready().await.ok();
+    let blocked = session.omegon_lifecycle_design_blocked().await.ok();
+    let frontier = session.omegon_lifecycle_design_frontier().await.ok();
+
+    Ok(LifecycleStatusSummary {
+        openspec_changes: snapshot
+            .pointer("/openspec/changes")
+            .and_then(|v| v.as_array())
+            .map(Vec::len)
+            .unwrap_or(0),
+        total_tasks: snapshot
+            .pointer("/openspec/total_tasks")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+        done_tasks: snapshot
+            .pointer("/openspec/done_tasks")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+        drift_count: snapshot
+            .get("drift")
+            .and_then(|v| v.as_array())
+            .map(Vec::len)
+            .unwrap_or(0),
+        linked_task_refs: snapshot
+            .pointer("/tasking/linked_task_refs")
+            .and_then(|v| v.as_array())
+            .map(Vec::len)
+            .unwrap_or(0),
+        design_nodes: node_count(design.as_ref()),
+        ready_nodes: node_count(ready.as_ref()),
+        blocked_nodes: node_count(blocked.as_ref()),
+        frontier_nodes: node_count(frontier.as_ref()),
+    })
+}
+
+fn node_count(value: Option<&serde_json::Value>) -> usize {
+    value
+        .and_then(|v| v.get("nodes"))
+        .and_then(|v| v.as_array())
+        .map(Vec::len)
+        .unwrap_or(0)
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct PluginSummary {
@@ -191,9 +311,11 @@ fn load_plugin_summaries(path: &std::path::Path) -> Vec<PluginSummary> {
             let manifest = entry.path().join("plugin.toml");
             let content = std::fs::read_to_string(manifest).ok()?;
             Some(PluginSummary {
-                name: toml_string_value(&content, "name").unwrap_or_else(|| entry.file_name().to_string_lossy().into_owned()),
+                name: toml_string_value(&content, "name")
+                    .unwrap_or_else(|| entry.file_name().to_string_lossy().into_owned()),
                 kind: toml_string_value(&content, "type").unwrap_or_else(|| "plugin".to_string()),
-                version: toml_string_value(&content, "version").unwrap_or_else(|| "unknown".to_string()),
+                version: toml_string_value(&content, "version")
+                    .unwrap_or_else(|| "unknown".to_string()),
             })
         })
         .collect()
@@ -213,7 +335,10 @@ fn toml_string_value(content: &str, key: &str) -> Option<String> {
 
 fn load_runtime_summary(path: &std::path::Path) -> RuntimeSummary {
     let Ok(entries) = std::fs::read_dir(path) else {
-        return RuntimeSummary { total: 0, active: 0 };
+        return RuntimeSummary {
+            total: 0,
+            active: 0,
+        };
     };
     let mut total = 0;
     let mut active = 0;
@@ -226,7 +351,11 @@ fn load_runtime_summary(path: &std::path::Path) -> RuntimeSummary {
         if std::fs::read_to_string(workspace)
             .ok()
             .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
-            .and_then(|value| value.get("archived").and_then(|archived| archived.as_bool()))
+            .and_then(|value| {
+                value
+                    .get("archived")
+                    .and_then(|archived| archived.as_bool())
+            })
             == Some(false)
         {
             active += 1;
@@ -334,7 +463,9 @@ fn entry_from_heading(heading: &str) -> JournalTimelineEntry {
 }
 
 fn apply_journal_line(entry: &mut JournalTimelineEntry, line: &str) {
-    if let Some(value) = strip_field(line, "Objective").or_else(|| strip_field(line, "Current objective")) {
+    if let Some(value) =
+        strip_field(line, "Objective").or_else(|| strip_field(line, "Current objective"))
+    {
         entry.objective = Some(value.to_string());
     } else if let Some(value) = strip_field(line, "Outcome") {
         entry.outcome = Some(value.to_string());
