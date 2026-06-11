@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.12.7 — 2026-06-11
+
+### Fixed
+- Improved large-workspace responsiveness by delaying recursive watcher startup until after first paint.
+- Kept note tab activation and tab switching off synchronous document/editor prefetch paths.
+- Bounded visual artifact wrapper discovery to Flynt artifact directories instead of scanning entire repositories.
+- Made graph loading paint a status placeholder before rendering and replaced full pairwise repulsion on large graphs with bounded sampled repulsion.
+- Added regression coverage for artifact wrapper discovery in large irrelevant Markdown trees.
+
+### Added
+- Documented the 0.13.0 massive-scale milestone covering scoped watching, staged startup, incremental indexing, progressive graph rendering, graph snapshots, and scale regression testing.
+
 ## 0.12.6 — 2026-06-10
 
 ### Fixed

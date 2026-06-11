@@ -11,7 +11,7 @@ const valueCards = [
   ["Omegon is embedded, not bolted on", "The agent panel runs a project-scoped ACP session with Flynt-native tools, runtime diagnostics, bounded stale-tool handling, and a dedicated Project → Omegon surface."],
   ["Surfaces over file chaos", "Write, Lenses, Graph, Tasks, Design, Terminal, and Omegon organize project work by intent while preserving plain files under the hood."],
   ["Visual artifacts are first-class", "D2 diagrams, Excalidraw drawings, design boards, and flow graphs are treated as project artifacts instead of orphaned render files."],
-  ["Inspectable automation", "Tool calls, preflight state, session controls, and release diagnostics are visible. 0.12.6 ships guarded Git sync execution, autosave-aware syncing, explicit sync status badges, and reliable positional project launches."],
+  ["Inspectable automation", "Tool calls, preflight state, session controls, and release diagnostics are visible. 0.12.7 ships the final 0.12.x hardening pass: large-workspace startup relief, faster tab activation, bounded artifact discovery, and graph load status for massive projects."],
   ["Sync is explicit", "Git-backed sync exists for local-first workflows, with safety hardening in progress. Flynt does not pretend sync is magic collaborative lockstep."],
 ];
 const surfaces = [["Write", "Markdown + tabs"], ["Lenses", "Saved live views"], ["Graph", "Project links"], ["Tasks", "Kanban boards"], ["Design", "Drawings + boards"], ["Terminal", "Shell sessions"], ["Omegon", "Agent state"], ["Sync", "Git-backed state"]];
@@ -21,7 +21,7 @@ const surfaces = [["Write", "Markdown + tabs"], ["Lenses", "Saved live views"], 
   <main class="landing-shell">
     <section class="hero-grid">
       <div>
-        <div class="kicker">Flynt 0.12.6</div>
+        <div class="kicker">Flynt 0.12.7</div>
         <h1>Local-first project command center.</h1>
         <p class="hero-lead">Flynt is a project workspace for markdown, tasks, diagrams, saved views, and embedded Omegon agents — built around files you own.</p>
         <p class="hero-copy">0.12.x moves Flynt from notes app toward project operating surface: ACP lifecycle controls, Project → Omegon, Lenses, visual artifacts, runtime diagnostics, and bounded agent stop/stall handling.</p>
@@ -29,8 +29,8 @@ const surfaces = [["Write", "Markdown + tabs"], ["Lenses", "Saved live views"], 
         <div class="proof-row"><span>Markdown-native</span><span>Local-first</span><span>Project-scoped agent</span><span>No Flynt cloud account</span></div>
       </div>
       <aside class="release-card">
-        <div class="eyebrow">Current release</div><div class="release-version">v0.12.6</div>
-        <p>Patch release focused on the Git sync hardening design: explicit freshness checks, conservative blockers, shared background runner ordering, and jj-colocated compatibility.</p>
+        <div class="eyebrow">Current release</div><div class="release-version">v0.12.7</div>
+        <p>Patch release focused on large-workspace responsiveness: delayed watcher startup, hot tab activation, bounded artifact discovery, and graph rendering safeguards ahead of the 0.13.0 massive-scale milestone.</p>
         <div class="status-list">
           <div class="status-row"><strong>macOS</strong><span class="badge">pkg + dmg</span></div>
           <div class="status-row"><strong>State model</strong><span class="badge">.flynt/</span></div>
@@ -42,7 +42,7 @@ const surfaces = [["Write", "Markdown + tabs"], ["Lenses", "Saved live views"], 
     <section class="section"><div class="section-heading"><div class="section-kicker">Why it exists</div><h2>The project should be legible to both operator and agent.</h2></div><div class="value-grid">{valueCards.map(([title, body]) => <article class="value-card"><h3>{title}</h3><p>{body}</p></article>)}</div></section>
     <section class="section"><div class="section-heading"><div class="section-kicker">Workspace surfaces</div><h2>One project, multiple operational views.</h2></div><div class="surface-map">{surfaces.map(([title, body]) => <div class="surface-chip"><strong>{title}</strong><span>{body}</span></div>)}</div></section>
     <section class="section"><div class="section-heading"><div class="section-kicker">Demo vault screenshots</div><h2>Release docs should show the product, not just describe it.</h2></div><div class="screenshot-grid">{featuredScreenshots.map((shot) => <ScreenshotCard {...shot} />)}</div></section>
-    <section class="section callout"><strong>0.12.x posture:</strong> Flynt is installable and useful today, but sync/collaboration flows and some visual surfaces are still being hardened. The site reflects current 0.12.6 posture instead of stale 0.10-era claims.</section>
+    <section class="section callout"><strong>0.12.x posture:</strong> Flynt is installable and useful today, but sync/collaboration flows and some visual surfaces are still being hardened. The site reflects current 0.12.7 posture instead of stale 0.10-era claims.</section>
   </main>
   <footer class="footer"><a href="https://github.com/styrene-lab/flynt">GitHub</a> · <a href="https://github.com/styrene-lab/flynt/releases">Releases</a> · <a href="https://demo.flynt.styrene.io">Demo Vault</a> · © 2024–2026 Black Meridian, LLC · Styrene Labs</footer>
 </BaseLayout>
