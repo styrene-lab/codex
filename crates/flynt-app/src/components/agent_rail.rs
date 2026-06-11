@@ -838,8 +838,13 @@ pub fn AgentRail() -> Element {
         let terminal_manager_for_loop = terminal_manager_for_connect.clone();
         spawn(async move {
             tracing::info!("ACP connect starting… saved_config={:?}", saved_config);
-            match AcpSession::connect(binary, project, agent_id).await {
-                Ok((s, rx)) => {
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(20),
+                AcpSession::connect(binary, project, agent_id),
+            )
+            .await
+            {
+                Ok(Ok((s, rx))) => {
                     tracing::info!("ACP session connected successfully");
                     let sess = Rc::new(s);
 
@@ -897,8 +902,17 @@ pub fn AgentRail() -> Element {
                         }
                     }
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     tracing::error!("ACP connect failed: {e}");
+                    *session.write() = None;
+                    *shared_session.write() = None;
+                    *agent_status.write() = AgentStatus::Idle;
+                }
+                Err(_) => {
+                    tracing::error!("ACP connect timed out");
+                    *session_lifecycle_msg.write() = Some(
+                        "Omegon ACP connection timed out. Flynt is still usable, but the agent runtime did not finish startup. Open Runtime settings or retry after Omegon finishes initializing.".into(),
+                    );
                     *session.write() = None;
                     *shared_session.write() = None;
                     *agent_status.write() = AgentStatus::Idle;
