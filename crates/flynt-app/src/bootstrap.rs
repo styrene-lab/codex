@@ -971,7 +971,15 @@ impl ProjectWatcherHandle {
         let stop_thread = Arc::clone(&stop);
         let thread = std::thread::Builder::new()
             .name("flynt-project-watcher".into())
-            .spawn(move || run_project_watcher(project_root, project, tx, stop_thread))
+            .spawn(move || {
+                // Do not compete with first paint. Recursive notify setup can be
+                // expensive on large workspaces, and any initial event burst can
+                // hit SQLite while the WebView is still initializing.
+                std::thread::sleep(Duration::from_secs(5));
+                if !stop_thread.load(Ordering::Relaxed) {
+                    run_project_watcher(project_root, project, tx, stop_thread);
+                }
+            })
             .ok();
         Self { stop, thread }
     }

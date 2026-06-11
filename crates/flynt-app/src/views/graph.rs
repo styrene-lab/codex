@@ -686,6 +686,16 @@ function flyntGraph(data) {
   if (window._flyntGraph) cancelAnimationFrame(window._flyntGraph.raf);
   var c = document.getElementById('graph-canvas');
   if (!c) return;
+  c.innerHTML = '<div class="graph-empty"><span class="graph-empty-icon">&#9675;</span><span>Preparing graph…</span><span class="graph-empty-hint">Rendering ' + data.nodes.length + ' nodes and ' + data.edges.length + ' links.</span></div>';
+  window._flyntGraph = { raf: 0, cancelled: false };
+  requestAnimationFrame(function() {
+    if (!window._flyntGraph || window._flyntGraph.cancelled) return;
+    flyntGraphRender(data, c);
+  });
+}
+
+function flyntGraphRender(data, c) {
+  if (!c) return;
   c.innerHTML = '';
   if (!data.nodes.length) {
     c.innerHTML = '<div class="graph-empty"><span class="graph-empty-icon">&#9675;</span><span>No notes to graph yet.</span><span class="graph-empty-hint">Create some notes and link them with [[wikilinks]] to see the knowledge graph.</span></div>';
@@ -707,6 +717,7 @@ function flyntGraph(data) {
   var CGRAV = 0.001 + (S.centerForce || 0.5) * 0.02;
   var DAMP = 0.82;
   var alpha = 1.0;
+  var LARGE_GRAPH = data.nodes.length > 750;
 
   var css = getComputedStyle(document.documentElement);
   function token(name, fallback) {
@@ -764,10 +775,25 @@ function flyntGraph(data) {
 
   function tick() {
     var i,j,a,b,dx,dy,d,f,fx,fy;
-    for (i=0;i<nodes.length;i++) for (j=i+1;j<nodes.length;j++) {
-      a=nodes[i];b=nodes[j]; dx=b.x-a.x;dy=b.y-a.y;d=Math.sqrt(dx*dx+dy*dy)||1;
-      f=REP/(d*d); fx=dx/d*f;fy=dy/d*f;
-      a.vx-=fx;a.vy-=fy;b.vx+=fx;b.vy+=fy;
+    if (!LARGE_GRAPH) {
+      for (i=0;i<nodes.length;i++) for (j=i+1;j<nodes.length;j++) {
+        a=nodes[i];b=nodes[j]; dx=b.x-a.x;dy=b.y-a.y;d=Math.sqrt(dx*dx+dy*dy)||1;
+        f=REP/(d*d); fx=dx/d*f;fy=dy/d*f;
+        a.vx-=fx;a.vy-=fy;b.vx+=fx;b.vy+=fy;
+      }
+    } else {
+      // Large graphs still need repulsion; skipping it collapses the graph
+      // into an unreadable hairball. Sample a bounded set of deterministic
+      // neighbors per node to preserve separation without returning to O(n²).
+      var sampleCount = Math.min(32, Math.max(8, Math.floor(nodes.length / 60)));
+      var step = Math.max(1, Math.floor(nodes.length / sampleCount));
+      for (i=0;i<nodes.length;i++) for (var k=1;k<=sampleCount;k++) {
+        j=(i + k * step) % nodes.length;
+        if (j<=i) continue;
+        a=nodes[i];b=nodes[j]; dx=b.x-a.x;dy=b.y-a.y;d=Math.sqrt(dx*dx+dy*dy)||1;
+        f=(REP*1.8)/(d*d); fx=dx/d*f;fy=dy/d*f;
+        a.vx-=fx;a.vy-=fy;b.vx+=fx;b.vy+=fy;
+      }
     }
     for (i=0;i<edges.length;i++) {
       a=nMap[edges[i].source];b=nMap[edges[i].target];
@@ -835,7 +861,8 @@ function flyntGraph(data) {
     gr.appendChild(ci);
 
     // Labels: show based on degree and text fade threshold
-    var showLabel = n.hl || n.deg >= Math.max(1, Math.round((1-TEXT_FADE)*8)) || nodes.length < 30;
+    var labelDegreeThreshold = LARGE_GRAPH ? Math.max(10, Math.round(nodes.length / 90)) : Math.max(1, Math.round((1-TEXT_FADE)*8));
+    var showLabel = n.hl || n.deg >= labelDegreeThreshold || (!LARGE_GRAPH && nodes.length < 30);
     if (showLabel) {
       var tx=document.createElementNS(NS,'text');
       var label=n.title.length>22?n.title.slice(0,20)+'\u2026':n.title;
@@ -967,7 +994,7 @@ function flyntGraph(data) {
     }
     window._flyntGraph.raf=requestAnimationFrame(render);
   }
-  window._flyntGraph={raf:0};
+  if (!window._flyntGraph) window._flyntGraph={raf:0,cancelled:false};
   render();
 }
 "#;
