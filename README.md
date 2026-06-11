@@ -20,7 +20,7 @@ Your project is a folder of `.md` files. Flynt indexes them, links them, and get
 - **Excalidraw drawings** — visual thinking embedded directly in notes.
 - **Query blocks** — `TABLE`, `LIST`, `TASK` queries inline in your documents (like Dataview).
 - **Daily notes & templates** — date-indexed journals with variable expansion.
-- **Git sync** — auto-commit + push/pull in the background. Multi-device, no server.
+- **Git sync** — guarded personal sync through your Git remote: upstream is checked before commits/pushes, unsafe divergence blocks for operator resolution, and auto-sync waits for Flynt saves to settle.
 - **AI agent** — Omegon in the sidebar with full project read/write access, project-scoped runtime diagnostics, and a dedicated Project → Omegon surface for agent artifacts.
 - **iOS Share Extension** — share links, text, and images from any iOS app into your project.
 - **Cross-platform** — macOS (DMG + TestFlight), iOS (TestFlight), Linux amd64/aarch64.
@@ -101,7 +101,7 @@ Or choose **Create local project** to start fresh.
 
 ```
 flynt-core     Pure Rust models, query engine, parser, templates, graph layout
-flynt-store    Project I/O, SQLite index, git/iCloud sync, file watching
+flynt-store    Project I/O, SQLite index, guarded Git sync, iCloud folder sync, file watching
 flynt-app      macOS/Linux desktop UI (Dioxus + wry + muda)
 flynt-mobile   iOS companion app (Dioxus mobile)
 flynt-agent    MCP extension for Omegon (project tools)

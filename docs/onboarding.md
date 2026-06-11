@@ -138,20 +138,23 @@ For users who chose "Create local project" or "Open existing project" and want t
 1. Initialize git in the project root: `cd ~/Documents/MyProject && git init && git remote add origin <url>`
 2. Open Flynt > Settings > Sync
 3. Select "Git", enter remote name (`origin`), branch (`main`), interval (`60`)
-4. Save — auto-sync starts immediately
+4. Save — auto-sync starts immediately when the interval is greater than 0; interval `0` leaves Git sync in manual mode
 
 ### How sync works
-- Background loop every N seconds (configurable, default 60)
-- Stages all changes > commits as "Flynt <flynt@local>" > pulls (fast-forward or merge) > pushes
-- Conflicts detected and reported in the sync status bar
-- Exponential backoff on failures (up to 10 minutes)
-- Mobile enforces minimum 30-second interval
+- Background loop every N seconds when enabled (configurable; `0` means manual-only).
+- Flynt refreshes upstream state before mutating local commits or pushing.
+- Auto-sync waits while Flynt save operations are active or settling, then rechecks the working tree.
+- Auto-commit stages portable project files only; local/runtime state under `.flynt/local/` and `.flynt/runtime/` is left out.
+- Pulls are fast-forward-only. Divergence, conflicts, and unsafe blocker states stop sync for operator resolution instead of being guessed through an implicit merge.
+- Mobile enforces a minimum 30-second interval when auto-sync is enabled.
 
 ### Sync Activity
-- Desktop toolbar sync status is clickable for Git projects.
-- The Sync Activity panel reports backend, remote, branch, local dirty files, HEAD, and ahead/behind counts when the remote tracking ref is available.
+- Desktop toolbar sync status is clickable for every configured backend.
+- Git projects show explicit states such as `Git · manual`, `Git · idle`, `Git · waiting`, `Git · syncing`, `Git · conflict`, and `Git · error`.
+- iCloud, S3, and Forge projects show configured/blocked provider status instead of a misleading generic checkmark.
+- The Sync Activity panel reports backend, remote, branch, local dirty files, HEAD, and ahead/behind counts when Git diagnostics are available.
 - The panel keeps session-level run state: current phase, last start/finish timestamps, last outcome, and success/failure counts for the running app instance.
-- `Sync now` runs a manual auto-commit, pull, and push using the configured Git remote/branch.
+- `Sync now` runs through the same guarded sync runner as background auto-sync: refresh upstream, preflight blockers, commit eligible files only when safe, then fast-forward/push as planned.
 - Conflict files from the background sync loop are listed in the panel and can be opened from there when they are indexed markdown documents.
 - Non-Git providers do not expose Git diagnostics. iCloud and desktop cloud providers remain filesystem-sync backends from Flynt's point of view.
 
@@ -235,7 +238,7 @@ Tokens entered during clone are persisted automatically. Tokens can also be mana
 ## Multi-Device Sync
 
 ### Desktop <-> Desktop
-Git sync handles this automatically. Both machines clone the same repo, auto-sync keeps them current.
+Git sync supports single-user multi-machine continuity through a shared remote. It is safest when one machine edits at a time; divergence or conflicts block and require operator resolution.
 
 ### Desktop <-> iOS
 Current flow (pre-StyreneIdentity):
