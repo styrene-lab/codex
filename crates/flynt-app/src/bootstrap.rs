@@ -1258,7 +1258,8 @@ pub(crate) fn runtime_state_for_project_root(project_root: PathBuf) -> RuntimeSt
         }
     };
 
-    match project.reindex() {
+    let project_for_startup_reindex = Arc::clone(&project);
+    std::thread::spawn(move || match project_for_startup_reindex.reindex() {
         Ok((n, errs)) => {
             info!("Project indexed: {n} files");
             for e in &errs {
@@ -1266,7 +1267,7 @@ pub(crate) fn runtime_state_for_project_root(project_root: PathBuf) -> RuntimeSt
             }
         }
         Err(e) => warn!("Reindex failed: {e}"),
-    }
+    });
 
     if project.config.indexing.track_index_snapshot {
         let project_root_for_registry = project_root.clone();

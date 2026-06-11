@@ -174,7 +174,7 @@ pub fn sibling_renders(source: &Path, formats: &[RenderFormat]) -> Vec<RenderArt
 /// Discover D2 diagram artifacts under `<project>/diagrams`.
 pub fn discover_d2_artifacts(project_root: &Path) -> Vec<VisualArtifact> {
     let diagrams_root = project_root.join("diagrams");
-    let wrappers = discover_wrappers(project_root, "d2");
+    let wrappers = discover_wrappers(project_root, "diagrams", "d2");
     let mut sources = Vec::new();
     collect_sources_with_extension(&diagrams_root, "d2", &mut sources);
     sources.sort();
@@ -235,7 +235,7 @@ fn canonical_d2_render_path(project_root: &Path, source: &Path, format: RenderFo
 /// Discover Excalidraw drawing artifacts under the drawings directory.
 pub fn discover_excalidraw_artifacts(project_root: &Path) -> Vec<VisualArtifact> {
     let drawings_root = project_root.join("drawings");
-    let wrappers = discover_wrappers(project_root, "excalidraw");
+    let wrappers = discover_wrappers(project_root, "drawings", "excalidraw");
     let mut sources = Vec::new();
     collect_sources_with_extension(&drawings_root, "excalidraw", &mut sources);
     sources.sort();
@@ -271,7 +271,7 @@ pub fn discover_excalidraw_artifacts(project_root: &Path) -> Vec<VisualArtifact>
 /// Discover Flynt Design Board artifacts under the boards directory.
 pub fn discover_design_board_artifacts(project_root: &Path) -> Vec<VisualArtifact> {
     let boards_root = project_root.join("boards");
-    let wrappers = discover_wrappers(project_root, "board");
+    let wrappers = discover_wrappers(project_root, "boards", "board");
     let mut sources = Vec::new();
     collect_sources_with_extension(&boards_root, "board", &mut sources);
     sources.sort();
@@ -455,9 +455,18 @@ fn collect_sources_with_extension(dir: &Path, extension: &str, sources: &mut Vec
     }
 }
 
-fn discover_wrappers(project_root: &Path, extension: &str) -> Vec<(PathBuf, PathBuf)> {
+fn discover_wrappers(
+    project_root: &Path,
+    artifact_dir: &str,
+    extension: &str,
+) -> Vec<(PathBuf, PathBuf)> {
     let mut wrappers = Vec::new();
-    collect_wrappers(project_root, project_root, extension, &mut wrappers);
+    collect_wrappers(
+        project_root,
+        &project_root.join(artifact_dir),
+        extension,
+        &mut wrappers,
+    );
     wrappers
 }
 
@@ -658,10 +667,10 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         fs::create_dir_all(tmp.path().join("diagrams")).unwrap();
         fs::write(tmp.path().join("diagrams/flow.d2"), "a -> b").unwrap();
-        fs::write(tmp.path().join("flow.md"), "![[diagrams/flow.d2]]").unwrap();
+        fs::write(tmp.path().join("diagrams/flow.md"), "![[flow.d2]]").unwrap();
 
         let artifact = discover_d2_artifacts(tmp.path()).pop().unwrap();
-        assert_eq!(artifact.wrapper_path, Some(PathBuf::from("flow.md")));
+        assert_eq!(artifact.wrapper_path, Some(PathBuf::from("diagrams/flow.md")));
     }
 
     #[test]
@@ -711,6 +720,18 @@ mod tests {
     }
 
     #[test]
+    fn wrapper_discovery_ignores_root_level_markdown() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join("drawings")).unwrap();
+        fs::write(tmp.path().join("drawings/map.excalidraw"), "{}").unwrap();
+        fs::write(tmp.path().join("map.md"), "![[drawings/map.excalidraw]]").unwrap();
+
+        let artifacts = discover_excalidraw_artifacts(tmp.path());
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(artifacts[0].wrapper_path, None);
+    }
+
+    #[test]
     fn wrapper_pairing_supports_project_relative_and_sibling_embeds() {
         let tmp = TempDir::new().unwrap();
         fs::create_dir_all(tmp.path().join("drawings/nested")).unwrap();
@@ -722,8 +743,8 @@ mod tests {
         .unwrap();
         fs::write(tmp.path().join("drawings/global.excalidraw"), "{}").unwrap();
         fs::write(
-            tmp.path().join("global.md"),
-            "![[drawings/global.excalidraw]]",
+            tmp.path().join("drawings/global.md"),
+            "![[global.excalidraw]]",
         )
         .unwrap();
 
@@ -742,7 +763,7 @@ mod tests {
             .iter()
             .find(|artifact| artifact.source_path == PathBuf::from("drawings/global.excalidraw"))
             .unwrap();
-        assert_eq!(global.wrapper_path, Some(PathBuf::from("global.md")));
+        assert_eq!(global.wrapper_path, Some(PathBuf::from("drawings/global.md")));
     }
 
     #[test]
