@@ -3,16 +3,19 @@ use std::{borrow::Cow, path::PathBuf};
 use wry::http::{Request as HttpRequest, Response as HttpResponse};
 
 fn project_root() -> PathBuf {
-    std::env::args()
-        .skip(1)
-        .collect::<Vec<_>>()
-        .windows(2)
+    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    args.windows(2)
         .find_map(|window| {
             if window[0] == "--project" {
                 Some(PathBuf::from(&window[1]))
             } else {
                 None
             }
+        })
+        .or_else(|| {
+            args.iter()
+                .find(|arg| !arg.starts_with('-'))
+                .map(PathBuf::from)
         })
         .or_else(|| {
             std::env::var("FLYNT_PROJECT")

@@ -7,6 +7,8 @@ use flynt_core::{models::SearchResult, store::ProjectStore};
 use flynt_store::sync::{
     AutoSyncStatus,
     git::{GitSync, SyncDiagnostic},
+    runner::BackgroundSyncRunner,
+    vcs::{GitVcsAdapter, SyncOutcome},
 };
 
 #[derive(Clone)]
@@ -85,6 +87,19 @@ fn cycle_active_index(current: Option<usize>, len: usize, step: isize) -> Option
     }
 }
 
+fn compact_sync_error(error: &str) -> String {
+    if error.contains("no TLS stream available") {
+        return "TLS/credential transport failed while contacting the remote".into();
+    }
+    const MAX: usize = 96;
+    if error.chars().count() <= MAX {
+        return error.to_string();
+    }
+    let mut compact: String = error.chars().take(MAX.saturating_sub(1)).collect();
+    compact.push('…');
+    compact
+}
+
 fn autosync_status_label(status: &AutoSyncStatus) -> (&'static str, String) {
     match status {
         AutoSyncStatus::Idle => ("Idle", "Last run is idle".into()),
@@ -129,12 +144,28 @@ fn SyncActivityPanel(
         .unwrap_or_else(|| "none".into());
     let (outcome_class, outcome_label) = match &activity_state.last_outcome {
         Some(SyncRunOutcome::Success) => ("ok", "Success".to_string()),
-        Some(SyncRunOutcome::Error(error)) => ("error", format!("Error: {error}")),
+        Some(SyncRunOutcome::Error(error)) => {
+            ("error", format!("Error: {}", compact_sync_error(error)))
+        }
         Some(SyncRunOutcome::Conflict(files)) => {
             ("warning", format!("Conflict: {} file(s)", files.len()))
         }
         None => ("", "No completed run yet".to_string()),
     };
+
+    let action_message_class = action_message.as_ref().map(|message| {
+        if message.to_ascii_lowercase().contains("failed")
+            || message.to_ascii_lowercase().contains("blocked")
+        {
+            "sync-activity-error"
+        } else if message.to_ascii_lowercase().contains("deferred")
+            || message.to_ascii_lowercase().contains("waiting")
+        {
+            "sync-activity-warning"
+        } else {
+            "sync-activity-message"
+        }
+    });
 
     rsx! {
         div { class: "sync-activity-popover",
@@ -155,7 +186,7 @@ fn SyncActivityPanel(
                 button { class: "btn btn-ghost btn-sm", onclick: move |_| on_refresh.call(()), "Refresh" }
             }
             if let Some(message) = action_message {
-                div { class: "sync-activity-message", "{message}" }
+                div { class: "{action_message_class.unwrap_or(\"sync-activity-message\")}", "{message}" }
             }
             div { class: "sync-activity-section",
                 div { class: "sync-activity-section-title", "Session run state" }
@@ -222,10 +253,14 @@ fn SyncActivityPanel(
                         if diag.dirty_files.is_empty() {
                             div { class: "sync-activity-empty", "Working tree is clean" }
                         } else {
+                            div { class: "sync-activity-summary", "{diag.dirty_files.len()} dirty file(s)" }
                             div { class: "sync-activity-list",
-                                for file in diag.dirty_files {
-                                    div { class: "sync-activity-file", "{file}" }
+                                for file in diag.dirty_files.iter().take(12) {
+                                    div { class: "sync-activity-file", title: "{file}", "{file}" }
                                 }
+                            }
+                            if diag.dirty_files.len() > 12 {
+                                div { class: "sync-activity-empty", "Showing first 12 dirty files" }
                             }
                         }
                     }
@@ -422,7 +457,48 @@ pub fn Toolbar(
                 ),
             ),
         },
-        _ => (sync_label.to_string(), sync_class, sync_title),
+        flynt_core::models::SyncConfig::ICloud => {
+            match crate::sync_prereq::evaluate_icloud(&project_root) {
+                crate::sync_prereq::SyncBackendStatus::Available => (
+                    "iCloud · active".to_string(),
+                    "sync-badge synced",
+                    format!(
+                        "iCloud sync is configured. This project is inside iCloud Drive: {}",
+                        project_root.display()
+                    ),
+                ),
+                crate::sync_prereq::SyncBackendStatus::Warning(message) => (
+                    "iCloud · warning".to_string(),
+                    "sync-badge conflict",
+                    format!("iCloud sync warning: {message}"),
+                ),
+                crate::sync_prereq::SyncBackendStatus::Blocked(message) => (
+                    "iCloud · blocked".to_string(),
+                    "sync-badge error",
+                    format!("iCloud sync is configured but not active: {message}"),
+                ),
+            }
+        }
+        flynt_core::models::SyncConfig::S3 { bucket, prefix, .. } => (
+            "S3 · configured".to_string(),
+            "sync-badge configured",
+            format!(
+                "S3 sync is configured for bucket {bucket} with prefix {prefix}. Background status is not available yet."
+            ),
+        ),
+        flynt_core::models::SyncConfig::Forge {
+            forge_id,
+            org,
+            repo,
+            ..
+        } => (
+            "Forge · configured".to_string(),
+            "sync-badge configured",
+            format!(
+                "Forge sync is configured for {forge_id}/{org}/{repo}. Issue/task sync status is shown in task surfaces."
+            ),
+        ),
+        flynt_core::models::SyncConfig::None => (sync_label.to_string(), sync_class, sync_title),
     };
 
     rsx! {
@@ -662,7 +738,7 @@ pub fn Toolbar(
                         crate::self_update::UpdateState::Current { .. } => rsx! {},
                     }
                 }
-                if *sync_status.read() != SyncStatus::Idle || matches!(ctx.project().config.sync, flynt_core::models::SyncConfig::Git { .. }) {
+                if *sync_status.read() != SyncStatus::Idle || !matches!(ctx.project().config.sync, flynt_core::models::SyncConfig::None) {
                     button {
                         class: "{sync_class}",
                         title: "{sync_title}. Click for sync activity.",
@@ -702,22 +778,37 @@ pub fn Toolbar(
                                             let remote = remote.clone();
                                             let branch = branch.clone();
                                             let result = tokio::task::spawn_blocking(move || {
-                                                let git = GitSync::new(project.root.clone(), remote, branch);
-                                                git.auto_commit("[flynt] manual sync from activity panel")?;
-                                                flynt_core::sync::SyncBackend::sync(&git)?;
-                                                anyhow::Ok(())
+                                                let git = GitSync::new(project.root.clone(), remote, branch.clone());
+                                                let runner = BackgroundSyncRunner::new(GitVcsAdapter::new(git), branch);
+                                                runner.manual_sync_plan()
                                             }).await;
                                             match result {
-                                                    Ok(Ok(())) => {
-                                                        *sync_action_message.write() = Some("Sync completed.".into());
-                                                        let next_refresh = {
-                                                            let current = *sync_refresh.peek();
-                                                            current.wrapping_add(1)
-                                                        };
-                                                        *sync_refresh.write() = next_refresh;
-                                                    }
-                                                Ok(Err(e)) => *sync_action_message.write() = Some(format!("Sync failed: {e}")),
-                                                Err(e) => *sync_action_message.write() = Some(format!("Sync interrupted: {e}")),
+                                                Ok(Ok(run)) => {
+                                                    let message = match &run.outcome {
+                                                        SyncOutcome::Noop => "Sync checked: no changes.".into(),
+                                                        SyncOutcome::UpstreamChecked { .. } => "Remote status refreshed.".into(),
+                                                        SyncOutcome::Committed { files, .. } => format!("Committed {files} file(s)."),
+                                                        SyncOutcome::Synced { committed, pulled, pushed } => format!(
+                                                            "Sync completed{}{}{}.",
+                                                            if *committed { ": committed" } else { "" },
+                                                            if *pulled { ": pulled" } else { "" },
+                                                            if *pushed { ": pushed" } else { "" },
+                                                        ),
+                                                        SyncOutcome::Blocked { blockers } => format!("Sync blocked: {} blocker(s).", blockers.len()),
+                                                        SyncOutcome::Failed { message, .. } => format!("Sync failed: {}", compact_sync_error(message)),
+                                                        SyncOutcome::Deferred { .. } => "Sync deferred: waiting for saves.".into(),
+                                                        SyncOutcome::FastForwarded { .. } => "Fast-forwarded from remote.".into(),
+                                                        SyncOutcome::Pushed { .. } => "Pushed local commits.".into(),
+                                                    };
+                                                    *sync_action_message.write() = Some(message);
+                                                    let next_refresh = {
+                                                        let current = *sync_refresh.peek();
+                                                        current.wrapping_add(1)
+                                                    };
+                                                    *sync_refresh.write() = next_refresh;
+                                                }
+                                                Ok(Err(e)) => *sync_action_message.write() = Some(format!("Sync failed: {}", compact_sync_error(&e.to_string()))),
+                                                Err(e) => *sync_action_message.write() = Some(format!("Sync interrupted: {}", compact_sync_error(&e.to_string()))),
                                             }
                                         }
                                         _ => *sync_action_message.write() = Some("No Git sync backend is configured.".into()),

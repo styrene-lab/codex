@@ -1414,13 +1414,28 @@ pub fn bootstrap_from_env() -> RuntimeState {
             .join("Flynt")
     };
 
-    // FLYNT_PROJECT env var takes priority (explicit override), then launcher
+    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    let arg_project_root = args
+        .windows(2)
+        .find_map(|window| {
+            if window[0] == "--project" {
+                Some(PathBuf::from(&window[1]))
+            } else {
+                None
+            }
+        })
+        .or_else(|| {
+            args.iter()
+                .find(|arg| !arg.starts_with('-'))
+                .map(PathBuf::from)
+        });
+
+    // Explicit launch args take priority, then FLYNT_PROJECT env var, then launcher
     // profile's last project (only if parent dir is accessible), then default.
     // FLYNT_VAULT and CODEX_VAULT are honored as deprecated aliases.
-    let project_root = std::env::var("FLYNT_PROJECT")
-        .ok()
-        .or_else(|| env_with_fallback("FLYNT_VAULT", "CODEX_VAULT"))
-        .map(PathBuf::from)
+    let project_root = arg_project_root
+        .or_else(|| std::env::var("FLYNT_PROJECT").ok().map(PathBuf::from))
+        .or_else(|| env_with_fallback("FLYNT_VAULT", "CODEX_VAULT").map(PathBuf::from))
         .or_else(|| {
             launcher_profile.last_project_root.clone().filter(|p| {
                 // Accept if project dir exists, or its parent exists (so we can create it)

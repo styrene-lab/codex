@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.6 — 2026-06-10
+
+### Fixed
+- Hardened Git auto-sync with a guarded runner that refreshes upstream state before committing or pushing.
+- Restricted auto-commit staging to portable project files while preserving operator media and agent/project docs.
+- Deferred auto-sync while app save operations are active or settling.
+- Made configured Git, iCloud, S3, and Forge sync state visible in the toolbar instead of showing an ambiguous synced checkmark.
+- Improved the sync activity popover, dirty-file diagnostics, and manual sync error reporting.
+- Fixed local app launch validation so explicit project paths and positional paths such as `flynt .` take precedence over the last opened project.
+
 ## 0.12.5 — 2026-06-10
 
 ### Added
