@@ -1829,18 +1829,17 @@ impl Project {
     }
 
     fn walk_markdown(&self, cb: &mut impl FnMut(&Path)) -> Result<()> {
-        let flynt_dir = self.root.join(".flynt");
-        let omegon_dir = self.root.join(".omegon");
         for entry in walkdir::WalkDir::new(&self.root)
             .follow_links(false)
             .into_iter()
-            .filter_entry(|e| e.path() != flynt_dir && (!is_hidden(e) || e.path() == omegon_dir))
+            .filter_entry(|e| should_descend_for_project_index(&self.root, e))
             .filter_map(|e| e.ok())
             .filter(|e| {
                 e.file_type().is_file()
                     && e.path().extension().map(|x| x == "md").unwrap_or(false)
-                    && (!has_hidden_component(e.path().strip_prefix(&self.root).unwrap_or(e.path()))
-                        || e.path() == self.root.join(".omegon/agent-journal.md"))
+                    && (!has_hidden_component(
+                        e.path().strip_prefix(&self.root).unwrap_or(e.path()),
+                    ) || e.path() == self.root.join(".omegon/agent-journal.md"))
             })
         {
             cb(entry.path());
@@ -2387,6 +2386,51 @@ fn stable_project_key(root: &Path) -> String {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     canonical.hash(&mut hasher);
     format!("{:016x}", hasher.finish())
+}
+
+fn should_descend_for_project_index(root: &Path, entry: &walkdir::DirEntry) -> bool {
+    if entry.depth() == 0 {
+        return true;
+    }
+
+    let path = entry.path();
+    let rel = path.strip_prefix(root).unwrap_or(path);
+    if rel == Path::new(".omegon") {
+        return true;
+    }
+    if rel == Path::new(".flynt") {
+        return false;
+    }
+
+    if entry.file_type().is_dir() {
+        let name = entry.file_name().to_string_lossy();
+        if is_generated_or_dependency_dir(&name) {
+            return false;
+        }
+    }
+
+    !is_hidden(entry)
+}
+
+fn is_generated_or_dependency_dir(name: &str) -> bool {
+    matches!(
+        name,
+        "target"
+            | "node_modules"
+            | "dist"
+            | "build"
+            | ".next"
+            | ".turbo"
+            | ".cache"
+            | ".venv"
+            | "venv"
+            | "__pycache__"
+            | ".pytest_cache"
+            | ".mypy_cache"
+            | ".ruff_cache"
+            | "coverage"
+            | ".parcel-cache"
+    )
 }
 
 fn is_hidden(entry: &walkdir::DirEntry) -> bool {
