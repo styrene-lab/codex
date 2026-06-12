@@ -37,6 +37,8 @@ struct GraphSettings {
     // Local graph
     local_mode: bool,
     local_depth: u32,
+    // Large graph overview
+    show_all: bool,
     // Highlight
     highlight_ids: Vec<String>,
 }
@@ -63,6 +65,7 @@ impl Default for GraphSettings {
             link_distance: 0.5,
             local_mode: false,
             local_depth: 2,
+            show_all: false,
             highlight_ids: vec![],
         }
     }
@@ -163,6 +166,7 @@ pub fn GraphView() -> Element {
                         tab_state.read().active_id().map(|id| id.0.to_string())
                     } else { None };
                     let (filtered_nodes, filtered_edges) = filter_graph(payload, &s, local_center.as_deref());
+                    let overview_active = large_graph_overview_active(payload, &s, local_center.as_deref());
                     let is_open = *panel_open.read();
 
                     rsx! {
@@ -170,11 +174,24 @@ pub fn GraphView() -> Element {
                         div { class: "graph-topbar",
                             div { class: "graph-stats",
                                 "{filtered_nodes.len()} nodes · {filtered_edges.len()} links"
-                                if filtered_edges.len() != payload.edges.len() {
+                                if overview_active {
+                                    {
+                                        let total_nodes = payload.nodes.len();
+                                        let total_edges = payload.edges.len();
+                                        rsx! { span { class: "muted", " overview of {total_nodes} nodes / {total_edges} links" } }
+                                    }
+                                } else if filtered_edges.len() != payload.edges.len() {
                                     {
                                         let total = payload.edges.len();
                                         rsx! { span { class: "muted", " ({total} total)" } }
                                     }
+                                }
+                            }
+                            if overview_active {
+                                button {
+                                    class: "btn btn-ghost btn-xs",
+                                    onclick: move |_| settings.write().show_all = true,
+                                    "Show all"
                                 }
                             }
                             input {
@@ -262,6 +279,16 @@ pub fn GraphView() -> Element {
                                             class: if s.local_mode { "btn btn-primary btn-xs" } else { "btn btn-ghost btn-xs" },
                                             onclick: move |_| { let v = settings.read().local_mode; settings.write().local_mode = !v; },
                                             if s.local_mode { "on" } else { "off" }
+                                        }
+                                    }
+                                    if overview_active {
+                                        div { class: "panel-toggle",
+                                            span { class: "filter-label", title: "Large graphs open in a bounded hub overview to stay legible", "Large graph overview" }
+                                            button {
+                                                class: "btn btn-primary btn-xs",
+                                                onclick: move |_| settings.write().show_all = true,
+                                                "show all"
+                                            }
                                         }
                                     }
                                     if s.local_mode {
@@ -429,6 +456,26 @@ pub fn GraphView() -> Element {
 
 // ── Filtering ───────────────────────────────────────────────────────────────
 
+
+const LARGE_GRAPH_OVERVIEW_THRESHOLD: usize = 750;
+const LARGE_GRAPH_OVERVIEW_NODE_CAP: usize = 300;
+
+fn large_graph_overview_active(
+    payload: &GraphPayload,
+    s: &GraphSettings,
+    local_center: Option<&str>,
+) -> bool {
+    payload.nodes.len() > LARGE_GRAPH_OVERVIEW_THRESHOLD
+        && !s.show_all
+        && local_center.is_none()
+        && !s.local_mode
+        && s.kind.is_none()
+        && s.group.is_none()
+        && s.tag.is_none()
+        && s.search.trim().is_empty()
+        && s.min_degree == 0
+}
+
 fn filter_graph<'a>(
     payload: &'a GraphPayload,
     s: &GraphSettings,
@@ -529,6 +576,18 @@ fn filter_graph<'a>(
             true
         })
         .collect();
+
+    if large_graph_overview_active(payload, s, local_center) {
+        nodes.sort_by(|a, b| {
+            degree
+                .get(b.id.as_str())
+                .copied()
+                .unwrap_or(0)
+                .cmp(&degree.get(a.id.as_str()).copied().unwrap_or(0))
+                .then_with(|| a.title.cmp(&b.title))
+        });
+        nodes.truncate(LARGE_GRAPH_OVERVIEW_NODE_CAP);
+    }
 
     let ids: std::collections::HashSet<_> = nodes.iter().map(|n| n.id.as_str()).collect();
 
