@@ -959,6 +959,16 @@
   padding-top: 6px; /* align with title cap height */
 }
 
+.doc-dates {
+  display:     flex;
+  align-items: center;
+  gap:         var(--space-3);
+  color:       var(--muted-foreground);
+  font-size:   var(--font-size-xs);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .save-msg {
   font-size:  var(--font-size-xs);
   padding:    2px var(--space-2);

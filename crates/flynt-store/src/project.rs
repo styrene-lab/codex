@@ -12,9 +12,75 @@ use serde::Serialize;
 use std::{
     fs,
     path::{Path, PathBuf},
+    process::Command,
     sync::Arc,
 };
 use tracing::{debug, info, warn};
+
+
+fn git_commit_time(
+    root: &Path,
+    rel_path: &Path,
+    args: &[&str],
+) -> Option<chrono::DateTime<Utc>> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(args)
+        .arg("--")
+        .arg(rel_path)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8(output.stdout).ok()?;
+    stdout
+        .lines()
+        .find_map(|line| chrono::DateTime::parse_from_rfc3339(line).ok())
+        .map(|ts| ts.with_timezone(&Utc))
+}
+
+fn first_git_commit_time(root: &Path, rel_path: &Path) -> Option<chrono::DateTime<Utc>> {
+    git_commit_time(root, rel_path, &["log", "--follow", "--format=%aI", "--reverse"])
+}
+
+fn last_git_commit_time(root: &Path, rel_path: &Path) -> Option<chrono::DateTime<Utc>> {
+    git_commit_time(root, rel_path, &["log", "-1", "--format=%aI"])
+}
+
+fn file_modified_time(path: &Path) -> Option<chrono::DateTime<Utc>> {
+    fs::metadata(path)
+        .ok()?
+        .modified()
+        .ok()
+        .map(chrono::DateTime::<Utc>::from)
+}
+
+fn resolved_document_created_at(
+    root: &Path,
+    rel_path: &Path,
+    existing: Option<&Document>,
+    frontmatter: &Frontmatter,
+    fallback: chrono::DateTime<Utc>,
+) -> chrono::DateTime<Utc> {
+    frontmatter
+        .created_at
+        .or_else(|| first_git_commit_time(root, rel_path))
+        .or_else(|| existing.map(|doc| doc.created_at))
+        .unwrap_or(fallback)
+}
+
+fn resolved_document_updated_at(
+    root: &Path,
+    rel_path: &Path,
+    path: &Path,
+    fallback: chrono::DateTime<Utc>,
+) -> chrono::DateTime<Utc> {
+    last_git_commit_time(root, rel_path)
+        .or_else(|| file_modified_time(path))
+        .unwrap_or(fallback)
+}
 
 #[derive(Debug, Clone, Copy)]
 struct ProjectOpenOptions {
@@ -404,7 +470,14 @@ impl Project {
         }
 
         let now = Utc::now();
-        let created_at = existing.as_ref().map(|d| d.created_at).unwrap_or(now);
+        let created_at = resolved_document_created_at(
+            &self.root,
+            &rel_path,
+            existing.as_ref(),
+            &frontmatter,
+            now,
+        );
+        let updated_at = resolved_document_updated_at(&self.root, &rel_path, path, now);
         let entity = toml::Value::try_from(&frontmatter)
             .ok()
             .and_then(|v| flynt_core::datum::Entity::from_frontmatter(&v));
@@ -416,7 +489,7 @@ impl Project {
             frontmatter,
             outgoing_links: links,
             created_at,
-            updated_at: now,
+            updated_at,
             entity,
         };
         self.store.save_document(&doc)?;

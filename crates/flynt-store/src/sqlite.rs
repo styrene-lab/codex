@@ -397,7 +397,7 @@ impl ProjectStore for SqliteStore {
                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                ON CONFLICT(id) DO UPDATE SET
                  path=excluded.path, title=excluded.title, content=excluded.content,
-                 frontmatter=excluded.frontmatter, updated_at=excluded.updated_at"#,
+                 frontmatter=excluded.frontmatter, created_at=excluded.created_at, updated_at=excluded.updated_at"#,
             params![
                 doc.id.0.to_string(),
                 doc.path.to_string_lossy().as_ref(),

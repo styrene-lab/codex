@@ -788,6 +788,12 @@ fn resolve_artifact_link(
         .cloned()
 }
 
+fn format_doc_timestamp(ts: chrono::DateTime<chrono::Utc>) -> String {
+    ts.with_timezone(&chrono::Local)
+        .format("%b %-d, %Y")
+        .to_string()
+}
+
 fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> String {
     let doc_id_json =
         serde_json::to_string(&doc_id.0.to_string()).unwrap_or_else(|_| "null".into());
@@ -2218,12 +2224,14 @@ pub fn NotesView() -> Element {
             String,
             String,
             flynt_core::models::Frontmatter,
+            chrono::DateTime<chrono::Utc>,
+            chrono::DateTime<chrono::Utc>,
         )>,
     > = use_signal(|| None);
     use_effect(move || {
         let _ver = *render_ver.read();
         let selected_id = tab_state.read().active_id().cloned();
-        let previous_doc_id = doc_data.peek().as_ref().map(|(id, _, _, _, _)| id.clone());
+        let previous_doc_id = doc_data.peek().as_ref().map(|(id, _, _, _, _, _, _)| id.clone());
         let Some(doc_id) = selected_id else {
             *doc_data.write() = None;
             return;
@@ -2241,6 +2249,8 @@ pub fn NotesView() -> Element {
                     doc.title.clone(),
                     doc.content.clone(),
                     doc.frontmatter.clone(),
+                    doc.created_at,
+                    doc.updated_at,
                 ));
             }
             Ok(None) => {
@@ -2409,7 +2419,7 @@ pub fn NotesView() -> Element {
         let selected = doc_data
             .read()
             .as_ref()
-            .map(|(_, path, _, _, _)| path.clone());
+            .map(|(_, path, _, _, _, _, _)| path.clone());
         let project = history_ctx.project();
         async move {
             if !is_open {
@@ -2468,7 +2478,7 @@ pub fn NotesView() -> Element {
                 doc_data
                     .read()
                     .as_ref()
-                    .map(|(_, path, _, _, _)| path.clone())
+                    .map(|(_, path, _, _, _, _, _)| path.clone())
             });
         if active_path
             .as_ref()
@@ -2486,7 +2496,7 @@ pub fn NotesView() -> Element {
         // wait for doc_data to refresh — the effect subscribes to
         // doc_data so it will re-fire.
         let body = match &*doc_data.read() {
-            Some((doc_id, _, _, body, _)) if doc_id == &active_id => body.clone(),
+            Some((doc_id, _, _, body, _, _, _)) if doc_id == &active_id => body.clone(),
             _ => return,
         };
         // De-dup. Three cases trigger a load:
@@ -2587,7 +2597,7 @@ pub fn NotesView() -> Element {
         // Resolve the path from doc_data — we need the relative path
         // to save to. If doc_data isn't loaded yet, skip.
         let (disk_body, path, frontmatter) = match &*doc_data.peek() {
-            Some((_, p, _, b, fm)) => (b.clone(), p.clone(), fm.clone()),
+            Some((_, p, _, b, fm, _, _)) => (b.clone(), p.clone(), fm.clone()),
             None => return,
         };
         if crate::visual_artifact_surface::resolve_wrapper_surface(
@@ -2695,7 +2705,7 @@ pub fn NotesView() -> Element {
                             continue;
                         }
                         let content = data.to_string();
-                        let Some((doc_id, path, _title, disk_body, frontmatter)) =
+                        let Some((doc_id, path, _title, disk_body, frontmatter, _, _)) =
                             doc_data.peek().clone()
                         else {
                             tracing::warn!(
@@ -2858,7 +2868,7 @@ pub fn NotesView() -> Element {
 
     // Gate on doc_data (synchronous, instant) not rendered (async, slow).
     // The editor gets raw content immediately; HTML preview swaps in when ready.
-    let Some((_doc_id, rel_path, title, body, frontmatter)) = doc_data.read().clone() else {
+    let Some((_doc_id, rel_path, title, body, frontmatter, created_at, updated_at)) = doc_data.read().clone() else {
         return rsx! {
             crate::components::TabBar {}
             if has_active {
@@ -3131,6 +3141,10 @@ pub fn NotesView() -> Element {
                     }
                     if let Some(ref msg) = *rename_msg.read() {
                         span { class: "rename-msg", "{msg}" }
+                    }
+                    div { class: "doc-dates",
+                        span { "Created {format_doc_timestamp(created_at)}" }
+                        span { "Modified {format_doc_timestamp(updated_at)}" }
                     }
                     div { class: "notes-actions",
                         // Save status updated via JS to avoid Dioxus re-render
