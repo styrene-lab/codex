@@ -11,7 +11,7 @@ const valueCards = [
   ["Omegon is embedded, not bolted on", "The agent panel runs a project-scoped ACP session with Flynt-native tools, runtime diagnostics, bounded stale-tool handling, and a dedicated Project → Omegon surface."],
   ["Surfaces over file chaos", "Write, Lenses, Graph, Tasks, Design, Terminal, and Omegon organize project work by intent while preserving plain files under the hood."],
   ["Visual artifacts are first-class", "D2 diagrams, Excalidraw drawings, design boards, and flow graphs are treated as project artifacts instead of orphaned render files."],
-  ["Inspectable automation", "Tool calls, preflight state, session controls, and release diagnostics are visible. 0.12.8 continues the 0.12.x hardening pass: large-workspace startup relief, faster tab activation, bounded artifact discovery, and graph load status for massive projects."],
+  ["Inspectable automation", "Tool calls, preflight state, session controls, and release diagnostics are visible. 0.12.8 continues the 0.12.x hardening pass: large-workspace startup relief, faster tab activation, bounded artifact discovery, graph overview mode, and git-backed note dates."],
   ["Sync is explicit", "Git-backed sync exists for local-first workflows, with safety hardening in progress. Flynt does not pretend sync is magic collaborative lockstep."],
 ];
 const surfaces = [["Write", "Markdown + tabs"], ["Lenses", "Saved live views"], ["Graph", "Project links"], ["Tasks", "Kanban boards"], ["Design", "Drawings + boards"], ["Terminal", "Shell sessions"], ["Omegon", "Agent state"], ["Sync", "Git-backed state"]];
@@ -25,12 +25,12 @@ const surfaces = [["Write", "Markdown + tabs"], ["Lenses", "Saved live views"], 
         <h1>Local-first project command center.</h1>
         <p class="hero-lead">Flynt is a project workspace for markdown, tasks, diagrams, saved views, and embedded Omegon agents — built around files you own.</p>
         <p class="hero-copy">0.12.x moves Flynt from notes app toward project operating surface: ACP lifecycle controls, Project → Omegon, Lenses, visual artifacts, runtime diagnostics, and bounded agent stop/stall handling.</p>
-        <div class="cta-row"><a class="btn btn-primary" href="https://github.com/styrene-lab/flynt/releases/latest">Download latest</a><a class="btn btn-secondary" href="/docs/getting-started/">Read the docs</a></div>
+        <div class="cta-row"><a class="btn btn-primary" href="https://github.com/styrene-lab/flynt/releases/latest">Download latest</a><a class="btn btn-secondary" href="/docs/getting-started/">First-timer guide</a><a class="btn btn-secondary" href="/docs/obsidian/">Coming from Obsidian?</a></div>
         <div class="proof-row"><span>Markdown-native</span><span>Local-first</span><span>Project-scoped agent</span><span>No Flynt cloud account</span></div>
       </div>
       <aside class="release-card">
         <div class="eyebrow">Current release</div><div class="release-version">v0.12.8</div>
-        <p>Patch release focused on large-workspace responsiveness: delayed watcher startup, hot tab activation, bounded artifact discovery, and graph rendering safeguards ahead of the 0.13.0 massive-scale milestone.</p>
+        <p>Patch release focused on large-workspace responsiveness and trustworthy note metadata: delayed watcher startup, hot tab activation, bounded artifact discovery, git-backed note dates, and graph overview safeguards ahead of the 0.13.0 massive-scale milestone.</p>
         <div class="status-list">
           <div class="status-row"><strong>macOS</strong><span class="badge">pkg + dmg</span></div>
           <div class="status-row"><strong>State model</strong><span class="badge">.flynt/</span></div>

@@ -1,27 +1,65 @@
 ---
 import DocsLayout from "../../layouts/DocsLayout.astro";
 ---
-<DocsLayout title="Getting started — Flynt" description="Start using Flynt with a local-first markdown project.">
+<DocsLayout title="Getting started — Flynt" description="A first-timer guide to using Flynt with a local-first markdown project.">
   <h1>Getting started</h1>
-  <p class="lead">A Flynt project is a folder. Markdown is the source of truth; Flynt indexes it and adds project surfaces on top.</p>
+  <p class="lead">Flynt is a project workspace built around files you own. A project is just a folder; Markdown stays readable outside Flynt.</p>
+
+  <h2>What Flynt is for</h2>
+  <p>Use Flynt when a folder has become more than loose notes: tasks, diagrams, saved views, agent context, release notes, architecture docs, and project operations all need to stay connected.</p>
+  <ul>
+    <li><strong>Write</strong> is the markdown editor and tabbed note surface.</li>
+    <li><strong>Files</strong> shows the project tree without forcing a proprietary database.</li>
+    <li><strong>Graph</strong> shows relationships between notes, tasks, boards, and project artifacts.</li>
+    <li><strong>Lenses</strong> are saved live views over project state.</li>
+    <li><strong>Tasks</strong> turns kanban/task files into navigable project knowledge.</li>
+    <li><strong>Design</strong> covers drawings, D2 diagrams, design boards, and flow graphs.</li>
+    <li><strong>Omegon</strong> embeds the project-scoped agent runtime.</li>
+  </ul>
+
+  <h2>First run checklist</h2>
+  <ol>
+    <li><strong>Install Flynt</strong> from the latest macOS release.</li>
+    <li><strong>Open a folder</strong>: start with an existing markdown folder, a code repository, or a small scratch project.</li>
+    <li><strong>Create one note</strong> in Write. Use normal Markdown. Link another note with <code>[[wikilinks]]</code>.</li>
+    <li><strong>Open Graph</strong> to confirm the relationship appears. Large projects may open in overview mode first.</li>
+    <li><strong>Create a task board</strong> if the project has work items you want to track.</li>
+    <li><strong>Open Omegon</strong> only when you want the embedded agent to inspect, edit, or automate the project.</li>
+  </ol>
+
   <h2>Project layout</h2>
-  <p>Flynt owns <code>.flynt/</code>. Omegon owns <code>.omegon/</code>. Portable Flynt settings stay at the top of <code>.flynt/</code>; generated local state belongs under <code>.flynt/local/</code>; runtime integration contracts and caches belong under <code>.flynt/runtime/</code>.</p>
+  <p>Flynt avoids hiding your work in an app-only database. The project folder remains the authority. Flynt adds metadata and local indexes around it.</p>
   <pre><code>my-project/
   notes.md
   guides/
-  drawings/
-  boards/
-  flows/
+  drawings/            # Excalidraw drawings and wrappers
+  diagrams/            # D2 diagrams
+  boards/              # design boards
+  flows/               # node-flow graphs
 
   .flynt/              # Flynt-owned metadata and generated state
     config.toml        # portable project settings when enabled
     templates/         # note templates
     lenses/            # saved live views
-    local/             # Flynt generated local state, gitignored
-    runtime/           # Flynt runtime integration contracts, gitignored
+    local/             # generated local state, gitignored
+    runtime/           # runtime integration contracts, gitignored
 
   .omegon/             # Omegon-owned project-local agent/runtime state</code></pre>
-  <h2>First run</h2>
-  <ol><li>Install Flynt for macOS from the latest release.</li><li>Create a project, open an existing markdown folder, or clone a demo vault.</li><li>Use <strong>Project → Write</strong> for notes, <strong>Lenses</strong> for saved views, and <strong>Graph</strong> for relationships.</li><li>Open the Omegon panel when you want the embedded agent to inspect or modify project artifacts.</li></ol>
-  <h2>Dot-prefixed files</h2><p>The Files sidebar hides dot-prefixed metadata/runtime paths by default. Use the <code>.hidden</code> toggle when you need to inspect project-local runtime files.</p>
+
+  <h2>Safe defaults for existing folders</h2>
+  <p>When Flynt opens an existing code repository or large folder, it should behave conservatively. It indexes what it can, avoids unnecessary frontmatter writes unless configured, delays expensive watcher work until after first paint, and keeps large graph renders bounded by default.</p>
+
+  <h2>Document dates</h2>
+  <p>The note header shows created and modified dates. Flynt prefers explicit frontmatter when present, preserves existing store state, and can derive dates from Git history for existing repositories. These dates are project metadata, not “when Flynt happened to index the file.”</p>
+
+  <h2>Dot-prefixed files</h2>
+  <p>The Files sidebar hides dot-prefixed metadata/runtime paths by default. Use the <code>.hidden</code> toggle when you need to inspect project-local runtime files.</p>
+
+  <h2>Where to go next</h2>
+  <ul>
+    <li><a href="/docs/project-surfaces/">Project surfaces</a> explains each workspace view.</li>
+    <li><a href="/docs/obsidian/">Coming from Obsidian?</a> maps vault concepts to Flynt.</li>
+    <li><a href="/docs/performance/">Performance and large projects</a> explains large-workspace behavior.</li>
+    <li><a href="/docs/sync/">Sync posture</a> explains what Flynt does and does not promise about sync.</li>
+  </ul>
 </DocsLayout>

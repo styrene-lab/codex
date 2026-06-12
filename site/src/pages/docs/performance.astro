@@ -1,0 +1,30 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+---
+<DocsLayout title="Performance and large projects — Flynt" description="How Flynt 0.12.8 behaves in large repositories and what remains planned for 0.13.0.">
+  <h1>Performance and large projects</h1>
+  <p class="lead">Flynt 0.12.8 hardens the paths that made large workspaces feel frozen: launch, tab activation, artifact discovery, and graph loading.</p>
+
+  <h2>What changed in 0.12.8</h2>
+  <ul>
+    <li><strong>First paint is protected:</strong> recursive watcher startup is delayed so the window can render before filesystem monitoring competes for IO.</li>
+    <li><strong>Tab activation stays hot:</strong> note clicks and tab switches no longer prefetch the document and push a CodeMirror swap before the tab becomes active.</li>
+    <li><strong>Artifact discovery is bounded:</strong> drawing, board, and diagram wrapper lookup is scoped to Flynt artifact folders instead of walking the entire repository.</li>
+    <li><strong>Document dates are git-backed:</strong> the note header can show creation and modification dates derived from frontmatter, existing store state, and git history instead of indexing time.</li>
+    <li><strong>Graph loading has a safe default:</strong> massive graphs open in a bounded hub overview with a visible loading state and an explicit “Show all” escape hatch.</li>
+  </ul>
+
+  <h2>Graph behavior</h2>
+  <p>Large graphs are useful only when they remain legible. Flynt now defaults huge unfiltered graphs to an overview of high-degree nodes. Search, filters, local mode, and the “Show all” action opt back into a broader render.</p>
+  <p>The renderer also avoids full pairwise repulsion for large graphs. Small graphs keep the richer force behavior; large graphs use bounded sampled repulsion so opening the Graph view does not monopolize the WebView main thread.</p>
+
+  <h2>Known caveats</h2>
+  <ul>
+    <li>The watcher is delayed, not yet fully scope-planned. 0.13.0 is expected to replace recursive whole-repo watching with a shared indexing scope model.</li>
+    <li>Graph snapshots and persisted layout are planned but not yet shipped. Today the graph still derives from indexed project state at view time.</li>
+    <li>Large repositories should still configure Flynt indexing scopes deliberately when they want Flynt to mutate frontmatter or manage typed project files.</li>
+  </ul>
+
+  <h2>0.13.0 direction</h2>
+  <p>The next scale milestone is to make every expensive project operation explicit, scoped, cancellable, and progress-reporting. The design direction covers staged startup, incremental indexing with backpressure, scoped watching, graph snapshots, progressive rendering, and synthetic scale regression tests.</p>
+</DocsLayout>

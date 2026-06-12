@@ -2571,6 +2571,13 @@
   color: var(--foreground);
   text-align: right;
 }
+.agent-preflight-build {
+  font-family: var(--font-mono);
+  font-size: var(--micro-font-size);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .agent-preflight-summary {
   margin-top: var(--space-1);
   line-height: var(--line-height-tight);

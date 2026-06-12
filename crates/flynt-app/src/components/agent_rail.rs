@@ -1955,6 +1955,12 @@ fn AgentPreflightCard(
                 span { "CLI" }
                 strong { "{cli_status}" }
             }
+            if let Some(version) = cli_probe.as_ref().and_then(|probe| probe.version.as_deref()) {
+                div { class: "agent-preflight-row",
+                    span { "Build" }
+                    strong { class: "agent-preflight-build", "{version}" }
+                }
+            }
             if blocked {
                 div { class: "agent-preflight-summary", "Prompting is disabled until blocked runtime diagnostics are resolved." }
             } else if deployment_unknown && cli_ready {

@@ -1,0 +1,72 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+---
+<DocsLayout title="Coming from Obsidian? — Flynt" description="How Flynt maps to Obsidian-style markdown vault workflows.">
+  <h1>Coming from Obsidian?</h1>
+  <p class="lead">Flynt and Obsidian both respect Markdown files, but they optimize for different jobs. Obsidian is a personal knowledge-base app. Flynt is a project operating surface for notes, tasks, diagrams, agent work, and release-visible project state.</p>
+
+  <h2>The short version</h2>
+  <ul>
+    <li>Your Markdown files remain normal files.</li>
+    <li><code>[[wikilinks]]</code> are supported and feed the Graph.</li>
+    <li>Flynt adds project surfaces beyond notes: Tasks, Lenses, Design, Terminal, and Omegon.</li>
+    <li>Flynt metadata lives under <code>.flynt/</code>; Omegon runtime state lives under <code>.omegon/</code>.</li>
+    <li>Flynt is conservative with existing folders and code repos; configure scopes when you want Flynt to manage frontmatter.</li>
+  </ul>
+
+  <h2>Concept map</h2>
+  <table>
+    <thead><tr><th>Obsidian concept</th><th>Flynt equivalent</th><th>Difference</th></tr></thead>
+    <tbody>
+      <tr><td>Vault</td><td>Project folder</td><td>Flynt expects the folder may include notes, code, tasks, drawings, and runtime metadata.</td></tr>
+      <tr><td>Notes</td><td>Write surface</td><td>Tabbed markdown editing with project metadata and agent-aware context.</td></tr>
+      <tr><td>Backlinks / graph</td><td>Graph + Context</td><td>Graph includes project entities such as tasks, boards, and artifacts, not only notes.</td></tr>
+      <tr><td>Plugins</td><td>Flynt surfaces + Omegon tools</td><td>Flynt prefers built-in project surfaces and agent tools over a general note-app plugin ecosystem.</td></tr>
+      <tr><td>Canvas</td><td>Design boards / drawings / flows</td><td>Visual artifacts are project files with wrappers and render surfaces.</td></tr>
+      <tr><td>Tasks plugin</td><td>Tasks surface</td><td>Kanban/task files are indexed as project state.</td></tr>
+      <tr><td>Dataview</td><td>Lenses</td><td>Lenses are saved project queries/views; they are intended to be inspectable and agent-friendly.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Opening an Obsidian vault</h2>
+  <ol>
+    <li>Back up or commit your vault first. Flynt is file-based, but a clean rollback point is still good engineering practice.</li>
+    <li>Open the vault folder in Flynt.</li>
+    <li>Start in Write and Files. Confirm your notes and folders look right.</li>
+    <li>Open Graph. For very large vaults, Flynt may show a bounded overview first; use filters, search, local mode, or Show all when needed.</li>
+    <li>Only enable Flynt-managed metadata/frontmatter scopes if you want Flynt to write IDs, kinds, or typed fields into files.</li>
+  </ol>
+
+  <h2>What transfers cleanly</h2>
+  <ul>
+    <li>Markdown headings, lists, links, code blocks, and ordinary frontmatter.</li>
+    <li>Wikilinks such as <code>[[Project Plan]]</code> and aliased links such as <code>[[Project Plan|plan]]</code>.</li>
+    <li>Folder organization.</li>
+    <li>Git-backed history if your vault is already versioned.</li>
+  </ul>
+
+  <h2>What to review</h2>
+  <ul>
+    <li><strong>Obsidian-only embeds or plugin syntax:</strong> Flynt may leave these as text unless a Flynt surface understands them.</li>
+    <li><strong>Dataview queries:</strong> translate important ones into Flynt Lenses over time.</li>
+    <li><strong>Canvas files:</strong> Obsidian Canvas is not the same artifact as Flynt design boards, Excalidraw drawings, or flow graphs.</li>
+    <li><strong>Attachment folders:</strong> Flynt can reference assets, but large binary-heavy folders should be considered deliberately in indexing/sync posture.</li>
+  </ul>
+
+  <h2>Sync expectations</h2>
+  <p>Flynt does not claim real-time collaborative sync. If you already use Git for your vault, Flynt can fit that local-first workflow. Read <a href="/docs/sync/">Sync posture</a> before relying on Flynt for multi-machine workflows.</p>
+
+  <h2>When Flynt is a better fit</h2>
+  <ul>
+    <li>You want notes connected to tasks, design artifacts, terminal sessions, release notes, and project automation.</li>
+    <li>You want an embedded project-scoped agent that can inspect and modify project files.</li>
+    <li>You are working in a code repository or operational project, not just a personal note vault.</li>
+  </ul>
+
+  <h2>When Obsidian may still be better</h2>
+  <ul>
+    <li>You depend heavily on Obsidian's plugin ecosystem.</li>
+    <li>Your main workflow is personal journaling or reading notes on mobile.</li>
+    <li>You need Obsidian-specific Canvas or Dataview behavior exactly as-is.</li>
+  </ul>
+</DocsLayout>
