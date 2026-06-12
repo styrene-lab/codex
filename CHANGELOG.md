@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.8 — 2026-06-12
+
+### Fixed
+- Reserved patch train for follow-up fixes after the published 0.12.7 release.
+
 ## 0.12.7 — 2026-06-11
 
 ### Fixed
