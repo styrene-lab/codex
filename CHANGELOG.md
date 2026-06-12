@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.9 — 2026-06-11
+
+### Added
+- Added first-run and Obsidian migration guides to the public documentation.
+- Added a public performance guide for large repositories and graph overview behavior.
+- Surfaced the probed Omegon CLI build/version in the ACP preflight card.
+
+### Changed
+- Updated public site and release copy to reflect the completed 0.12.9 large-workspace hardening posture.
+
 ## 0.12.8 — 2026-06-12
 
 ### Fixed
