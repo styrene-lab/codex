@@ -506,61 +506,65 @@ fn pull_up_to_date() {
     assert!(result.conflicts.is_empty());
 }
 
-// ── Pull: merge conflict ────────────────────────────────────────────────────
+// ── Pull: diverged histories ────────────────────────────────────────────────
 
 #[test]
-fn pull_detects_merge_conflict() {
+fn pull_diverged_conflicting_histories_report_manual_resolution() {
     let (tmp, local, remote) = setup_local_remote();
     let second = clone_second(&tmp, &remote);
 
-    // Both sides modify the same file differently
+    // Both sides modify the same file differently. Flynt intentionally does
+    // not attempt implicit non-fast-forward merges; it reports divergence and
+    // leaves the worktree untouched for explicit operator resolution.
     commit_file(&local, "init.md", "# Local change\n", "local edit");
     commit_file(&second, "init.md", "# Remote change\n", "remote edit");
 
-    // Push from second
     let repo2 = Repository::open(&second).unwrap();
     let mut remote2 = repo2.find_remote("origin").unwrap();
     remote2
         .push(&["refs/heads/main:refs/heads/main"], None)
         .unwrap();
 
-    // Pull into local — should detect conflict
     let sync = git_sync(&local);
     let result = sync.pull().unwrap();
+    assert_eq!(result.files_pulled, 0);
     assert!(
-        !result.conflicts.is_empty(),
-        "should detect conflict on init.md"
+        result.conflicts.iter().any(|c| c.contains("diverged")),
+        "diverged histories should require manual resolution: {:?}",
+        result.conflicts
     );
-    assert!(result.conflicts.iter().any(|c| c.contains("init.md")));
+    assert_eq!(fs::read_to_string(local.join("init.md")).unwrap(), "# Local change\n");
 }
 
-// ── Pull: non-conflicting merge ─────────────────────────────────────────────
-
 #[test]
-fn pull_non_conflicting_merge() {
+fn pull_non_conflicting_divergence_still_blocks_manual_resolution() {
     let (tmp, local, remote) = setup_local_remote();
     let second = clone_second(&tmp, &remote);
 
-    // Local adds a different file
+    // Even when a file-level merge would be clean, the histories diverged.
+    // Pull is fast-forward-only until Flynt grows explicit merge/rebase UX.
     commit_file(&local, "local-only.md", "# Local\n", "local add");
-    // Remote adds a different file
     commit_file(&second, "remote-only.md", "# Remote\n", "remote add");
 
-    // Push from second
     let repo2 = Repository::open(&second).unwrap();
     let mut remote2 = repo2.find_remote("origin").unwrap();
     remote2
         .push(&["refs/heads/main:refs/heads/main"], None)
         .unwrap();
 
-    // Pull into local — should merge cleanly
     let sync = git_sync(&local);
     let result = sync.pull().unwrap();
-    assert!(result.conflicts.is_empty(), "no conflicts expected");
+    assert_eq!(result.files_pulled, 0);
     assert!(
-        local.join("remote-only.md").exists(),
-        "merged file should exist"
+        result.conflicts.iter().any(|c| c.contains("diverged")),
+        "diverged histories should require manual resolution: {:?}",
+        result.conflicts
     );
+    assert!(
+        !local.join("remote-only.md").exists(),
+        "pull must not merge remote files when histories diverged"
+    );
+    assert!(local.join("local-only.md").exists());
 }
 
 // ── Push ────────────────────────────────────────────────────────────────────
