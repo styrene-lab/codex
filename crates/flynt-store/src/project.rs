@@ -12,41 +12,17 @@ use serde::Serialize;
 use std::{
     fs,
     path::{Path, PathBuf},
-    process::Command,
     sync::Arc,
 };
 use tracing::{debug, info, warn};
 
 
-fn git_commit_time(
-    root: &Path,
-    rel_path: &Path,
-    args: &[&str],
-) -> Option<chrono::DateTime<Utc>> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(args)
-        .arg("--")
-        .arg(rel_path)
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let stdout = String::from_utf8(output.stdout).ok()?;
-    stdout
-        .lines()
-        .find_map(|line| chrono::DateTime::parse_from_rfc3339(line).ok())
-        .map(|ts| ts.with_timezone(&Utc))
-}
-
-fn first_git_commit_time(root: &Path, rel_path: &Path) -> Option<chrono::DateTime<Utc>> {
-    git_commit_time(root, rel_path, &["log", "--follow", "--format=%aI", "--reverse"])
-}
-
-fn last_git_commit_time(root: &Path, rel_path: &Path) -> Option<chrono::DateTime<Utc>> {
-    git_commit_time(root, rel_path, &["log", "-1", "--format=%aI"])
+fn file_created_time(path: &Path) -> Option<chrono::DateTime<Utc>> {
+    fs::metadata(path)
+        .ok()?
+        .created()
+        .ok()
+        .map(chrono::DateTime::<Utc>::from)
 }
 
 fn file_modified_time(path: &Path) -> Option<chrono::DateTime<Utc>> {
@@ -66,8 +42,8 @@ fn resolved_document_created_at(
 ) -> chrono::DateTime<Utc> {
     frontmatter
         .created_at
-        .or_else(|| first_git_commit_time(root, rel_path))
         .or_else(|| existing.map(|doc| doc.created_at))
+        .or_else(|| file_created_time(&root.join(rel_path)))
         .unwrap_or(fallback)
 }
 
@@ -77,9 +53,8 @@ fn resolved_document_updated_at(
     path: &Path,
     fallback: chrono::DateTime<Utc>,
 ) -> chrono::DateTime<Utc> {
-    last_git_commit_time(root, rel_path)
-        .or_else(|| file_modified_time(path))
-        .unwrap_or(fallback)
+    let _ = (root, rel_path);
+    file_modified_time(path).unwrap_or(fallback)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -90,7 +65,7 @@ struct ProjectOpenOptions {
 impl Default for ProjectOpenOptions {
     fn default() -> Self {
         Self {
-            create_portable_metadata: true,
+            create_portable_metadata: false,
         }
     }
 }
@@ -174,10 +149,14 @@ impl Project {
     /// indexed non-destructively until the operator explicitly saves portable
     /// metadata/configuration.
     pub fn open(root: &Path) -> Result<Self> {
+        let create_portable_metadata = !root.exists()
+            || fs::read_dir(root)
+                .map(|mut entries| entries.next().is_none())
+                .unwrap_or(true);
         Self::open_with_options(
             root,
             ProjectOpenOptions {
-                create_portable_metadata: false,
+                create_portable_metadata,
             },
         )
     }
@@ -525,13 +504,16 @@ impl Project {
 
         match task_file::parse_task_from_markdown(raw) {
             Ok(task) => {
+                if self.store.get_board(&task.board_id)?.is_none() {
+                    debug!(path = %rel_path.display(), board_id = %task.board_id.0, "skipping task markdown with unknown board id");
+                    return Ok(());
+                }
                 self.store.save_task(&task)?;
                 self.store
                     .set_task_file_path(&task.id, &rel_path.to_string_lossy())?;
             }
-            Err(e) if kind == Some("task") => return Err(e).context("index task file"),
             Err(e) => {
-                debug!(path = %rel_path.display(), error = %e, "skipping non-task markdown in Tasks directory")
+                debug!(path = %rel_path.display(), error = %e, "skipping markdown that is not yet a complete task entity")
             }
         }
         Ok(())
@@ -2438,7 +2420,10 @@ fn resolve_index_db_path(root: &Path, runtime: &LocalRuntimeConfig) -> PathBuf {
         return local_state_root.join("flynt").join("flynt-index.db");
     }
 
-    root.join(".flynt/local/flynt/flynt-index.db")
+    external_project_state_root(root)
+        .join("local")
+        .join("flynt")
+        .join("flynt-index.db")
 }
 
 #[allow(dead_code)]
@@ -2624,9 +2609,21 @@ mod tests {
     use std::{fs, path::PathBuf};
     use tempfile::TempDir;
 
+    fn ensure_fixed_test_board(project: &Project) {
+        let board = flynt_core::models::Board {
+            id: flynt_core::models::BoardId(
+                uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440001").unwrap(),
+            ),
+            ..flynt_core::models::Board::minimalist("Default")
+        };
+        project.store.save_board(&board).unwrap();
+    }
+
     // ── set_data_field ──────────────────────────────────────────────
 
     fn write_task_file(project: &Project, rel: &str) -> std::path::PathBuf {
+        ensure_fixed_test_board(project);
+
         let path = std::path::PathBuf::from(rel);
         let abs = project.root.join(&path);
         std::fs::create_dir_all(abs.parent().unwrap()).unwrap();
@@ -2976,6 +2973,7 @@ Original body content.
             "+++\nid = \"550e8400-e29b-41d4-a716-446655440000\"\nkind = \"task\"\n+++\n\nbody\n",
         )
         .unwrap();
+        ensure_fixed_test_board(&project);
         project.index_file(&abs).unwrap();
 
         project
@@ -3242,6 +3240,7 @@ position = 0
         )
         .unwrap();
 
+        ensure_fixed_test_board(&project);
         project.index_file(&abs).unwrap();
 
         let indexed = project
@@ -3322,6 +3321,7 @@ position = 0
         )
         .unwrap();
 
+        ensure_fixed_test_board(&project);
         project.index_file(&abs).unwrap();
         let indexed = project
             .store
