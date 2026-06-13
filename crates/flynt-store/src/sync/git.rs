@@ -939,7 +939,7 @@ mod tag_tests {
 #[cfg(test)]
 mod sync_pull_tests {
     use super::*;
-    use git2::{Repository, Signature};
+    use git2::{Repository, RepositoryInitOptions, Signature};
     use std::fs;
     use tempfile::TempDir;
 
@@ -973,7 +973,9 @@ mod sync_pull_tests {
         let remote = Repository::init_bare(&remote_path).unwrap();
 
         let seed_path = tmp.path().join("seed");
-        let seed = Repository::init(&seed_path).unwrap();
+        let mut seed_opts = RepositoryInitOptions::new();
+        seed_opts.initial_head("main");
+        let seed = Repository::init_opts(&seed_path, &seed_opts).unwrap();
         commit_file(&seed, "README.md", "base\n", "base");
         seed.remote("origin", remote_path.to_str().unwrap())
             .unwrap();
