@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.10 — 2026-06-11
+
+### Fixed
+- Avoid misleading document created/modified dates by removing synchronous per-file git history lookups from indexing and preferring explicit frontmatter, existing store metadata, and filesystem timestamps.
+- Keep existing-folder opens non-destructive while preserving managed metadata creation for new Flynt projects.
+- Skip incomplete or externally-invalid task markdown during indexing instead of surfacing transient SQLite foreign-key failures.
+
 ## 0.12.9 — 2026-06-11
 
 ### Added

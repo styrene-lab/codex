@@ -1,11 +1,11 @@
 ---
 import DocsLayout from "../../layouts/DocsLayout.astro";
 ---
-<DocsLayout title="Performance and large projects — Flynt" description="How Flynt 0.12.9 behaves in large repositories and what remains planned for 0.13.0.">
+<DocsLayout title="Performance and large projects — Flynt" description="How Flynt 0.12.10 behaves in large repositories and what remains planned for 0.13.0.">
   <h1>Performance and large projects</h1>
-  <p class="lead">Flynt 0.12.9 hardens the paths that made large workspaces feel frozen: launch, tab activation, artifact discovery, and graph loading.</p>
+  <p class="lead">Flynt 0.12.10 hardens the paths that made large workspaces feel frozen: launch, tab activation, artifact discovery, and graph loading.</p>
 
-  <h2>What changed in 0.12.9</h2>
+  <h2>What changed in 0.12.10</h2>
   <ul>
     <li><strong>First paint is protected:</strong> recursive watcher startup is delayed so the window can render before filesystem monitoring competes for IO.</li>
     <li><strong>Tab activation stays hot:</strong> note clicks and tab switches no longer prefetch the document and push a CodeMirror swap before the tab becomes active.</li>
