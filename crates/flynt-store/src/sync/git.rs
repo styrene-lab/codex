@@ -983,6 +983,7 @@ mod sync_pull_tests {
             .unwrap()
             .push(&["refs/heads/main:refs/heads/main"], None)
             .unwrap();
+        remote.set_head("refs/heads/main").unwrap();
 
         let local_path = tmp.path().join("local");
         let local = Repository::clone(remote_path.to_str().unwrap(), &local_path).unwrap();
@@ -1062,6 +1063,7 @@ mod sync_pull_tests {
         let (_tmp, remote_path, local, _remote) = setup_remote_and_local();
         let upstream_path = local.workdir().unwrap().parent().unwrap().join("upstream");
         let upstream = Repository::clone(remote_path.to_str().unwrap(), &upstream_path).unwrap();
+        upstream.set_head("refs/heads/main").unwrap();
         commit_file(&upstream, "Remote.md", "remote\n", "remote change");
         upstream
             .find_remote("origin")
@@ -1086,6 +1088,7 @@ mod sync_pull_tests {
         let (_tmp, remote_path, local, _remote) = setup_remote_and_local();
         let upstream_path = local.workdir().unwrap().parent().unwrap().join("upstream");
         let upstream = Repository::clone(remote_path.to_str().unwrap(), &upstream_path).unwrap();
+        upstream.set_head("refs/heads/main").unwrap();
         commit_file(&local, "Local.md", "local\n", "local change");
         commit_file(&upstream, "Remote.md", "remote\n", "remote change");
         upstream
