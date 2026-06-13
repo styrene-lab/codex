@@ -3,6 +3,30 @@ use dioxus::prelude::*;
 use flynt_core::providers::{self, AuthMethod, CredentialStatus, ProviderInfo};
 use std::{collections::HashMap, rc::Rc};
 
+#[derive(Clone, PartialEq)]
+enum ProviderActionMessage {
+    Info(String),
+    Progress(String),
+    Success(String),
+    Error(String),
+}
+
+impl ProviderActionMessage {
+    fn text(&self) -> &str {
+        match self {
+            Self::Info(text) | Self::Progress(text) | Self::Success(text) | Self::Error(text) => text,
+        }
+    }
+
+    fn should_render(&self, is_authenticated: bool, operation_active: bool) -> bool {
+        match self {
+            Self::Success(_) => is_authenticated,
+            Self::Progress(_) => operation_active,
+            Self::Info(_) | Self::Error(_) => true,
+        }
+    }
+}
+
 fn parse_live_provider_status(text: &str) -> HashMap<String, CredentialStatus> {
     text.lines()
         .filter_map(|line| {
@@ -108,7 +132,7 @@ fn ProviderRow(
     let mut editing = use_signal(|| false);
     let mut key_input = use_signal(String::new);
     let mut error_msg: Signal<Option<String>> = use_signal(|| None);
-    let mut action_msg: Signal<Option<String>> = use_signal(|| None);
+    let mut action_msg: Signal<Option<ProviderActionMessage>> = use_signal(|| None);
     let mut logging_in = use_signal(|| false);
 
     let (status_class, status_text) = match &status {
@@ -122,6 +146,13 @@ fn ProviderRow(
 
     let is_authenticated = matches!(status, CredentialStatus::Authenticated { .. });
     let is_api_key = provider.auth_method == AuthMethod::ApiKey;
+
+    let operation_active = *logging_in.read() || *editing.read();
+    let rendered_action_msg = action_msg
+        .read()
+        .as_ref()
+        .filter(|msg| msg.should_render(is_authenticated, operation_active))
+        .map(|msg| msg.text().to_string());
 
     rsx! {
         div { class: "settings-row provider-row",
@@ -160,7 +191,7 @@ fn ProviderRow(
                                             *editing.write() = false;
                                             *key_input.write() = String::new();
                                             *error_msg.write() = None;
-                                            *action_msg.write() = Some("Credential saved. Refreshing provider status…".into());
+                                            *action_msg.write() = Some(ProviderActionMessage::Info("Credential saved. Refreshing provider status…".into()));
                                             on_change.call(());
                                         }
                                         Err(e) => *error_msg.write() = Some(format!("{e}")),
@@ -195,27 +226,27 @@ fn ProviderRow(
                                 disabled: *logging_in.read(),
                                 onclick: move |_| {
                                     let Some(sess) = session.read().clone() else {
-                                        *action_msg.write() = Some("Login requires a connected Omegon session.".into());
+                                        *action_msg.write() = Some(ProviderActionMessage::Error("Login requires a connected Omegon session.".into()));
                                         return;
                                     };
                                     let binary = ctx.omegon().resolve_binary();
                                     let provider_id = provider.id.to_string();
                                     *logging_in.write() = true;
-                                    *action_msg.write() = Some(format!("Opening {} login…", provider.label));
+                                    *action_msg.write() = Some(ProviderActionMessage::Progress(format!("Opening {} login…", provider.label)));
                                     spawn(async move {
                                         match sess.login(&binary, &provider_id).await {
                                             Ok(_) => {
-                                                *action_msg.write() = Some(format!("{} login returned successfully. Waiting for provider status…", provider.label));
+                                                *action_msg.write() = Some(ProviderActionMessage::Progress(format!("{} login returned successfully. Waiting for provider status…", provider.label)));
                                                 on_change.call(());
                                                 if wait_for_authenticated_provider(sess.clone(), &provider_id).await {
-                                                    *action_msg.write() = Some(format!("{} authenticated.", provider.label));
+                                                    *action_msg.write() = Some(ProviderActionMessage::Success(format!("{} authenticated.", provider.label)));
                                                 } else {
-                                                    *action_msg.write() = Some(format!("{} login finished, but live provider status is not authenticated yet. Reopen this panel or reconnect Omegon if it remains stale.", provider.label));
+                                                    *action_msg.write() = Some(ProviderActionMessage::Info(format!("{} login finished, but live provider status is not authenticated yet. Reopen this panel or reconnect Omegon if it remains stale.", provider.label)));
                                                 }
                                                 on_change.call(());
                                             }
                                             Err(error) => {
-                                                *action_msg.write() = Some(format!("{} login failed: {error}", provider.label));
+                                                *action_msg.write() = Some(ProviderActionMessage::Error(format!("{} login failed: {error}", provider.label)));
                                             }
                                         }
                                         *logging_in.write() = false;
@@ -235,7 +266,7 @@ fn ProviderRow(
                                 class: "btn btn-ghost btn-sm provider-remove-btn",
                                 onclick: move |_| {
                                     let _ = providers::remove_credential(provider.id);
-                                    *action_msg.write() = Some("Credential removed. Refreshing provider status…".into());
+                                    *action_msg.write() = Some(ProviderActionMessage::Info("Credential removed. Refreshing provider status…".into()));
                                     on_change.call(());
                                 },
                                 "Remove"
@@ -243,7 +274,7 @@ fn ProviderRow(
                         }
                     }
                 }
-                if let Some(msg) = action_msg.read().as_ref() {
+                if let Some(msg) = rendered_action_msg {
                     span { class: "settings-hint muted", "{msg}" }
                 }
             }

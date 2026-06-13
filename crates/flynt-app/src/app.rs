@@ -76,8 +76,16 @@ pub fn App() -> Element {
     });
     use_context_provider(|| Signal::new(crate::state::TerminalOpenCommand::default()));
 
-    // Shared ACP session — populated by AgentRail, used by CommandPalette agent mode
-    use_context_provider(|| Signal::new(None::<std::rc::Rc<crate::acp::AcpSession>>));
+    // Shared ACP session — populated by AgentRail, used by CommandPalette agent mode.
+    // Dioxus owns the provided signal through context; this binding is retained
+    // so the app root can clear stale sessions when the project root changes.
+    let mut shared_acp_session_provider =
+        use_context_provider(|| Signal::new(None::<std::rc::Rc<crate::acp::AcpSession>>));
+    let project_root_for_acp_session = ctx.project_root();
+    use_effect(move || {
+        let _ = &project_root_for_acp_session;
+        *shared_acp_session_provider.write() = None;
+    });
 
     // Shared Omegon setup refresh trigger. Bumped after installer actions,
     // binary override changes, or manual rechecks so setup surfaces
@@ -1150,7 +1158,7 @@ pub fn App() -> Element {
                     crate::components::PanelDivider {}
                     div {
                         style: if show_agent() { "display: contents;" } else { "display: none;" },
-                        AgentRail {}
+                        AgentRail { key: "{ctx.project_root().display()}" }
                     }
                 }
             }

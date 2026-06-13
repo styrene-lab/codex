@@ -1743,18 +1743,19 @@
   display:        inline-flex;
   align-items:    center;
   justify-content:center;
-  min-width:      var(--agent-tool-badge-width);
-  height:         var(--agent-tool-badge-height);
-  font-size:      var(--agent-micro-font);
-  font-weight:    var(--font-weight-bold);
+  min-width:      4.75rem;
+  height:         20px;
+  font-size:      calc(var(--agent-micro-font) * 0.92);
+  font-weight:    var(--font-weight-semibold);
+  letter-spacing: 0.01em;
   line-height:    var(--line-height-none, 1);
   padding:        0 var(--space-2);
-  border-radius:  var(--radius-full);
+  border-radius:  var(--radius-sm);
   border:         var(--border-width-hairline) solid var(--border);
   background:     var(--agent-tool-status-idle-bg);
   color:          var(--muted-foreground);
   text-transform: lowercase;
-  opacity:        var(--opacity-full);
+  opacity:        0.88;
 }
 .agent-tool-status.inprogress,
 .agent-tool-status.running {
