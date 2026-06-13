@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.11 — 2026-06-11
+
+### Fixed
+- Prevent provider settings from showing stale authenticated success messages alongside current missing/expired provider status.
+- Clear shared ACP session state when switching projects so command-palette agent mode cannot reuse a session initialized for the previous project.
+
 ## 0.12.10 — 2026-06-11
 
 ### Fixed
