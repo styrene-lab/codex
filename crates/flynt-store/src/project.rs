@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use comrak::{Options, markdown_to_html};
 use flynt_core::{
+    datum::EntityKind,
     models::*,
     parser::parse_document_source,
     store::{ProjectStore, TaskFilter},
@@ -1241,6 +1242,93 @@ impl Project {
         task.updated_at = Utc::now();
         self.persist_task(&task)?;
         Ok(true)
+    }
+
+    /// Materialize indexed design-node documents as real task cards on a board.
+    ///
+    /// This is intentionally create-only: once a lifecycle item becomes a task,
+    /// the operator owns its body/column. Later sync passes must not clobber
+    /// hand-edited task markdown just because the source design node changed.
+    pub fn materialize_design_node_tasks(&self, board_id: &BoardId) -> Result<usize> {
+        let Some(board) = self.store.get_board(board_id)? else {
+            return Ok(0);
+        };
+        let design_nodes = self.store.list_entities_by_kind(&EntityKind::DesignNode)?;
+        let existing = self.store.list_tasks(&TaskFilter {
+            board_id: Some(board_id.clone()),
+            ..Default::default()
+        })?;
+        let existing_design_nodes: std::collections::HashSet<uuid::Uuid> = existing
+            .iter()
+            .filter_map(|task| task.design_node_id)
+            .collect();
+
+        let mut created = 0;
+        for meta in design_nodes {
+            if existing_design_nodes.contains(&meta.id.0) {
+                continue;
+            }
+            let Some(doc) = self.store.get_document(&meta.id)? else {
+                continue;
+            };
+            let lifecycle = doc
+                .entity
+                .as_ref()
+                .and_then(|entity| entity.get_text("status"))
+                .or_else(|| {
+                    doc.frontmatter
+                        .data
+                        .as_ref()
+                        .and_then(|data| data.get("status"))
+                        .and_then(|v| v.as_str())
+                })
+                .unwrap_or("seed");
+            let archive_column = board
+                .columns
+                .iter()
+                .find(|column| column.name.eq_ignore_ascii_case("Archive"))
+                .map(|column| column.name.clone())
+                .unwrap_or_else(|| "Archive".to_string());
+            let active_column = board
+                .columns
+                .iter()
+                .find(|column| column.name.eq_ignore_ascii_case("Active"))
+                .map(|column| column.name.clone())
+                .unwrap_or_else(|| {
+                    board.columns
+                        .first()
+                        .map(|column| column.name.clone())
+                        .unwrap_or_else(|| "Active".to_string())
+                });
+            let mut task = Task::new_tracked(
+                board_id.clone(),
+                if lifecycle == "implemented" {
+                    archive_column
+                } else {
+                    active_column
+                },
+                doc.title.clone(),
+            );
+            task.status = match lifecycle {
+                "implemented" => TaskStatus::Done,
+                "implementing" => TaskStatus::InProgress,
+                _ => TaskStatus::Todo,
+            };
+            task.design_node_id = Some(meta.id.0);
+            task.document_refs = vec![meta.id.clone()];
+            task.tags = vec!["design-node".to_string(), "lifecycle".to_string()];
+            task.description = format!(
+                "Projected from design node [[{}|{}]].\n\n## Lifecycle\n- Status: `{}`\n- Source: `{}`\n- Design node: `{}`\n\n## Acceptance checklist\n- [ ] Review the linked design node\n- [ ] Resolve open questions or assumptions\n- [ ] Implement decided work\n- [ ] Validate behavior\n- [ ] Move the lifecycle item to implemented when complete\n",
+                doc.path.display(),
+                doc.title,
+                lifecycle,
+                doc.path.display(),
+                meta.id.0
+            );
+            self.persist_task(&task)?;
+            created += 1;
+        }
+        Ok(created)
     }
 
     /// Single entry point for persisting a task. Writes the `.md` file

@@ -354,6 +354,9 @@ fn KanbanBoard(board: Board, refresh: Signal<u64>) -> Element {
         let bid = board_id.clone();
         async move {
             tokio::task::spawn_blocking(move || {
+                if let Err(err) = project.materialize_design_node_tasks(&bid) {
+                    tracing::warn!(error = %err, "failed to materialize design-node lifecycle tasks");
+                }
                 project
                     .store
                     .list_tasks(&TaskFilter {
@@ -1059,9 +1062,35 @@ fn TaskCard(
                         }
                     }
 
+                    if task.design_node_id.is_some() {
+                        div { class: "task-lifecycle-panel",
+                            div { class: "task-lifecycle-title", "Lifecycle context" }
+                            div { class: "task-lifecycle-row",
+                                span { "Status" }
+                                strong { "{task_lifecycle_status_label(&task)}" }
+                            }
+                            if let Some(id) = task.design_node_id {
+                                div { class: "task-lifecycle-row",
+                                    span { "Design node" }
+                                    code { "{short_uuid(id)}" }
+                                }
+                            }
+                            if let Some(doc_id) = task.document_refs.first() {
+                                div { class: "task-lifecycle-row",
+                                    span { "Source doc" }
+                                    code { "{short_uuid(doc_id.0)}" }
+                                }
+                            }
+                        }
+                    }
+
+                    div { class: "task-description-preview",
+                        div { class: "task-description-label", "Task note preview" }
+                        p { "{task_description_preview(&task.description)}" }
+                    }
+
                     p { class: "muted task-detail-hint",
-                        "Description, sentry triggers, execution config, and lifecycle "
-                        "metadata live in the task's note. Open in editor to access them."
+                        "Inline editing covers title, priority, and engagement. Open the task note for acceptance criteria, sentry triggers, execution config, and lifecycle details."
                     }
 
 
@@ -1238,6 +1267,39 @@ fn priority_badge_class(priority: Priority) -> &'static str {
         Priority::Medium => "medium",
         Priority::High => "high",
         Priority::Critical => "critical",
+    }
+}
+
+fn short_uuid(id: uuid::Uuid) -> String {
+    id.to_string().chars().take(8).collect()
+}
+
+fn task_lifecycle_status_label(task: &Task) -> &'static str {
+    if task.column.eq_ignore_ascii_case("Archive") {
+        return "implemented";
+    }
+    match task.status {
+        TaskStatus::Done | TaskStatus::Archived => "implemented",
+        TaskStatus::InProgress => "implementing",
+        _ => "active",
+    }
+}
+
+fn task_description_preview(description: &str) -> String {
+    let text = description
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if text.is_empty() {
+        return "No task body yet. Open the task note to add acceptance criteria.".to_string();
+    }
+    const MAX: usize = 260;
+    if text.chars().count() <= MAX {
+        text
+    } else {
+        format!("{}…", text.chars().take(MAX).collect::<String>())
     }
 }
 
