@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.12 — 2026-06-11
+
+### Added
+- Kanban now materializes indexed design-node lifecycle items as real task cards on the active board.
+- Expanded lifecycle task cards show lifecycle context, source identifiers, and task-note previews instead of generic placeholder copy.
+
 ## 0.12.11 — 2026-06-11
 
 ### Fixed

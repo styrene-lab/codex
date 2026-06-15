@@ -2306,7 +2306,7 @@ dependencies = [
 
 [[package]]
 name = "flynt-agent"
-version = "0.12.11"
+version = "0.12.12"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2332,7 +2332,7 @@ dependencies = [
 
 [[package]]
 name = "flynt-app"
-version = "0.12.11"
+version = "0.12.12"
 dependencies = [
  "agent-client-protocol",
  "alacritty_terminal",
@@ -2377,7 +2377,7 @@ dependencies = [
 
 [[package]]
 name = "flynt-core"
-version = "0.12.11"
+version = "0.12.12"
 dependencies = [
  "anyhow",
  "base64",
@@ -2400,7 +2400,7 @@ dependencies = [
 
 [[package]]
 name = "flynt-flow"
-version = "0.12.11"
+version = "0.12.12"
 dependencies = [
  "anyhow",
  "serde",
@@ -2412,7 +2412,7 @@ dependencies = [
 
 [[package]]
 name = "flynt-forge"
-version = "0.12.11"
+version = "0.12.12"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2434,14 +2434,14 @@ dependencies = [
 
 [[package]]
 name = "flynt-git-helper"
-version = "0.12.11"
+version = "0.12.12"
 dependencies = [
  "anyhow",
 ]
 
 [[package]]
 name = "flynt-mobile"
-version = "0.12.11"
+version = "0.12.12"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2465,7 +2465,7 @@ dependencies = [
 
 [[package]]
 name = "flynt-models"
-version = "0.12.11"
+version = "0.12.12"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2477,7 +2477,7 @@ dependencies = [
 
 [[package]]
 name = "flynt-store"
-version = "0.12.11"
+version = "0.12.12"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4896,7 +4896,7 @@ dependencies = [
 
 [[package]]
 name = "omegon-design"
-version = "0.12.11"
+version = "0.12.12"
 dependencies = [
  "anyhow",
  "async-trait",
