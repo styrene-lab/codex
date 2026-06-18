@@ -241,6 +241,16 @@
   border-color: var(--primary);
 }
 
+.kanban-lifecycle-sync {
+  margin-left: var(--space-2);
+  border-color: color-mix(in srgb, var(--primary) 42%, transparent);
+  color: var(--primary);
+}
+
+.kanban-lifecycle-sync:hover {
+  border-color: var(--primary);
+}
+
 /* Engagement scope dropdown — sits on the same row as the filter pills.
    margin-left:auto pushes it to the right so the lifecycle pills stay
    left-anchored. Hidden when no engagements exist. */

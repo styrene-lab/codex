@@ -318,7 +318,7 @@ impl TaskFilterKind {
     }
     fn title(&self) -> &'static str {
         match self {
-            Self::All => "All non-archived tasks",
+            Self::All => "All non-archived human tasks; lifecycle projections are shown under Lifecycle",
             Self::Actionable => {
                 "Tasks that sentry would pick up next: column=Scheduled, status=Todo"
             }
@@ -331,7 +331,11 @@ impl TaskFilterKind {
     /// per-column name match separately.
     fn matches(&self, task: &Task) -> bool {
         match self {
-            Self::All => task.status != TaskStatus::Archived,
+            Self::All => {
+                task.status != TaskStatus::Archived
+                    && task.design_node_id.is_none()
+                    && task.openspec_change.is_none()
+            }
             Self::Actionable => task.column == "Scheduled" && task.status == TaskStatus::Todo,
             Self::LifecycleLinked => {
                 task.status != TaskStatus::Archived
@@ -418,6 +422,29 @@ fn KanbanBoard(board: Board, refresh: Signal<u64>) -> Element {
                             }
                         }
                     }
+                }
+
+                button {
+                    class: "kanban-filter-pill kanban-lifecycle-sync",
+                    title: "Materialize design-node lifecycle projections onto this board, then show the Lifecycle filter.",
+                    onclick: move |_| {
+                        let c = ctx.clone();
+                        let bid = board.id.clone();
+                        spawn(async move {
+                            let project = c.project();
+                            let created = tokio::task::spawn_blocking(move || {
+                                project.materialize_design_node_tasks(&bid)
+                            })
+                            .await
+                            .ok()
+                            .and_then(Result::ok)
+                            .unwrap_or(0);
+                            tracing::info!(created, "materialized design-node lifecycle tasks");
+                            *active_filter.write() = TaskFilterKind::LifecycleLinked;
+                            *refresh.write() += 1;
+                        });
+                    },
+                    "Sync lifecycle"
                 }
 
                 // Engagement scope selector — sits with the filter pills
@@ -1317,6 +1344,21 @@ fn task_tag_class(tag: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn all_filter_hides_lifecycle_projection_tasks() {
+        let mut task = Task::new_tracked(BoardId::new(), "Active", "Human task");
+        assert!(TaskFilterKind::All.matches(&task));
+
+        task.design_node_id = Some(uuid::Uuid::new_v4());
+        assert!(!TaskFilterKind::All.matches(&task));
+        assert!(TaskFilterKind::LifecycleLinked.matches(&task));
+
+        task.design_node_id = None;
+        task.openspec_change = Some("change-name".to_string());
+        assert!(!TaskFilterKind::All.matches(&task));
+        assert!(TaskFilterKind::LifecycleLinked.matches(&task));
+    }
 
     #[test]
     fn short_model_strips_provider_prefix() {
