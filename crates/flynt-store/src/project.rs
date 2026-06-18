@@ -18,6 +18,51 @@ use std::{
 use tracing::{debug, info, warn};
 
 
+enum DesignLifecycleStatus {
+    Seed,
+    Exploring,
+    Resolved,
+    Decided,
+    Implementing,
+    Implemented,
+}
+
+impl DesignLifecycleStatus {
+    fn parse(raw: &str) -> Self {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "implemented" | "done" | "archived" => Self::Implemented,
+            "implementing" | "in_progress" | "in-progress" | "in progress" => Self::Implementing,
+            "decided" => Self::Decided,
+            "resolved" => Self::Resolved,
+            "exploring" => Self::Exploring,
+            _ => Self::Seed,
+        }
+    }
+
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Seed => "seed",
+            Self::Exploring => "exploring",
+            Self::Resolved => "resolved",
+            Self::Decided => "decided",
+            Self::Implementing => "implementing",
+            Self::Implemented => "implemented",
+        }
+    }
+
+    fn task_status(&self) -> TaskStatus {
+        match self {
+            Self::Implemented => TaskStatus::Done,
+            Self::Implementing => TaskStatus::InProgress,
+            _ => TaskStatus::Todo,
+        }
+    }
+
+    fn is_implemented(&self) -> bool {
+        matches!(self, Self::Implemented)
+    }
+}
+
 fn file_created_time(path: &Path) -> Option<chrono::DateTime<Utc>> {
     fs::metadata(path)
         .ok()?
@@ -1271,7 +1316,7 @@ impl Project {
             let Some(doc) = self.store.get_document(&meta.id)? else {
                 continue;
             };
-            let lifecycle = doc
+            let lifecycle_raw = doc
                 .entity
                 .as_ref()
                 .and_then(|entity| entity.get_text("status"))
@@ -1283,6 +1328,7 @@ impl Project {
                         .and_then(|v| v.as_str())
                 })
                 .unwrap_or("seed");
+            let lifecycle = DesignLifecycleStatus::parse(lifecycle_raw);
             let archive_column = board
                 .columns
                 .iter()
@@ -1302,18 +1348,14 @@ impl Project {
                 });
             let mut task = Task::new_tracked(
                 board_id.clone(),
-                if lifecycle == "implemented" {
+                if lifecycle.is_implemented() {
                     archive_column
                 } else {
                     active_column
                 },
                 doc.title.clone(),
             );
-            task.status = match lifecycle {
-                "implemented" => TaskStatus::Done,
-                "implementing" => TaskStatus::InProgress,
-                _ => TaskStatus::Todo,
-            };
+            task.status = lifecycle.task_status();
             task.design_node_id = Some(meta.id.0);
             task.document_refs = vec![meta.id.clone()];
             task.tags = vec!["design-node".to_string(), "lifecycle".to_string()];
@@ -1321,7 +1363,7 @@ impl Project {
                 "Projected from design node [[{}|{}]].\n\n## Lifecycle\n- Status: `{}`\n- Source: `{}`\n- Design node: `{}`\n\n## Acceptance checklist\n- [ ] Review the linked design node\n- [ ] Resolve open questions or assumptions\n- [ ] Implement decided work\n- [ ] Validate behavior\n- [ ] Move the lifecycle item to implemented when complete\n",
                 doc.path.display(),
                 doc.title,
-                lifecycle,
+                lifecycle.label(),
                 doc.path.display(),
                 meta.id.0
             );

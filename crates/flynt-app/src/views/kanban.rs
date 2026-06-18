@@ -354,9 +354,6 @@ fn KanbanBoard(board: Board, refresh: Signal<u64>) -> Element {
         let bid = board_id.clone();
         async move {
             tokio::task::spawn_blocking(move || {
-                if let Err(err) = project.materialize_design_node_tasks(&bid) {
-                    tracing::warn!(error = %err, "failed to materialize design-node lifecycle tasks");
-                }
                 project
                     .store
                     .list_tasks(&TaskFilter {
@@ -1077,7 +1074,7 @@ fn TaskCard(
                             }
                             if let Some(doc_id) = task.document_refs.first() {
                                 div { class: "task-lifecycle-row",
-                                    span { "Source doc" }
+                                    span { "Linked doc" }
                                     code { "{short_uuid(doc_id.0)}" }
                                 }
                             }

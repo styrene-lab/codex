@@ -547,6 +547,10 @@ struct ToolCallBlock {
     /// Transport generation that created this row. Watchdogs use this to avoid
     /// marking stale rows after reconnect/Stop agent detached the transport.
     generation: u64,
+    /// True when the tool returned immediately while work continues in Omegon.
+    background: bool,
+    /// Stable Omegon operation/run id when the tool exposes one.
+    operation_id: Option<String>,
 }
 
 fn update_tool_call<F>(items: &mut Signal<Vec<ChatItem>>, id: &str, mut f: F)
@@ -601,6 +605,49 @@ fn mark_unfinished_tool_calls(items: &mut Signal<Vec<ChatItem>>, status: &str, n
                 }
             }
         }
+    }
+}
+
+fn background_operation_from_tool_update(
+    raw_output: Option<&serde_json::Value>,
+    output: Option<&str>,
+) -> Option<Option<String>> {
+    fn inspect(value: &serde_json::Value) -> Option<Option<String>> {
+        let details = value.get("details").unwrap_or(value);
+        let is_background = details
+            .get("background")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false)
+            || value
+                .get("background")
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false);
+        if !is_background {
+            return None;
+        }
+        Some(
+            details
+                .get("run_id")
+                .or_else(|| details.get("operation_id"))
+                .or_else(|| value.get("run_id"))
+                .or_else(|| value.get("operation_id"))
+                .and_then(|value| value.as_str())
+                .map(str::to_string),
+        )
+    }
+
+    raw_output.and_then(inspect).or_else(|| {
+        output
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok())
+            .and_then(|value| inspect(&value))
+    })
+}
+
+fn short_operation_id(id: &str) -> String {
+    if id.len() <= 18 {
+        id.to_string()
+    } else {
+        format!("{}…", &id[..18])
     }
 }
 
@@ -1358,6 +1405,12 @@ pub fn AgentRail() -> Element {
                                                 span { class: "agent-tool-args", "{tc.args_summary}" }
                                             }
                                             span { class: format!("agent-tool-status {}", tc.status.to_lowercase()), "{tc.status}" }
+                                            if tc.background {
+                                                span { class: "agent-tool-status background", "background" }
+                                            }
+                                            if let Some(operation_id) = &tc.operation_id {
+                                                span { class: "agent-tool-args", "run {short_operation_id(operation_id)}" }
+                                            }
                                         }
                                         if !tc.output.is_empty() {
                                             // Tool output (text only for now). Mono font, faint
@@ -2083,6 +2136,8 @@ fn handle_acp_event(
                 args_summary: summarize_tool_args(args.as_ref()),
                 output: String::new(),
                 generation: *transport_generation.read(),
+                background: false,
+                operation_id: None,
             }));
 
             let id_for_watchdog = id.clone();
@@ -2121,6 +2176,8 @@ fn handle_acp_event(
             ref terminal_ids,
         } => {
             tracing::debug!("ACP ToolCallUpdated: id={id} status={st}");
+            let background_operation =
+                background_operation_from_tool_update(raw_output.as_ref(), output.as_deref());
             {
                 let mut list = items.write();
                 for item in list.iter_mut() {
@@ -2134,6 +2191,26 @@ fn handle_acp_event(
                             }
                             if let Some(o) = output {
                                 tc.output = o.clone();
+                            }
+                            if let Some(operation_id) = background_operation.clone() {
+                                tc.background = true;
+                                tc.operation_id = operation_id.clone();
+                                tc.status = "Background".into();
+                                let summary = match operation_id.as_deref() {
+                                    Some(id) => format!(
+                                        "Started background operation `{}`. Progress will continue through Omegon operation events.",
+                                        id
+                                    ),
+                                    None => "Started background operation. Progress will continue through Omegon operation events.".to_string(),
+                                };
+                                if tc.output.trim().is_empty()
+                                    || tc.output.trim_start().starts_with('{')
+                                {
+                                    tc.output = summary;
+                                } else if !tc.output.contains("Started background operation") {
+                                    tc.output.push_str("\n\n");
+                                    tc.output.push_str(&summary);
+                                }
                             }
                             if !terminal_ids.is_empty() {
                                 let summary = terminal_ids
