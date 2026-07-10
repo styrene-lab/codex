@@ -38,7 +38,10 @@ fn main() {
             tracing_subscriber::EnvFilter::from_default_env()
                 .add_directive("flynt_app=info".parse().unwrap())
                 .add_directive("flynt_store=info".parse().unwrap())
-                .add_directive("flynt_core=info".parse().unwrap()),
+                .add_directive("flynt_core=info".parse().unwrap())
+                // Dioxus 0.7.9 safely discards synthetic events from raw HTML,
+                // but logs their missing element id plus the full request at error.
+                .add_directive("dioxus_desktop::webview=off".parse().unwrap()),
         )
         .init();
 
