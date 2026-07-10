@@ -1,8 +1,16 @@
 use async_trait::async_trait;
 use flynt_core::{
+    formal_document::{
+        BundledCliTypstEngine, FormalDocumentBuildRequest, FormalDocumentBuildService,
+        FormalDocumentSettings, TypstEngine, TypstEngineLocator, formal_document_doctor,
+        formal_document_state, preflight_typst_policy,
+    },
     graph::{build_graph_payload, format_kind},
     models::{Board, ProjectLens, Task},
     query::execute_lens,
+    report::{
+        ReportBlock, compile_markdown_report, formalize_markdown_note, report_from_markdown_source,
+    },
     store::{ProjectStore, TaskFilter},
 };
 use flynt_store::project::Project;
@@ -216,6 +224,97 @@ impl Extension for FlyntExtension {
                             "tags": { "type": "array", "items": { "type": "string" } }
                         },
                         "required": ["path", "title", "content"]
+                    }
+                },
+                {
+                    "name": "formalize_note",
+                    "label": "Formalize Note",
+                    "description": "Convert a Markdown note into a linked Typst formal document. The source note is preserved; the generated .typ file becomes the canonical formal document source.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": { "type": "string", "description": "Project-relative Markdown note path." },
+                            "output_path": { "type": "string", "description": "Optional project-relative .typ output path. Defaults to documents/<note-stem>.typ." }
+                        },
+                        "required": ["path"]
+                    }
+                },
+                {
+                    "name": "report_preflight",
+                    "label": "Report: Preflight",
+                    "description": "Preflight a plain Markdown, Report Markdown, or native Typst source for compiled-report generation. Returns source mode, report config, diagnostics, and a block outline without writing output files.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": { "path": { "type": "string", "description": "Project-relative source path, e.g. docs/brief.report.md" } },
+                        "required": ["path"]
+                    }
+                },
+                {
+                    "name": "report_build",
+                    "label": "Report: Build",
+                    "description": "Build a compiled report bundle from a project-relative source path. Writes report.typ and manifest.json under reports/<source-stem>/ by default, and optionally runs typst compile to produce report.pdf.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": { "type": "string", "description": "Project-relative source path, e.g. docs/brief.report.md" },
+                            "output_dir": { "type": "string", "description": "Optional project-relative output directory. Defaults to reports/<source-stem>." },
+                            "compile_pdf": { "type": "boolean", "default": false, "description": "When true, run typst compile after generating report.typ." }
+                        },
+                        "required": ["path"]
+                    }
+                },
+                {
+                    "name": "formal_document_doctor",
+                    "label": "Formal Document: Doctor",
+                    "description": "Report Formal Document Typst engine settings, engine availability, package/cache paths, font paths, and plugin approval count for the current project.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "allow_system_typst": { "type": "boolean", "default": false, "description": "Probe system typst instead of requiring a project-local/bundled binary." }
+                        }
+                    }
+                },
+                {
+                    "name": "formal_document_preflight",
+                    "label": "Formal Document: Preflight",
+                    "description": "Preflight a canonical .typ Formal Document without compiling. Returns build state, inferred output paths, policy diagnostics, packages/plugins discovered by Flynt policy scanning, and Typst engine availability/version.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": { "type": "string", "description": "Project-relative .typ source path." },
+                            "output_dir": { "type": "string", "description": "Optional project-relative output directory. Defaults to reports/<source-stem>." },
+                            "allow_system_typst": { "type": "boolean", "default": false, "description": "Allow system typst fallback if project-local/bundled binary is unavailable." }
+                        },
+                        "required": ["path"]
+                    }
+                },
+                {
+                    "name": "formal_document_state",
+                    "label": "Formal Document: State",
+                    "description": "Return build state for a canonical .typ Formal Document by comparing the source hash with reports/<stem>/manifest.json or an explicit manifest path.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": { "type": "string", "description": "Project-relative .typ source path." },
+                            "manifest_path": { "type": "string", "description": "Optional project-relative manifest path. Defaults to reports/<source-stem>/manifest.json." }
+                        },
+                        "required": ["path"]
+                    }
+                },
+                {
+                    "name": "formal_document_build",
+                    "label": "Formal Document: Build",
+                    "description": "Build SVG preview artifacts and optionally PDF for a canonical .typ Formal Document using Flynt's FormalDocumentBuildService.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": { "type": "string", "description": "Project-relative .typ source path." },
+                            "output_dir": { "type": "string", "description": "Optional project-relative output directory. Defaults to reports/<source-stem>." },
+                            "pdf": { "type": "boolean", "default": false, "description": "When true, also build document.pdf." },
+                            "force": { "type": "boolean", "default": false },
+                            "allow_system_typst": { "type": "boolean", "default": false, "description": "Allow system typst fallback if the project-local/bundled binary is unavailable." }
+                        },
+                        "required": ["path"]
                     }
                 },
                 {
@@ -821,6 +920,296 @@ impl Extension for FlyntExtension {
             }
 
             "execute_flynt_surface_guide" => Ok(flynt_surface_guide()),
+
+            "execute_formalize_note" => {
+                let path = params["path"]
+                    .as_str()
+                    .ok_or_else(|| omegon_extension::Error::invalid_params("missing 'path'"))?;
+                let source = self.resolve_project_file(path)?;
+                if source.extension().and_then(|ext| ext.to_str()) != Some("md") {
+                    return Err(omegon_extension::Error::invalid_params(
+                        "formalize_note source must be a Markdown .md file",
+                    ));
+                }
+                let output_path = params
+                    .get("output_path")
+                    .and_then(|v| v.as_str())
+                    .map(ToOwned::to_owned)
+                    .unwrap_or_else(|| format!("documents/{}.typ", report_output_slug(path)));
+                if !output_path.ends_with(".typ") {
+                    return Err(omegon_extension::Error::invalid_params(
+                        "output_path must end in .typ",
+                    ));
+                }
+                let document = self.resolve_project_file(&output_path)?;
+                let manifest_rel =
+                    format!(".flynt/formalizations/{}.json", report_output_slug(path));
+                let manifest = self.resolve_project_file(&manifest_rel)?;
+                let result = formalize_markdown_note(&source, &document, &manifest)
+                    .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
+                Ok(json!({
+                    "source_note": path,
+                    "document": project_relative(&self.project.root, &result.document_path),
+                    "manifest": project_relative(&self.project.root, &result.manifest_path),
+                    "title": result.title,
+                    "source_sha256": result.source_sha256,
+                    "diagnostics": result.diagnostics
+                }))
+            }
+
+            "execute_report_preflight" => {
+                let path = params["path"]
+                    .as_str()
+                    .ok_or_else(|| omegon_extension::Error::invalid_params("missing 'path'"))?;
+                let source = self.resolve_project_file(path)?;
+                let raw = std::fs::read_to_string(&source).map_err(|e| {
+                    omegon_extension::Error::internal_error(format!("read {path}: {e}"))
+                })?;
+                let report = report_from_markdown_source(
+                    std::path::PathBuf::from(path),
+                    &raw,
+                    chrono::Utc::now(),
+                );
+                let blocks: Vec<_> = report.blocks.iter().map(report_block_summary).collect();
+                Ok(json!({
+                    "path": path,
+                    "title": report.title,
+                    "source_mode": report.config.source_mode,
+                    "config": report.config,
+                    "diagnostics": report.diagnostics,
+                    "blocks": blocks
+                }))
+            }
+
+            "execute_report_build" => {
+                let path = params["path"]
+                    .as_str()
+                    .ok_or_else(|| omegon_extension::Error::invalid_params("missing 'path'"))?;
+                let source = self.resolve_project_file(path)?;
+                let output_dir = match params.get("output_dir").and_then(|v| v.as_str()) {
+                    Some(dir) => self.resolve_project_dir(dir)?,
+                    None => self
+                        .project
+                        .root
+                        .join("reports")
+                        .join(report_output_slug(path)),
+                };
+                let compile_pdf = params
+                    .get("compile_pdf")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let bundle = compile_markdown_report(&source, &output_dir, compile_pdf)
+                    .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
+                let manifest: serde_json::Value = std::fs::read_to_string(&bundle.manifest_json)
+                    .ok()
+                    .and_then(|s| serde_json::from_str(&s).ok())
+                    .unwrap_or(json!(null));
+                Ok(json!({
+                    "source": path,
+                    "output_dir": project_relative(&self.project.root, &output_dir),
+                    "typst": project_relative(&self.project.root, &bundle.report_typ),
+                    "manifest": project_relative(&self.project.root, &bundle.manifest_json),
+                    "pdf": bundle.pdf.as_ref().map(|p| project_relative(&self.project.root, p)),
+                    "manifest_data": manifest
+                }))
+            }
+
+            "execute_formal_document_doctor" => {
+                let mut settings = FormalDocumentSettings::default();
+                let allow_system = params
+                    .get("allow_system_typst")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                if allow_system {
+                    settings.engine_mode =
+                        flynt_core::formal_document::FormalDocumentEngineMode::System;
+                }
+                let bundled = self.project.root.join(".flynt/typst-toolchain/bin/typst");
+                let bundled = bundled.exists().then_some(bundled);
+                let approvals = load_typst_plugin_approvals(&self.project.root)
+                    .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
+                let report = formal_document_doctor(
+                    settings,
+                    &self.project.root,
+                    bundled,
+                    approvals.as_ref(),
+                );
+                Ok(serde_json::to_value(report).unwrap_or(json!({})))
+            }
+
+            "execute_formal_document_preflight" => {
+                let path = params["path"]
+                    .as_str()
+                    .ok_or_else(|| omegon_extension::Error::invalid_params("missing 'path'"))?;
+                let source = self.resolve_project_file(path)?;
+                ensure_typ_source(&source)?;
+                let output_dir = match params.get("output_dir").and_then(|v| v.as_str()) {
+                    Some(dir) => self.resolve_project_dir(dir)?,
+                    None => self
+                        .project
+                        .root
+                        .join("reports")
+                        .join(report_output_slug(path)),
+                };
+                let manifest = output_dir.join("manifest.json");
+                let state = formal_document_state(&source, &manifest)
+                    .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
+                let mut request = FormalDocumentBuildRequest::new(&source, &output_dir);
+                request.world.project_root = self.project.root.clone();
+                request.world.package_path = self.project.root.join(".flynt/typst/packages");
+                request.world.package_cache_path =
+                    self.project.root.join(".flynt/cache/typst/packages");
+                request.world.font_paths = vec![
+                    self.project.root.join("fonts"),
+                    self.project.root.join("typst/fonts"),
+                    self.project.root.join(".flynt/fonts"),
+                ];
+                let package_lock = load_typst_package_lock(&self.project.root)
+                    .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
+                let approvals = load_typst_plugin_approvals(&self.project.root)
+                    .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
+                let policy_preflight = preflight_typst_policy(
+                    &source,
+                    &request.world,
+                    package_lock.as_ref(),
+                    approvals.as_ref(),
+                )
+                .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
+                let allow_system = params
+                    .get("allow_system_typst")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let engine = match resolve_formal_document_engine(&self.project.root, allow_system)
+                {
+                    Ok(engine) => json!({ "available": true, "info": engine.engine_info() }),
+                    Err(error) => json!({ "available": false, "error": error.to_string() }),
+                };
+                Ok(json!({
+                    "path": path,
+                    "state": state,
+                    "output_dir": project_relative(&self.project.root, &output_dir),
+                    "manifest": project_relative(&self.project.root, &manifest),
+                    "policy_preflight": policy_preflight,
+                    "diagnostics": policy_preflight.diagnostics,
+                    "packages": policy_preflight.packages,
+                    "plugins": policy_preflight.plugins,
+                    "engine": engine,
+                }))
+            }
+
+            "execute_formal_document_state" => {
+                let path = params["path"]
+                    .as_str()
+                    .ok_or_else(|| omegon_extension::Error::invalid_params("missing 'path'"))?;
+                let source = self.resolve_project_file(path)?;
+                ensure_typ_source(&source)?;
+                let manifest = match params.get("manifest_path").and_then(|v| v.as_str()) {
+                    Some(manifest_path) => self.resolve_project_file(manifest_path)?,
+                    None => self
+                        .project
+                        .root
+                        .join("reports")
+                        .join(report_output_slug(path))
+                        .join("manifest.json"),
+                };
+                let state = formal_document_state(&source, &manifest)
+                    .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
+                let manifest_data: serde_json::Value = std::fs::read_to_string(&manifest)
+                    .ok()
+                    .and_then(|s| serde_json::from_str(&s).ok())
+                    .unwrap_or(json!(null));
+                Ok(json!({
+                    "path": path,
+                    "state": state,
+                    "manifest": project_relative(&self.project.root, &manifest),
+                    "manifest_data": manifest_data
+                }))
+            }
+
+            "execute_formal_document_build" => {
+                let path = params["path"]
+                    .as_str()
+                    .ok_or_else(|| omegon_extension::Error::invalid_params("missing 'path'"))?;
+                let source = self.resolve_project_file(path)?;
+                ensure_typ_source(&source)?;
+                let output_dir = match params.get("output_dir").and_then(|v| v.as_str()) {
+                    Some(dir) => self.resolve_project_dir(dir)?,
+                    None => self
+                        .project
+                        .root
+                        .join("reports")
+                        .join(report_output_slug(path)),
+                };
+                let mut request = FormalDocumentBuildRequest::new(&source, &output_dir);
+                request.pdf = params.get("pdf").and_then(|v| v.as_bool()).unwrap_or(false);
+                request.force = params
+                    .get("force")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                request.world.project_root = self.project.root.clone();
+                request.world.package_path = self.project.root.join(".flynt/typst/packages");
+                request.world.package_cache_path =
+                    self.project.root.join(".flynt/cache/typst/packages");
+                request.world.font_paths = vec![
+                    self.project.root.join("fonts"),
+                    self.project.root.join("typst/fonts"),
+                    self.project.root.join(".flynt/fonts"),
+                ];
+                request
+                    .inputs
+                    .push(flynt_core::formal_document::TypstInput {
+                        key: "flynt_document".to_string(),
+                        value: path.to_string(),
+                    });
+                let allow_system = params
+                    .get("allow_system_typst")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let package_lock = load_typst_package_lock(&self.project.root)
+                    .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
+                let approvals = load_typst_plugin_approvals(&self.project.root)
+                    .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
+                request.package_lock = package_lock.clone();
+                request.plugin_approvals = approvals.clone();
+                let policy_preflight = preflight_typst_policy(
+                    &source,
+                    &request.world,
+                    package_lock.as_ref(),
+                    approvals.as_ref(),
+                )
+                .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
+                if policy_preflight.diagnostics.iter().any(|diagnostic| {
+                    matches!(
+                        diagnostic.severity,
+                        flynt_core::report::DiagnosticSeverity::Error
+                    )
+                }) {
+                    return Ok(json!({
+                        "state": "review_required",
+                        "source": path,
+                        "output_dir": project_relative(&self.project.root, &output_dir),
+                        "policy_preflight": policy_preflight,
+                        "diagnostics": policy_preflight.diagnostics,
+                    }));
+                }
+                let engine = resolve_formal_document_engine(&self.project.root, allow_system)
+                    .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
+                let service = FormalDocumentBuildService::new(engine);
+                let result = service
+                    .build(&request)
+                    .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
+                Ok(json!({
+                    "state": result.state,
+                    "source": path,
+                    "output_dir": project_relative(&self.project.root, &output_dir),
+                    "engine": result.manifest.engine,
+                    "outputs": result.manifest.outputs,
+                    "diagnostics": result.manifest.diagnostics,
+                    "policy_preflight": policy_preflight,
+                    "duration_ms": result.manifest.duration_ms,
+                    "manifest": result.manifest
+                }))
+            }
 
             "execute_create_document" => {
                 let path = params["path"]
@@ -1853,6 +2242,99 @@ fn flynt_surface_guide() -> Value {
     })
 }
 
+fn ensure_typ_source(path: &std::path::Path) -> Result<(), omegon_extension::Error> {
+    if path.extension().and_then(|ext| ext.to_str()) != Some("typ") {
+        return Err(omegon_extension::Error::invalid_params(
+            "Formal Document source must be a .typ file",
+        ));
+    }
+    Ok(())
+}
+
+fn resolve_formal_document_engine(
+    root: &std::path::Path,
+    allow_system: bool,
+) -> anyhow::Result<BundledCliTypstEngine> {
+    let project_tool = root.join(".flynt/typst-toolchain/bin/typst");
+    if project_tool.exists() {
+        return TypstEngineLocator::bundled(project_tool).resolve();
+    }
+    let locator = TypstEngineLocator {
+        bundled_path: None,
+        allow_system,
+    };
+    locator.resolve()
+}
+
+fn load_typst_package_lock(
+    root: &std::path::Path,
+) -> anyhow::Result<Option<flynt_core::formal_document::TypstPackageLock>> {
+    let path = root.join(".flynt/typst/package-lock.json");
+    if !path.exists() {
+        return Ok(None);
+    }
+    let body = std::fs::read_to_string(&path)?;
+    Ok(Some(serde_json::from_str(&body)?))
+}
+
+fn load_typst_plugin_approvals(
+    root: &std::path::Path,
+) -> anyhow::Result<Option<flynt_core::formal_document::TypstPluginApprovals>> {
+    let path = root.join(".flynt/typst/plugin-approvals.json");
+    if !path.exists() {
+        return Ok(None);
+    }
+    let body = std::fs::read_to_string(&path)?;
+    Ok(Some(serde_json::from_str(&body)?))
+}
+
+fn report_output_slug(path: &str) -> String {
+    std::path::Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("document")
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+fn project_relative(root: &std::path::Path, path: &std::path::Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .to_string()
+}
+
+fn report_block_summary(block: &ReportBlock) -> Value {
+    match block {
+        ReportBlock::Heading { level, text, span } => {
+            json!({"kind": "heading", "level": level, "text": text, "span": span})
+        }
+        ReportBlock::Paragraph { text, span } => {
+            json!({"kind": "paragraph", "text": text, "span": span})
+        }
+        ReportBlock::CodeBlock { language, span, .. } => {
+            json!({"kind": "code", "language": language, "span": span})
+        }
+        ReportBlock::TypstMathBlock { span, .. } => json!({"kind": "typst_math", "span": span}),
+        ReportBlock::RawTypstBlock { span, .. } => json!({"kind": "raw_typst", "span": span}),
+        ReportBlock::ReportDirective { directive, span } => {
+            json!({"kind": "report_directive", "directive": directive, "span": span})
+        }
+        ReportBlock::ThematicBreak { span } => json!({"kind": "thematic_break", "span": span}),
+    }
+}
+
 fn validate_file_stem(name: &str) -> omegon_extension::Result<()> {
     if name.trim().is_empty() || name.contains('/') || name.contains('\\') || name.contains("..") {
         return Err(omegon_extension::Error::invalid_params(
@@ -1911,6 +2393,36 @@ fn drawing_path_arg(params: &Value) -> omegon_extension::Result<&str> {
 // ergonomics. None of these tools panic on malformed input — they cross the
 // ACP boundary, where a panic would kill the worker thread.
 impl FlyntExtension {
+    fn resolve_project_file(
+        &self,
+        path_arg: &str,
+    ) -> Result<std::path::PathBuf, omegon_extension::Error> {
+        let rel = std::path::Path::new(path_arg);
+        if rel.is_absolute()
+            || rel
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            return Err(omegon_extension::Error::invalid_params(
+                "path must be project-relative and must not contain '..'",
+            ));
+        }
+        Ok(self.project.root.join(rel))
+    }
+
+    fn resolve_project_dir(
+        &self,
+        path_arg: &str,
+    ) -> Result<std::path::PathBuf, omegon_extension::Error> {
+        let path = self.resolve_project_file(path_arg)?;
+        if path.extension().is_some() {
+            return Err(omegon_extension::Error::invalid_params(
+                "output_dir must be a directory path",
+            ));
+        }
+        Ok(path)
+    }
+
     fn resolve_drawing_path(
         &self,
         path_arg: &str,
@@ -4024,5 +4536,147 @@ mod tests {
             .unwrap();
         assert!(create_description.contains("operator specifically wants"));
         assert!(!create_description.contains("when the user asks to design something fresh"));
+    }
+
+    #[tokio::test]
+    async fn formal_document_tools_appear_in_get_tools() {
+        let (_tmp, ext) = test_extension();
+        let tools = ext.handle_rpc("get_tools", json!({})).await.unwrap();
+        let tools = tools.as_array().unwrap();
+        assert!(
+            tools
+                .iter()
+                .any(|tool| tool["name"] == "formal_document_state")
+        );
+        assert!(
+            tools
+                .iter()
+                .any(|tool| tool["name"] == "formal_document_build")
+        );
+    }
+
+    #[tokio::test]
+    async fn formal_document_state_reports_missing_manifest() {
+        let (tmp, ext) = test_extension();
+        let docs = tmp.path().join("documents");
+        std::fs::create_dir_all(&docs).unwrap();
+        std::fs::write(docs.join("brief.typ"), "= Brief\n\nHello.").unwrap();
+
+        let state = ext
+            .handle_rpc(
+                "execute_formal_document_state",
+                json!({"path": "documents/brief.typ"}),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(state["state"], "missing");
+        assert_eq!(state["manifest"], "reports/brief/manifest.json");
+    }
+
+    #[tokio::test]
+    async fn formal_document_build_uses_project_local_typst_toolchain() {
+        let (tmp, ext) = test_extension();
+        let docs = tmp.path().join("documents");
+        std::fs::create_dir_all(&docs).unwrap();
+        std::fs::write(docs.join("brief.typ"), "= Brief\n\nHello.").unwrap();
+        let tool_dir = tmp.path().join(".flynt/typst-toolchain/bin");
+        std::fs::create_dir_all(&tool_dir).unwrap();
+        let typst = tool_dir.join("typst");
+        std::fs::write(
+            &typst,
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'typst 0.test.0'; exit 0; fi\nout=\"$#\"\neval last=\\${$out}\nmkdir -p \"$(dirname \"$last\")\"\nprintf '<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>' > \"$last\"\nexit 0\n",
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&typst).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&typst, perms).unwrap();
+        }
+
+        let result = ext
+            .handle_rpc(
+                "execute_formal_document_build",
+                json!({"path": "documents/brief.typ"}),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result["state"], "succeeded");
+        assert_eq!(result["engine"]["version"], "0.test.0");
+        assert_eq!(result["outputs"]["preview"].as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn formal_document_build_returns_review_required_for_unavailable_package() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = Arc::new(Project::open(tmp.path()).unwrap());
+        let extension = FlyntExtension::new(project);
+        std::fs::create_dir_all(tmp.path().join("documents")).unwrap();
+        std::fs::write(
+            tmp.path().join("documents/needs-package.typ"),
+            "#import \"@local/missing:0.1.0\": *\n= Needs Package\n",
+        )
+        .unwrap();
+
+        let result = extension
+            .handle_rpc(
+                "execute_formal_document_build",
+                json!({"path": "documents/needs-package.typ"}),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result["state"], "review_required");
+        assert!(
+            result["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|diagnostic| diagnostic["code"] == "typst_package_missing")
+        );
+    }
+
+    #[tokio::test]
+    async fn formal_document_preflight_reports_state_policy_and_engine() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = Arc::new(Project::open(tmp.path()).unwrap());
+        let extension = FlyntExtension::new(project);
+        std::fs::create_dir_all(tmp.path().join("documents")).unwrap();
+        std::fs::write(tmp.path().join("documents/preflight.typ"), "= Preflight\n").unwrap();
+
+        let result = extension
+            .handle_rpc(
+                "execute_formal_document_preflight",
+                json!({"path": "documents/preflight.typ"}),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result["path"], "documents/preflight.typ");
+        assert_eq!(result["state"], "missing");
+        assert_eq!(result["output_dir"], "reports/preflight");
+        assert!(result["policy_preflight"].is_object());
+        assert!(result["engine"].is_object());
+    }
+
+    #[tokio::test]
+    async fn formal_document_doctor_reports_defaults() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = Arc::new(Project::open(tmp.path()).unwrap());
+        let extension = FlyntExtension::new(project);
+
+        let result = extension
+            .handle_rpc("execute_formal_document_doctor", json!({}))
+            .await
+            .unwrap();
+
+        assert_eq!(result["settings"]["engine_mode"], "bundled");
+        assert_eq!(result["settings"]["package_mode"], "ask_before_download");
+        assert_eq!(result["plugin_approval_count"], 0);
+        assert!(result["engine"].is_object());
+        assert!(result["font_paths"].as_array().unwrap().len() >= 3);
     }
 }

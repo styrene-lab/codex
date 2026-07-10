@@ -2389,6 +2389,7 @@ dependencies = [
  "security-framework",
  "serde",
  "serde_json",
+ "sha2",
  "styrene-identity",
  "tempfile",
  "thiserror 2.0.18",
