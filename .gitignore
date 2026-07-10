@@ -41,3 +41,7 @@ ai/lifecycle/*.lock
 ai/memory/facts.db
 ai/session/local-launch-status.md
 ai/session/tool-compliance-marker.md
+
+# Project-local tool installations and generated memory projections
+.flynt/typst-toolchain/
+ai/memory/
