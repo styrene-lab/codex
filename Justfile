@@ -10,6 +10,15 @@ version := `grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/'`
 # ─── Development ────────────────────────────────────────────
 
 run:
+    @if [[ "$(uname -s)" == "Darwin" ]]; then \
+        scripts/launch-local-app.sh "{{vault}}"; \
+    else \
+        FLYNT_VAULT="{{vault}}" cargo run -p flynt-app; \
+    fi
+
+# Raw binary launch for log-only/debug work. On macOS this does not carry
+# Flynt.app identity and must not be used for operator-facing validation.
+run-debug:
     FLYNT_VAULT="{{vault}}" cargo run -p flynt-app
 
 run-ui:

@@ -49,8 +49,11 @@ cargo check -p flynt-app
 # Run tests
 cargo test -p flynt-core -p flynt-store
 
-# Build + run locally (outside Nix)
-cargo run --package flynt-app --bin flynt
+# Build the macOS app bundle and launch it with proper Flynt identity
+just run
+
+# Raw binary launch for log-only/debug work
+just run-debug
 ```
 
 ## Android tablet testing
