@@ -130,7 +130,7 @@ pub fn drain_inbox(project: &Project) -> Result<usize> {
     for entry in fs::read_dir(&inbox)? {
         let entry = entry?;
         let path = entry.path();
-        if path.extension().map_or(false, |e| e == "md") {
+        if path.extension().is_some_and(|e| e == "md") {
             let dest = project.root.join(path.file_name().unwrap());
             fs::rename(&path, &dest)?;
             if let Err(e) = project.index_file(&dest) {

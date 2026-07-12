@@ -29,16 +29,11 @@ pub fn Sidebar(mut active_route: Signal<Route>) -> Element {
     use_effect(move || {
         let mut rx = project_events.subscribe();
         spawn(async move {
-            loop {
-                match rx.recv().await {
-                    Ok(_) => {
-                        // Drain any queued events within the debounce window
-                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                        while rx.try_recv().is_ok() {}
-                        *refresh.write() += 1;
-                    }
-                    Err(_) => break,
-                }
+            while rx.recv().await.is_ok() {
+                // Drain any queued events within the debounce window
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                while rx.try_recv().is_ok() {}
+                *refresh.write() += 1;
             }
         });
     });

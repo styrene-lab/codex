@@ -1,3 +1,5 @@
+#![allow(clippy::collapsible_if)]
+
 use async_trait::async_trait;
 use flynt_core::{
     formal_document::{
@@ -1221,7 +1223,7 @@ impl Extension for FlyntExtension {
                     .as_array()
                     .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
                     .unwrap_or_default();
-                if contains_excalidraw_embed(content) || tags.iter().any(|tag| *tag == "drawing") {
+                if contains_excalidraw_embed(content) || tags.contains(&"drawing") {
                     return Err(omegon_extension::Error::invalid_params(
                         "Excalidraw drawings must be created with create_drawing so Flynt writes the canonical drawings/<name>.excalidraw + drawings/<name>.md pair. Do not create drawing wrappers with create_document.",
                     ));

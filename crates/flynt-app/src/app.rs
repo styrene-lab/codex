@@ -1107,7 +1107,7 @@ pub fn App() -> Element {
                                                         OmegonRuntimeContext::clone_remote_project(&dest, &url, &branch)
                                                     } else {
                                                         flynt_store::sync::GitSync::clone_repo_with_token(&url, &branch, &dest, &token)
-                                                            .and_then(|_| flynt_store::project::Project::open(&dest).map_err(Into::into))
+                                                            .and_then(|_| flynt_store::project::Project::open(&dest))
                                                     }.map(|_| (dest, url, branch))
                                                 }).await;
 

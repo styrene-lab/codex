@@ -196,7 +196,7 @@ pub fn OmegonSettingsSection() -> Element {
                         value: "{config.read().max_turns}",
                         oninput: move |e| {
                             if let Ok(v) = e.value().parse::<u32>() {
-                                config.write().max_turns = v.max(1).min(200);
+                                config.write().max_turns = v.clamp(1, 200);
                             }
                         },
                     }

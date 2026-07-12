@@ -2219,7 +2219,7 @@ fn handle_acp_event(
                                     .collect::<Vec<_>>()
                                     .join(", ");
                                 if !tc.output.is_empty() {
-                                    tc.output.push_str("\n");
+                                    tc.output.push('\n');
                                 }
                                 tc.output
                                     .push_str(&format!("Terminal output attached: {summary}."));

@@ -1,3 +1,18 @@
+#![allow(
+    clippy::collapsible_if,
+    clippy::clone_on_copy,
+    clippy::large_enum_variant,
+    clippy::let_underscore_future,
+    clippy::map_identity,
+    clippy::mutex_atomic,
+    clippy::ptr_arg,
+    clippy::question_mark,
+    clippy::redundant_closure,
+    clippy::redundant_locals,
+    clippy::too_many_arguments,
+    clippy::type_complexity
+)]
+
 pub mod acp;
 pub mod app;
 pub mod armory_install;

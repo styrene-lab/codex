@@ -61,7 +61,7 @@ impl ThemeLibrary {
         self.theme(active_id)
             .or_else(|| self.theme("alpharius"))
             .map(inline_vars)
-            .unwrap_or_else(String::new)
+            .unwrap_or_default()
     }
 
     pub fn theme(&self, id: &str) -> Option<&UiTheme> {

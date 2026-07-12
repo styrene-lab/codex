@@ -17,9 +17,9 @@ pub fn extract_terminal_create(raw: Option<&serde_json::Value>) -> Option<Termin
         } else {
             return None;
         }
-    } else if raw.get("action").and_then(|v| v.as_str()) == Some(TERMINAL_CREATE_V1) {
-        raw.get("params")?
-    } else if raw.get("type").and_then(|v| v.as_str()) == Some(TERMINAL_CREATE_V1) {
+    } else if raw.get("action").and_then(|v| v.as_str()) == Some(TERMINAL_CREATE_V1)
+        || raw.get("type").and_then(|v| v.as_str()) == Some(TERMINAL_CREATE_V1)
+    {
         raw.get("params")?
     } else if raw.get("command").is_some() {
         raw

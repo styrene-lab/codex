@@ -334,8 +334,10 @@ mod tests {
 
     #[test]
     fn link_context_preserves_aliases_and_marks_missing_links() {
-        let mut frontmatter = Frontmatter::default();
-        frontmatter.aliases = vec!["Alpha Prime".into()];
+        let frontmatter = Frontmatter {
+            aliases: vec!["Alpha Prime".into()],
+            ..Frontmatter::default()
+        };
         let resolved = DocumentMeta {
             id: flynt_core::models::DocumentId(uuid::Uuid::new_v4()),
             path: "beta.md".into(),
@@ -650,9 +652,7 @@ fn render_html_with_store(
         }
     }
     out.push_str(&html[search_from..]);
-    let html = out;
-
-    html
+    out
 }
 
 fn html_unescape(s: &str) -> String {

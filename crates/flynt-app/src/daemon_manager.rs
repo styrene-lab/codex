@@ -98,13 +98,11 @@ impl DaemonManager {
     }
 
     pub async fn stop(&self) -> anyhow::Result<()> {
-        let mut child_guard = self.child.lock().unwrap();
-        if let Some(ref mut child) = *child_guard {
+        let child = self.child.lock().unwrap().take();
+        if let Some(mut child) = child {
             info!("Stopping daemon for project {:?}", self.project_root);
             let _ = child.kill().await;
         }
-        *child_guard = None;
-        drop(child_guard);
 
         *self.state.lock().unwrap() = DaemonState::Stopped;
         Ok(())

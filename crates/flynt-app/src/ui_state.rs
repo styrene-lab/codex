@@ -170,7 +170,7 @@ fn write_atomic(runtime_root: &Path, snapshot: &UiStateSnapshot<'_>) -> std::io:
     }
 
     let body = serde_json::to_vec_pretty(snapshot)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(std::io::Error::other)?;
     std::fs::write(&tmp_path, &body)?;
     std::fs::rename(&tmp_path, &final_path)?;
     Ok(())

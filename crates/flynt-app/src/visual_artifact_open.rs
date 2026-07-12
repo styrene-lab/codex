@@ -32,7 +32,7 @@ fn open_visual_artifact_for_project(
     }
 
     let durable_open_path =
-        ensure_visual_artifact_wrapper(&project, open_path, source_path, kind, title)
+        ensure_visual_artifact_wrapper(project, open_path, source_path, kind, title)
             .unwrap_or_else(|| open_path.to_path_buf());
     if let Ok(Some(doc)) = project.store.get_document_by_path(&durable_open_path) {
         return Some((doc.id, doc.title));

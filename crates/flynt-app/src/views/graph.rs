@@ -126,25 +126,18 @@ pub fn GraphView() -> Element {
         let click_ctx = ctx_click.clone();
 
         let task = spawn(async move {
-            loop {
-                match eval.recv::<String>().await {
-                    Ok(node_id) => {
-                        if let Ok(uuid) = uuid::Uuid::from_str(&node_id) {
-                            let doc_id = DocumentId(uuid);
-                            let project = click_ctx.project();
-                            let result: Result<Option<flynt_core::models::Document>, _> =
-                                tokio::task::spawn_blocking(move || {
-                                    project.store.get_document(&doc_id)
-                                })
-                                .await
-                                .unwrap_or(Ok(None));
-                            if let Ok(Some(doc)) = result {
-                                tab_state.write().open(doc.id, doc.title);
-                                *active_route.write() = Route::Notes;
-                            }
-                        }
+            while let Ok(node_id) = eval.recv::<String>().await {
+                if let Ok(uuid) = uuid::Uuid::from_str(&node_id) {
+                    let doc_id = DocumentId(uuid);
+                    let project = click_ctx.project();
+                    let result: Result<Option<flynt_core::models::Document>, _> =
+                        tokio::task::spawn_blocking(move || project.store.get_document(&doc_id))
+                            .await
+                            .unwrap_or(Ok(None));
+                    if let Ok(Some(doc)) = result {
+                        tab_state.write().open(doc.id, doc.title);
+                        *active_route.write() = Route::Notes;
                     }
-                    Err(_) => break,
                 }
             }
         });

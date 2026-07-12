@@ -300,8 +300,6 @@ fn ExtensionSecretRow(
 
     let status_class = if secret.resolved {
         "provider-status authenticated"
-    } else if optional {
-        "provider-status missing"
     } else {
         "provider-status missing"
     };

@@ -1386,7 +1386,7 @@ mod tests {
 /// prefix (`anthropic:`, `openai:`, `ollama:`) and abbreviates known long
 /// model names. Card chips only have ~6-10 chars of room before wrap.
 pub(crate) fn short_model_label(model: &str) -> String {
-    let bare = model.split(':').last().unwrap_or(model);
+    let bare = model.rsplit(':').next().unwrap_or(model);
     if let Some(rest) = bare.strip_prefix("claude-") {
         // claude-sonnet-4-6 → sonnet-4
         // claude-opus-4-7   → opus-4
