@@ -3981,6 +3981,51 @@ See [[roadmap]].\n",
     }
 
     #[test]
+    fn okf_export_writes_index_note_and_design_node() {
+        let tmp = TempDir::new().unwrap();
+        let project_root = tmp.path().join("project");
+        fs::create_dir_all(project_root.join("design")).unwrap();
+        let project = Project::open(&project_root).unwrap();
+
+        let note_path = project_root.join("note.md");
+        fs::write(
+            &note_path,
+            "+++\ntitle = \"Portable Note\"\ntags = [\"interop\"]\n+++\n\nA preserved note body.\n",
+        )
+        .unwrap();
+        project.index_file(&note_path).unwrap();
+
+        let design_path = project_root.join("design/system.md");
+        fs::write(
+            &design_path,
+            "+++\ntitle = \"System Design\"\nkind = \"design_node\"\n+++\n\nDesign body with [[note]].\n",
+        )
+        .unwrap();
+        project.index_file(&design_path).unwrap();
+
+        let output_root = tmp.path().join("okf");
+        let report = project.export_okf_bundle(&output_root).unwrap();
+        assert_eq!(report.exported, 2);
+        assert_eq!(report.skipped, 0);
+        assert!(report.errors.is_empty());
+
+        let index = fs::read_to_string(output_root.join("index.md")).unwrap();
+        assert!(index.contains("[Portable Note](note.md)"));
+        assert!(index.contains("[System Design](design/system.md)"));
+
+        let note = fs::read_to_string(output_root.join("note.md")).unwrap();
+        assert!(note.contains("type: \"Document\""));
+        assert!(note.contains("tags: [\"interop\"]"));
+        assert!(note.contains("flynt:\n  id:"));
+        assert!(note.ends_with("A preserved note body.\n"));
+
+        let design = fs::read_to_string(output_root.join("design/system.md")).unwrap();
+        assert!(design.contains("type: \"Concept\""));
+        assert!(design.contains("entity_kind: \"design_node\""));
+        assert!(design.ends_with("Design body with [[note]].\n"));
+    }
+
+    #[test]
     fn publication_export_reports_duplicate_slugs() {
         let tmp = TempDir::new().unwrap();
         let project_root = tmp.path().join("project");
