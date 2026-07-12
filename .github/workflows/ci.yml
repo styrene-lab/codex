@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -25,6 +32,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: check-${{ matrix.target }}
 
       - name: Install Linux GUI dependencies
         run: |
@@ -48,6 +58,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: tests
 
       - name: Install Linux GUI dependencies
         run: |
@@ -65,6 +78,11 @@ jobs:
       - name: Run workspace tests
         run: cargo test --workspace --all-targets
 
+  release-surfaces:
+    name: Release surfaces
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - name: Check release surfaces
         run: python3 scripts/check-release-surfaces.py
 
@@ -74,6 +92,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: check-macos
       - name: Cargo check
         run: cargo check --workspace --all-targets
 
@@ -85,6 +106,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: clippy
       - name: Install Linux GUI dependencies
         run: |
           sudo apt-get update
@@ -105,7 +129,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/nix-installer-action@v21
       - name: Evaluate flake outputs
         run: NIXPKGS_ALLOW_UNFREE=1 nix flake show --impure
 
