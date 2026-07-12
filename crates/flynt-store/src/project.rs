@@ -999,12 +999,10 @@ impl Project {
             imported_reference: true,
             ..Frontmatter::default()
         };
+        frontmatter.kind = Some("memory_fact".into());
         frontmatter
             .metadata
             .insert("topic".into(), MetadataValue::String(topic.to_string()));
-        frontmatter
-            .metadata
-            .insert("kind".into(), MetadataValue::String("memory_fact".into()));
 
         let document = Document {
             id: DocumentId(frontmatter.id.expect("frontmatter id set for memory fact")),
@@ -3866,7 +3864,6 @@ See [[roadmap]].\n",
     }
 
     #[test]
-    #[ignore = "metadata flatten roundtrip through TOML→SQLite drops extra keys — needs schema fix"]
     fn stores_memory_fact_under_ai_memory_with_metadata_and_links() {
         let tmp = TempDir::new().unwrap();
         let project_root = tmp.path().join("project");
@@ -3895,10 +3892,7 @@ See [[roadmap]].\n",
             doc.frontmatter.metadata.get("topic"),
             Some(&MetadataValue::String("storage".into()))
         );
-        assert_eq!(
-            doc.frontmatter.metadata.get("kind"),
-            Some(&MetadataValue::String("memory_fact".into()))
-        );
+        assert_eq!(doc.frontmatter.kind.as_deref(), Some("memory_fact"));
         assert_eq!(doc.outgoing_links.len(), 1);
         assert_eq!(doc.outgoing_links[0].target, "design");
     }
