@@ -100,11 +100,10 @@ impl GitSync {
                 let user = username_from_url.unwrap_or("git");
 
                 // Attempt 1: SSH agent
-                if attempt == 1 {
-                    if let Ok(cred) = Cred::ssh_key_from_agent(user) {
+                if attempt == 1
+                    && let Ok(cred) = Cred::ssh_key_from_agent(user) {
                         return Ok(cred);
                     }
-                }
 
                 // Attempt 2+: try key files (without passphrase — works for unencrypted keys
                 // and keys whose passphrase is cached by the agent)
@@ -132,11 +131,10 @@ impl GitSync {
 
             // HTTPS: check auth.json for stored PAT/OAuth token, then credential helper
             if allowed_types.contains(git2::CredentialType::USER_PASS_PLAINTEXT) {
-                if attempt == 1 {
-                    if let Some(token) = flynt_core::providers::token_for_url(url) {
+                if attempt == 1
+                    && let Some(token) = flynt_core::providers::token_for_url(url) {
                         return Cred::userpass_plaintext(&token, "x-oauth-basic");
                     }
-                }
                 return Cred::credential_helper(
                     &git2::Config::open_default().unwrap_or_else(|_| git2::Config::new().unwrap()),
                     url,
@@ -642,7 +640,7 @@ impl GitSync {
             });
             true
         })?;
-        tags.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        tags.sort_by_key(|tag| std::cmp::Reverse(tag.timestamp));
         Ok(tags)
     }
 
@@ -689,10 +687,9 @@ impl SyncBackend for GitSync {
             head.peel_to_commit(),
             repo.find_reference(&remote_ref)
                 .and_then(|r| r.peel_to_commit()),
-        ) {
-            if local.id() != remote.id() {
-                return Ok(SyncStatus::Syncing); // ahead of remote
-            }
+        ) && local.id() != remote.id()
+        {
+            return Ok(SyncStatus::Syncing); // ahead of remote
         }
         Ok(SyncStatus::Idle)
     }

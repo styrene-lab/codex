@@ -649,7 +649,7 @@ fn scan_report_diagnostics(
         if matches!(
             config.unicode_mode,
             UnicodeMode::Diagnose | UnicodeMode::Strict
-        ) && line.chars().any(|c| !c.is_ascii())
+        ) && !line.is_ascii()
         {
             diagnostics.push(ReportDiagnostic {
                 severity: if config.unicode_mode == UnicodeMode::Strict {
@@ -690,11 +690,7 @@ fn render_typst_math_spans(text: &str) -> String {
         math = !math;
         rest = &after[1..];
     }
-    if math {
-        out.push_str(&typst_markup_text(rest));
-    } else {
-        out.push_str(&typst_markup_text(rest));
-    }
+    out.push_str(&typst_markup_text(rest));
     out
 }
 

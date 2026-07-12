@@ -14,24 +14,24 @@ pub fn parse_document_source(raw: &str) -> (String, Frontmatter, Vec<WikiLink>) 
 /// Returns (frontmatter, body). Both fields may be empty strings.
 fn split_frontmatter(raw: &str) -> (Frontmatter, String) {
     // Try TOML frontmatter: +++\n...\n+++
-    if let Some(rest) = raw.strip_prefix("+++\n") {
-        if let Some(end) = rest.find("\n+++") {
-            let fm_str = &rest[..end];
-            let body = rest[end + 4..].trim_start_matches('\n').to_string();
-            let fm: Frontmatter = toml::from_str(fm_str).unwrap_or_default();
-            return (fm, body);
-        }
+    if let Some(rest) = raw.strip_prefix("+++\n")
+        && let Some(end) = rest.find("\n+++")
+    {
+        let fm_str = &rest[..end];
+        let body = rest[end + 4..].trim_start_matches('\n').to_string();
+        let fm: Frontmatter = toml::from_str(fm_str).unwrap_or_default();
+        return (fm, body);
     }
     // Try YAML frontmatter: ---\n...\n---  (stored as TOML-compatible struct via serde)
-    if let Some(rest) = raw.strip_prefix("---\n") {
-        if let Some(end) = rest.find("\n---") {
-            // We accept basic YAML-looking TOML-compatible values (tags, aliases, status)
-            let fm_str = &rest[..end];
-            let body = rest[end + 4..].trim_start_matches('\n').to_string();
-            // Best-effort: parse as TOML (most frontmatter keys are compatible)
-            let fm: Frontmatter = toml::from_str(fm_str).unwrap_or_default();
-            return (fm, body);
-        }
+    if let Some(rest) = raw.strip_prefix("---\n")
+        && let Some(end) = rest.find("\n---")
+    {
+        // We accept basic YAML-looking TOML-compatible values (tags, aliases, status)
+        let fm_str = &rest[..end];
+        let body = rest[end + 4..].trim_start_matches('\n').to_string();
+        // Best-effort: parse as TOML (most frontmatter keys are compatible)
+        let fm: Frontmatter = toml::from_str(fm_str).unwrap_or_default();
+        return (fm, body);
     }
     (Frontmatter::default(), raw.to_string())
 }

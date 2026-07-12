@@ -419,14 +419,14 @@ impl DesignExtension {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         loop {
             tokio::time::sleep(std::time::Duration::from_millis(150)).await;
-            if let Ok(body) = std::fs::read_to_string(&resp_path) {
-                if let Ok(resp) = serde_json::from_str::<CaptureResponse>(&body) {
-                    let _ = std::fs::remove_file(&resp_path);
-                    return Ok(serde_json::to_value(&resp)
-                        .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?);
-                }
-                // Mid-write or malformed — keep polling
+            if let Ok(body) = std::fs::read_to_string(&resp_path)
+                && let Ok(resp) = serde_json::from_str::<CaptureResponse>(&body)
+            {
+                let _ = std::fs::remove_file(&resp_path);
+                return serde_json::to_value(&resp)
+                    .map_err(|e| omegon_extension::Error::internal_error(e.to_string()));
             }
+            // Mid-write or malformed — keep polling
             if std::time::Instant::now() >= deadline {
                 let _ = std::fs::remove_file(&req_path);
                 return Err(omegon_extension::Error::internal_error(
@@ -645,7 +645,7 @@ fn score_themes_against_brief(brief: &str, presets: &Value) -> Vec<(String, u32)
             out.push((id.clone(), score));
         }
     }
-    out.sort_by(|a, b| b.1.cmp(&a.1));
+    out.sort_by_key(|entry| std::cmp::Reverse(entry.1));
     out
 }
 

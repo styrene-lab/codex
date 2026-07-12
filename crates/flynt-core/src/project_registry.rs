@@ -196,15 +196,15 @@ fn build_project_edges(
 ) -> Vec<ProjectEdge> {
     let mut edges = Vec::new();
     for artifact in &visual_artifacts.artifacts {
-        if let Some(wrapper_path) = &artifact.artifact.wrapper_path {
-            if let Some(wrapper_doc) = documents.by_path(wrapper_path) {
-                edges.push(ProjectEdge {
-                    from: ProjectNodeRef::Document(wrapper_doc.id.clone()),
-                    to: ProjectNodeRef::VisualArtifact(artifact.id.clone()),
-                    relation: ProjectRelation::Wraps,
-                    source: EdgeSource::ArtifactDiscovery,
-                });
-            }
+        if let Some(wrapper_path) = &artifact.artifact.wrapper_path
+            && let Some(wrapper_doc) = documents.by_path(wrapper_path)
+        {
+            edges.push(ProjectEdge {
+                from: ProjectNodeRef::Document(wrapper_doc.id.clone()),
+                to: ProjectNodeRef::VisualArtifact(artifact.id.clone()),
+                relation: ProjectRelation::Wraps,
+                source: EdgeSource::ArtifactDiscovery,
+            });
         }
         for render in &artifact.artifact.renders {
             edges.push(ProjectEdge {
@@ -789,13 +789,13 @@ fn validate_snapshot_record_integrity(
                 )));
             }
         }
-        if let Some(change) = &task.openspec_change {
-            if !spec_ids.contains(change) {
-                diagnostics.push(invalid_record_reference(format!(
-                    "task {} references missing openspec change {}",
-                    task.id, change
-                )));
-            }
+        if let Some(change) = &task.openspec_change
+            && !spec_ids.contains(change)
+        {
+            diagnostics.push(invalid_record_reference(format!(
+                "task {} references missing openspec change {}",
+                task.id, change
+            )));
         }
     }
     diagnostics
@@ -960,16 +960,15 @@ fn collect_registry_diagnostics(
                 message: "visual artifact source path is not project-relative".into(),
             });
         }
-        if let Some(wrapper_path) = &artifact.artifact.wrapper_path {
-            if documents.by_path(wrapper_path).is_none() {
-                diagnostics.push(ProjectRegistryDiagnostic {
-                    severity: RegistryDiagnosticSeverity::Warning,
-                    kind: RegistryDiagnosticKind::MissingDocumentForWrapper,
-                    path: Some(wrapper_path.clone()),
-                    message: "artifact wrapper exists on disk but is not indexed as a document"
-                        .into(),
-                });
-            }
+        if let Some(wrapper_path) = &artifact.artifact.wrapper_path
+            && documents.by_path(wrapper_path).is_none()
+        {
+            diagnostics.push(ProjectRegistryDiagnostic {
+                severity: RegistryDiagnosticSeverity::Warning,
+                kind: RegistryDiagnosticKind::MissingDocumentForWrapper,
+                path: Some(wrapper_path.clone()),
+                message: "artifact wrapper exists on disk but is not indexed as a document".into(),
+            });
         }
     }
     diagnostics
@@ -1478,7 +1477,7 @@ impl ExternalRefRegistry {
     pub fn discover(documents: &DocumentRegistry, task_refs: &TaskRegistryView) -> Self {
         let mut refs: Vec<ExternalRefRecord> = Vec::new();
         for doc in &documents.documents {
-            for url in extract_urls(&doc.content()) {
+            for url in extract_urls(doc.content()) {
                 upsert_external_ref(&mut refs, &url, Some(&doc.id), None);
             }
         }
@@ -1501,10 +1500,10 @@ fn upsert_external_ref(
     let parsed = parse_ref(url);
     let id = ExternalRefId::from_uri(&parsed.url);
     if let Some(existing) = refs.iter_mut().find(|record| record.id == id) {
-        if let Some(document_source) = document_source {
-            if !existing.document_sources.contains(document_source) {
-                existing.document_sources.push(document_source.clone());
-            }
+        if let Some(document_source) = document_source
+            && !existing.document_sources.contains(document_source)
+        {
+            existing.document_sources.push(document_source.clone());
         }
         if let Some(task_source) = task_source {
             let task_source = task_source.to_string();
@@ -1535,7 +1534,7 @@ fn extract_urls(content: &str) -> Vec<String> {
                         '<' | '>' | '(' | ')' | '[' | ']' | '"' | '\'' | ',' | ';'
                     )
                 })
-                .trim_end_matches(|ch: char| matches!(ch, '.' | ',' | ';' | ')' | ']'));
+                .trim_end_matches(['.', ',', ';', ')', ']']);
             if cleaned.starts_with("https://") || cleaned.starts_with("http://") {
                 Some(cleaned.to_string())
             } else {
@@ -2176,8 +2175,10 @@ mod tests {
         std::fs::create_dir_all(tmp.path().join("drawings/rendered")).unwrap();
         std::fs::write(tmp.path().join("drawings/rendered/map.svg"), "<svg/>").unwrap();
 
-        let mut wrapper_frontmatter = Frontmatter::default();
-        wrapper_frontmatter.tags = vec!["drawing".into()];
+        let wrapper_frontmatter = Frontmatter {
+            tags: vec!["drawing".into()],
+            ..Frontmatter::default()
+        };
         let wrapper = test_doc(
             "drawings/map.md",
             "Map",
@@ -2385,7 +2386,7 @@ mod tests {
             assets
                 .assets
                 .iter()
-                .any(|asset| asset.path == PathBuf::from("assets/public.json"))
+                .any(|asset| asset.path == Path::new("assets/public.json"))
         );
         assert!(
             !assets
@@ -2429,44 +2430,48 @@ mod tests {
             assets
                 .assets
                 .iter()
-                .any(|asset| asset.path == PathBuf::from("assets/logo.svg")
+                .any(|asset| asset.path == Path::new("assets/logo.svg")
                     && asset.role == RawAssetRole::Image)
         );
         assert!(
             assets
                 .assets
                 .iter()
-                .any(|asset| asset.path == PathBuf::from("assets/theme.css")
+                .any(|asset| asset.path == Path::new("assets/theme.css")
                     && asset.role == RawAssetRole::Stylesheet)
         );
         assert!(
             assets
                 .assets
                 .iter()
-                .any(|asset| asset.path == PathBuf::from("assets/data.json")
+                .any(|asset| asset.path == Path::new("assets/data.json")
                     && asset.role == RawAssetRole::Data)
         );
         assert!(
             assets
                 .assets
                 .iter()
-                .any(|asset| asset.path == PathBuf::from("assets/deck.pptx")
+                .any(|asset| asset.path == Path::new("assets/deck.pptx")
                     && asset.role == RawAssetRole::ImportExportOnly)
         );
-        assert!(assets.assets.iter().any(|asset| asset.path
-            == PathBuf::from("drawings/rendered/map.svg")
-            && asset.role == RawAssetRole::RenderSidecar));
         assert!(
-            !assets
+            assets
                 .assets
                 .iter()
-                .any(|asset| asset.path == PathBuf::from("drawings/map.excalidraw"))
+                .any(|asset| asset.path == Path::new("drawings/rendered/map.svg")
+                    && asset.role == RawAssetRole::RenderSidecar)
         );
         assert!(
             !assets
                 .assets
                 .iter()
-                .any(|asset| asset.path == PathBuf::from("drawings/map.md"))
+                .any(|asset| asset.path == Path::new("drawings/map.excalidraw"))
+        );
+        assert!(
+            !assets
+                .assets
+                .iter()
+                .any(|asset| asset.path == Path::new("drawings/map.md"))
         );
     }
 

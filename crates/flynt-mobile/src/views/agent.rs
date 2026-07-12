@@ -55,54 +55,48 @@ pub fn AgentView() -> Element {
                     // Read loop — handle omegon serve event protocol
                     spawn(async move {
                         while let Some(Ok(msg)) = read.next().await {
-                            if let tokio_tungstenite::tungstenite::Message::Text(text) = msg {
-                                if let Ok(event) = serde_json::from_str::<serde_json::Value>(&*text)
-                                {
-                                    let event_type = event["type"].as_str().unwrap_or("");
-                                    match event_type {
-                                        "message_chunk" => {
-                                            if let Some(t) = event["text"].as_str() {
-                                                let mut msgs = messages.write();
-                                                if let Some((false, last)) = msgs.last_mut() {
-                                                    last.push_str(t);
-                                                } else {
-                                                    msgs.push((false, t.to_string()));
-                                                }
-                                            }
-                                        }
-                                        "tool_start" => {
-                                            let name = event["name"].as_str().unwrap_or("tool");
-                                            messages.write().push((false, format!("» {name}")));
-                                        }
-                                        "tool_end" => {
-                                            let icon =
-                                                if event["is_error"].as_bool().unwrap_or(false) {
-                                                    "x"
-                                                } else {
-                                                    "ok"
-                                                };
-                                            let result = event["result"].as_str().unwrap_or("");
-                                            let short = if result.len() > 100 {
-                                                &result[..100]
+                            if let tokio_tungstenite::tungstenite::Message::Text(text) = msg
+                                && let Ok(event) = serde_json::from_str::<serde_json::Value>(&text)
+                            {
+                                let event_type = event["type"].as_str().unwrap_or("");
+                                match event_type {
+                                    "message_chunk" => {
+                                        if let Some(t) = event["text"].as_str() {
+                                            let mut msgs = messages.write();
+                                            if let Some((false, last)) = msgs.last_mut() {
+                                                last.push_str(t);
                                             } else {
-                                                result
-                                            };
-                                            messages
-                                                .write()
-                                                .push((false, format!("{icon} {short}")));
-                                        }
-                                        "agent_end" => {
-                                            // Turn complete — ensure next message_chunk starts fresh
-                                        }
-                                        "system_notification" => {
-                                            if let Some(msg) = event["message"].as_str() {
-                                                messages
-                                                    .write()
-                                                    .push((false, format!("[sys] {msg}")));
+                                                msgs.push((false, t.to_string()));
                                             }
                                         }
-                                        _ => {}
                                     }
+                                    "tool_start" => {
+                                        let name = event["name"].as_str().unwrap_or("tool");
+                                        messages.write().push((false, format!("» {name}")));
+                                    }
+                                    "tool_end" => {
+                                        let icon = if event["is_error"].as_bool().unwrap_or(false) {
+                                            "x"
+                                        } else {
+                                            "ok"
+                                        };
+                                        let result = event["result"].as_str().unwrap_or("");
+                                        let short = if result.len() > 100 {
+                                            &result[..100]
+                                        } else {
+                                            result
+                                        };
+                                        messages.write().push((false, format!("{icon} {short}")));
+                                    }
+                                    "agent_end" => {
+                                        // Turn complete — ensure next message_chunk starts fresh
+                                    }
+                                    "system_notification" => {
+                                        if let Some(msg) = event["message"].as_str() {
+                                            messages.write().push((false, format!("[sys] {msg}")));
+                                        }
+                                    }
+                                    _ => {}
                                 }
                             }
                         }
@@ -167,9 +161,9 @@ pub fn AgentView() -> Element {
 
                             spawn(async move {
                                 if let Some(ref mut tx) = *ws_tx.write() {
-                                    let msg = if prompt.starts_with('/') {
+                                    let msg = if let Some(command) = prompt.strip_prefix('/') {
                                         // Slash command
-                                        let (name, args) = prompt[1..].split_once(' ').unwrap_or((&prompt[1..], ""));
+                                        let (name, args) = command.split_once(' ').unwrap_or((command, ""));
                                         serde_json::json!({"type": "slash_command", "name": name, "args": args})
                                     } else {
                                         serde_json::json!({"type": "user_prompt", "text": prompt})
@@ -210,10 +204,10 @@ async fn fetch_token(host: &str) -> Result<String, String> {
 
     if let Some(pos) = body.find("\r\n\r\n") {
         let json_str = &body[pos + 4..];
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
-            if let Some(token) = json["token"].as_str() {
-                return Ok(token.to_string());
-            }
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str)
+            && let Some(token) = json["token"].as_str()
+        {
+            return Ok(token.to_string());
         }
     }
     Err("could not extract token".into())

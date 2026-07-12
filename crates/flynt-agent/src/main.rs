@@ -26,10 +26,10 @@ fn looks_like_project_root(path: &Path) -> bool {
 }
 
 fn default_project_root() -> PathBuf {
-    if let Ok(cwd) = std::env::current_dir() {
-        if looks_like_project_root(&cwd) {
-            return cwd;
-        }
+    if let Ok(cwd) = std::env::current_dir()
+        && looks_like_project_root(&cwd)
+    {
+        return cwd;
     }
 
     dirs::document_dir()
@@ -110,7 +110,7 @@ async fn main() -> Result<()> {
                 "                             Legacy aliases (deprecated): FLYNT_VAULT, CODEX_VAULT"
             );
         }
-        Some("--rpc") | _ => {
+        _ => {
             // Default: run as omegon extension (v2 bidirectional protocol)
             omegon_extension::serve_v2(ext)
                 .await

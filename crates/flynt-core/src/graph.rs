@@ -145,22 +145,22 @@ pub fn build_graph_payload(store: &dyn ProjectStore) -> Result<GraphPayload> {
             }
 
             // Design node dependency + parent-child edges
-            if kind == GraphNodeKind::DesignNode {
-                if let Some(entity) = &doc.entity {
-                    for dep_id in entity.get_text_list("dependencies") {
-                        edges.push(GraphEdge {
-                            source: id.clone(),
-                            target: dep_id,
-                            kind: GraphEdgeKind::Dependency,
-                        });
-                    }
-                    if let Some(parent_id) = entity.get_text("parent") {
-                        edges.push(GraphEdge {
-                            source: parent_id.to_string(),
-                            target: id.clone(),
-                            kind: GraphEdgeKind::ParentChild,
-                        });
-                    }
+            if kind == GraphNodeKind::DesignNode
+                && let Some(entity) = &doc.entity
+            {
+                for dep_id in entity.get_text_list("dependencies") {
+                    edges.push(GraphEdge {
+                        source: id.clone(),
+                        target: dep_id,
+                        kind: GraphEdgeKind::Dependency,
+                    });
+                }
+                if let Some(parent_id) = entity.get_text("parent") {
+                    edges.push(GraphEdge {
+                        source: parent_id.to_string(),
+                        target: id.clone(),
+                        kind: GraphEdgeKind::ParentChild,
+                    });
                 }
             }
         }

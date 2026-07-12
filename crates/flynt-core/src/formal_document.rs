@@ -245,29 +245,29 @@ pub enum TypstNetworkMode {
 impl FormalDocumentSettings {
     pub fn world_policy(&self, project_root: impl Into<PathBuf>) -> TypstWorldPolicy {
         let project_root = project_root.into();
-        let mut policy = TypstWorldPolicy::default();
-        policy.project_root = project_root.clone();
-        policy.package_mode = match self.network_mode {
-            TypstNetworkMode::OfflineOnly => TypstPackageMode::OfflineOnly,
-            TypstNetworkMode::NeverWithoutApproval => self.package_mode,
-            TypstNetworkMode::AllowPackageDownloads => self.package_mode,
-        };
-        policy.plugin_mode = self.plugin_mode;
-        policy.font_mode = self.font_mode;
-        policy.engine_preference = match self.engine_mode {
-            FormalDocumentEngineMode::Bundled => TypstEnginePreference::Bundled,
-            FormalDocumentEngineMode::System => TypstEnginePreference::System,
-            FormalDocumentEngineMode::Disabled => TypstEnginePreference::Bundled,
-        };
-        policy.package_path = project_root.join(".flynt/typst/packages");
-        policy.package_cache_path = project_root.join(".flynt/cache/typst/packages");
-        policy.font_paths = vec![
-            project_root.join("fonts"),
-            project_root.join("typst/fonts"),
-            project_root.join(".flynt/fonts"),
-        ];
-        policy.creation_timestamp = self.creation_timestamp;
-        policy
+        TypstWorldPolicy {
+            project_root: project_root.clone(),
+            package_mode: match self.network_mode {
+                TypstNetworkMode::OfflineOnly => TypstPackageMode::OfflineOnly,
+                TypstNetworkMode::NeverWithoutApproval => self.package_mode,
+                TypstNetworkMode::AllowPackageDownloads => self.package_mode,
+            },
+            plugin_mode: self.plugin_mode,
+            font_mode: self.font_mode,
+            engine_preference: match self.engine_mode {
+                FormalDocumentEngineMode::Bundled => TypstEnginePreference::Bundled,
+                FormalDocumentEngineMode::System => TypstEnginePreference::System,
+                FormalDocumentEngineMode::Disabled => TypstEnginePreference::Bundled,
+            },
+            package_path: project_root.join(".flynt/typst/packages"),
+            package_cache_path: project_root.join(".flynt/cache/typst/packages"),
+            font_paths: vec![
+                project_root.join("fonts"),
+                project_root.join("typst/fonts"),
+                project_root.join(".flynt/fonts"),
+            ],
+            creation_timestamp: self.creation_timestamp,
+        }
     }
 }
 
@@ -1181,8 +1181,8 @@ fn parse_typst_deps(path: &Path) -> Result<Vec<PathBuf>> {
 
 fn collect_dep_paths(value: &serde_json::Value, deps: &mut Vec<PathBuf>) {
     match value {
-        serde_json::Value::String(s) => {
-            if s.ends_with(".typ")
+        serde_json::Value::String(s)
+            if (s.ends_with(".typ")
                 || s.ends_with(".svg")
                 || s.ends_with(".png")
                 || s.ends_with(".jpg")
@@ -1190,10 +1190,9 @@ fn collect_dep_paths(value: &serde_json::Value, deps: &mut Vec<PathBuf>) {
                 || s.ends_with(".bib")
                 || s.ends_with(".yaml")
                 || s.ends_with(".yml")
-                || s.ends_with(".csl")
-            {
-                deps.push(PathBuf::from(s));
-            }
+                || s.ends_with(".csl")) =>
+        {
+            deps.push(PathBuf::from(s));
         }
         serde_json::Value::Array(items) => {
             for item in items {
@@ -1465,8 +1464,8 @@ mod tests {
     fn system_typst_locator_is_non_fatal_when_binary_missing() {
         let locator = TypstEngineLocator::system_for_tests();
         let result = locator.resolve();
-        if result.is_err() {
-            eprintln!("skipping system Typst assertion: {}", result.unwrap_err());
+        if let Err(err) = result {
+            eprintln!("skipping system Typst assertion: {err}");
         }
     }
 
@@ -1617,10 +1616,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let source = dir.path().join("doc.typ");
         fs::write(&source, "#import \"@local/missing:0.1.0\": *").unwrap();
-        let mut world = TypstWorldPolicy::default();
-        world.project_root = dir.path().to_path_buf();
-        world.package_path = dir.path().join(".flynt/typst/packages");
-        world.package_mode = TypstPackageMode::OfflineOnly;
+        let world = TypstWorldPolicy {
+            project_root: dir.path().to_path_buf(),
+            package_path: dir.path().join(".flynt/typst/packages"),
+            package_mode: TypstPackageMode::OfflineOnly,
+            ..TypstWorldPolicy::default()
+        };
         let preflight = preflight_typst_policy(&source, &world, None, None).unwrap();
         assert!(
             preflight
@@ -1645,9 +1646,11 @@ mod tests {
             b"not-real-wasm-but-policy-bytes",
         )
         .unwrap();
-        let mut world = TypstWorldPolicy::default();
-        world.project_root = dir.path().to_path_buf();
-        world.package_path = dir.path().join(".flynt/typst/packages");
+        let world = TypstWorldPolicy {
+            project_root: dir.path().to_path_buf(),
+            package_path: dir.path().join(".flynt/typst/packages"),
+            ..TypstWorldPolicy::default()
+        };
         let preflight = preflight_typst_policy(&source, &world, None, None).unwrap();
         assert_eq!(preflight.packages.len(), 1);
         assert!(preflight.packages[0].sha256.is_some());
@@ -1752,10 +1755,12 @@ mod tests {
     #[test]
     fn formal_document_settings_map_to_world_policy() {
         let dir = tempfile::tempdir().unwrap();
-        let mut settings = FormalDocumentSettings::default();
-        settings.network_mode = TypstNetworkMode::OfflineOnly;
-        settings.font_mode = TypstFontMode::BundledProjectAndSystem;
-        settings.creation_timestamp = Some(123);
+        let settings = FormalDocumentSettings {
+            network_mode: TypstNetworkMode::OfflineOnly,
+            font_mode: TypstFontMode::BundledProjectAndSystem,
+            creation_timestamp: Some(123),
+            ..FormalDocumentSettings::default()
+        };
 
         let world = settings.world_policy(dir.path());
 
@@ -1768,8 +1773,10 @@ mod tests {
     #[test]
     fn formal_document_doctor_reports_engine_disabled_and_approval_count() {
         let dir = tempfile::tempdir().unwrap();
-        let mut settings = FormalDocumentSettings::default();
-        settings.engine_mode = FormalDocumentEngineMode::Disabled;
+        let settings = FormalDocumentSettings {
+            engine_mode: FormalDocumentEngineMode::Disabled,
+            ..FormalDocumentSettings::default()
+        };
         let approvals = TypstPluginApprovals {
             version: 1,
             approvals: vec![TypstPluginApproval {

@@ -756,6 +756,7 @@ pub async fn forge_sync_issues(
 /// Split out so tests can hand-craft op slices and exercise the
 /// CreateLocal / UpdateLocal / orphan paths without spinning up a
 /// real or mock forge client.
+#[allow(clippy::too_many_arguments)]
 fn materialize_sync_ops(
     project: &Project,
     store: &SyncStore,
@@ -808,10 +809,12 @@ fn materialize_sync_ops(
                 // IssueMap so next sync sees the issue as new and
                 // re-creates. Orphan numbers are surfaced in the result
                 // so the operator can spot drift.
-                let mut patch = flynt_models::TaskPatch::default();
-                patch.title = Some(issue.title.clone());
-                patch.description = Some(issue.body.clone());
-                patch.tags = Some(issue.labels.clone());
+                let patch = flynt_models::TaskPatch {
+                    title: Some(issue.title.clone()),
+                    description: Some(issue.body.clone()),
+                    tags: Some(issue.labels.clone()),
+                    ..flynt_models::TaskPatch::default()
+                };
                 // update_any_task applies the patch + persists via the
                 // project path so the .md file gets refreshed (forge sync
                 // is the canonical path for issue→task updates).

@@ -249,12 +249,12 @@ fn set_auth_file_permissions(path: &std::path::Path) -> anyhow::Result<()> {
 pub fn probe_provider(provider: &ProviderInfo) -> CredentialStatus {
     // Check environment variables first
     for var in provider.env_vars {
-        if let Ok(val) = std::env::var(var) {
-            if !val.is_empty() {
-                return CredentialStatus::Authenticated {
-                    source: format!("env:{var}"),
-                };
-            }
+        if let Ok(val) = std::env::var(var)
+            && !val.is_empty()
+        {
+            return CredentialStatus::Authenticated {
+                source: format!("env:{var}"),
+            };
         }
     }
 
@@ -361,10 +361,10 @@ pub fn token_for_url(url: &str) -> Option<String> {
     // Check environment variables first (matches probe_provider logic)
     let provider = PROVIDERS.iter().find(|p| p.id == provider_id)?;
     for var in provider.env_vars {
-        if let Ok(val) = std::env::var(var) {
-            if !val.is_empty() {
-                return Some(val);
-            }
+        if let Ok(val) = std::env::var(var)
+            && !val.is_empty()
+        {
+            return Some(val);
         }
     }
 

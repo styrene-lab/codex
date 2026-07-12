@@ -188,16 +188,18 @@ pub fn flow_create(project: &Project, params: Value) -> ExtResult<Value> {
         )));
     }
 
-    let mut flow = Flow::default();
-    flow.meta = FlowMeta {
-        title: params
-            .get("title")
-            .and_then(|v| v.as_str())
-            .map(String::from),
-        description: params
-            .get("description")
-            .and_then(|v| v.as_str())
-            .map(String::from),
+    let mut flow = Flow {
+        meta: FlowMeta {
+            title: params
+                .get("title")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            description: params
+                .get("description")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+        },
+        ..Flow::default()
     };
     if let Some(arr) = params.get("nodes").and_then(|v| v.as_array()) {
         for n in arr {

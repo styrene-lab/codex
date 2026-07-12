@@ -31,7 +31,9 @@ use uuid::Uuid;
 /// TOML frontmatter can express plus a `Ref` variant for entity relationships.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
+#[derive(Default)]
 pub enum Datum {
+    #[default]
     Null,
     Bool(bool),
     Int(i64),
@@ -117,12 +119,6 @@ impl Datum {
             Self::Ref(r) => Some(r.clone()),
             _ => None,
         }
-    }
-}
-
-impl Default for Datum {
-    fn default() -> Self {
-        Self::Null
     }
 }
 
@@ -256,7 +252,9 @@ pub struct Entity {
 /// `Custom` kinds are schema-driven and render generically.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum EntityKind {
+    #[default]
     Document,
     Task,
     /// A git repository — local, remote, or both.
@@ -275,6 +273,7 @@ pub enum EntityKind {
 }
 
 impl EntityKind {
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s {
             "document" => Self::Document,
@@ -304,12 +303,6 @@ impl EntityKind {
     /// Whether this kind represents a first-class entity with dedicated UI.
     pub fn is_known(&self) -> bool {
         !matches!(self, Self::Custom(_))
-    }
-}
-
-impl Default for EntityKind {
-    fn default() -> Self {
-        Self::Document
     }
 }
 
@@ -919,7 +912,7 @@ mod tests {
         let table = toml_val.as_table().unwrap();
 
         assert_eq!(table.get("kind").unwrap().as_str().unwrap(), "task");
-        assert!(table.get("id").unwrap().as_str().unwrap().len() > 0);
+        assert!(!table.get("id").unwrap().as_str().unwrap().is_empty());
 
         let data = table.get("data").unwrap().as_table().unwrap();
         assert_eq!(data.get("title").unwrap().as_str().unwrap(), "Fix bug");

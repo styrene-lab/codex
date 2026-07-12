@@ -102,17 +102,9 @@ fn resolved_document_updated_at(
     file_modified_time(path).unwrap_or(fallback)
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 struct ProjectOpenOptions {
     create_portable_metadata: bool,
-}
-
-impl Default for ProjectOpenOptions {
-    fn default() -> Self {
-        Self {
-            create_portable_metadata: false,
-        }
-    }
 }
 
 /// Project manages the root directory layout:
@@ -399,10 +391,10 @@ impl Project {
         // inner Project entity dissolved, the outer reindex above
         // covers everything.)
 
-        if self.config.indexing.track_index_snapshot {
-            if let Err(e) = self.write_index_snapshot() {
-                errors.push(format!("index snapshot: {e}"));
-            }
+        if self.config.indexing.track_index_snapshot
+            && let Err(e) = self.write_index_snapshot()
+        {
+            errors.push(format!("index snapshot: {e}"));
         }
 
         info!("Reindex complete: {indexed} files, {} errors", errors.len());
@@ -438,7 +430,7 @@ impl Project {
         }
 
         let mut tasks = self.store.list_tasks(&TaskFilter::default())?;
-        tasks.sort_by(|a, b| a.id.0.cmp(&b.id.0));
+        tasks.sort_by_key(|a| a.id.0);
         for task in tasks {
             lines.push(serde_json::to_string(&IndexSnapshotRecord::Task {
                 id: task.id.0.to_string(),
@@ -487,12 +479,11 @@ impl Project {
         if frontmatter.id.is_none() {
             frontmatter.id = Some(id.0);
             if self.config.indexing.should_write_frontmatter(&rel_path) {
-                if frontmatter.kind.is_none() {
-                    if let Some(scope) = self.config.indexing.scope_for_path(&rel_path) {
-                        if let Some(ref k) = scope.kind {
-                            frontmatter.kind = Some(k.clone());
-                        }
-                    }
+                if frontmatter.kind.is_none()
+                    && let Some(scope) = self.config.indexing.scope_for_path(&rel_path)
+                    && let Some(ref k) = scope.kind
+                {
+                    frontmatter.kind = Some(k.clone());
                 }
                 let new_fm = toml::to_string(&frontmatter).unwrap_or_default();
                 let new_raw = format!("+++\n{new_fm}+++\n\n{body}");
@@ -946,13 +937,16 @@ impl Project {
             .join(format!("{}-{}.md", now.format("%Y%m%d%H%M%S"), slug));
         let absolute_path = self.root.join(&relative_path);
 
-        let mut frontmatter = Frontmatter::default();
-        frontmatter.id = Some(DocumentId::new().0);
-        frontmatter.title = Some(title.to_string());
-        frontmatter.source_format = Some("omegon_comm".into());
-        frontmatter.source_path = Some(format!("omegon://{channel}"));
-        frontmatter.imported_at = Some(now);
-        frontmatter.imported_reference = true;
+        #[allow(clippy::field_reassign_with_default)]
+        let mut frontmatter = Frontmatter {
+            id: Some(DocumentId::new().0),
+            title: Some(title.to_string()),
+            source_format: Some("omegon_comm".into()),
+            source_path: Some(format!("omegon://{channel}")),
+            imported_at: Some(now),
+            imported_reference: true,
+            ..Frontmatter::default()
+        };
         frontmatter
             .metadata
             .insert("channel".into(), MetadataValue::String(channel.to_string()));
@@ -995,13 +989,16 @@ impl Project {
             .join(format!("{}-{}.md", now.format("%Y%m%d%H%M%S"), slug));
         let absolute_path = self.root.join(&relative_path);
 
-        let mut frontmatter = Frontmatter::default();
-        frontmatter.id = Some(DocumentId::new().0);
-        frontmatter.title = Some(title.to_string());
-        frontmatter.source_format = Some("omegon_memory".into());
-        frontmatter.source_path = Some(format!("omegon://memory/{topic}"));
-        frontmatter.imported_at = Some(now);
-        frontmatter.imported_reference = true;
+        #[allow(clippy::field_reassign_with_default)]
+        let mut frontmatter = Frontmatter {
+            id: Some(DocumentId::new().0),
+            title: Some(title.to_string()),
+            source_format: Some("omegon_memory".into()),
+            source_path: Some(format!("omegon://memory/{topic}")),
+            imported_at: Some(now),
+            imported_reference: true,
+            ..Frontmatter::default()
+        };
         frontmatter
             .metadata
             .insert("topic".into(), MetadataValue::String(topic.to_string()));
@@ -1459,10 +1456,10 @@ impl Project {
             // already deleted it manually); a permissions error gets
             // logged but doesn't fail the delete since the DB row is
             // already gone.
-            if let Err(e) = std::fs::remove_file(&abs) {
-                if e.kind() != std::io::ErrorKind::NotFound {
-                    tracing::warn!(error = %e, path = %abs.display(), "delete_task: removing file");
-                }
+            if let Err(e) = std::fs::remove_file(&abs)
+                && e.kind() != std::io::ErrorKind::NotFound
+            {
+                tracing::warn!(error = %e, path = %abs.display(), "delete_task: removing file");
             }
         }
         if let Some(hook) = self.save_hook.get() {
@@ -1656,7 +1653,7 @@ impl Project {
             let rel = path.strip_prefix(&self.root).unwrap_or(&path).to_path_buf();
             lenses.push((rel, lens));
         }
-        lenses.sort_by(|(_, a), (_, b)| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+        lenses.sort_by_key(|(_, a)| a.title.to_lowercase());
         Ok(lenses)
     }
 
@@ -1704,7 +1701,8 @@ impl Project {
         // Update the frontmatter title in the document content
         let updated_content = if raw.contains("+++") {
             // Replace title in TOML frontmatter
-            let new_raw = if let Some(title_line_start) = raw.find("title = \"") {
+
+            if let Some(title_line_start) = raw.find("title = \"") {
                 let before = &raw[..title_line_start];
                 let after_title = &raw[title_line_start..];
                 if let Some(end_quote) = after_title[9..].find('"') {
@@ -1719,8 +1717,7 @@ impl Project {
                 }
             } else {
                 raw.clone()
-            };
-            new_raw
+            }
         } else {
             raw.clone()
         };
@@ -1816,10 +1813,8 @@ impl Project {
                 }
             }
 
-            if changed {
-                if fs::write(path, &new_content).is_ok() {
-                    files_updated += 1;
-                }
+            if changed && fs::write(path, &new_content).is_ok() {
+                files_updated += 1;
             }
         })?;
 
@@ -1877,10 +1872,10 @@ impl Project {
             new_tags.sort();
             new_tags.dedup();
 
-            if let Some(new_content) = replace_frontmatter_tags(&content, &new_tags) {
-                if fs::write(path, &new_content).is_ok() {
-                    files_updated += 1;
-                }
+            if let Some(new_content) = replace_frontmatter_tags(&content, &new_tags)
+                && fs::write(path, &new_content).is_ok()
+            {
+                files_updated += 1;
             }
         })?;
         self.reindex()?;
@@ -1906,10 +1901,10 @@ impl Project {
 
             let new_tags: Vec<String> = fm.tags.into_iter().filter(|t| t != tag).collect();
 
-            if let Some(new_content) = replace_frontmatter_tags(&content, &new_tags) {
-                if fs::write(path, &new_content).is_ok() {
-                    files_updated += 1;
-                }
+            if let Some(new_content) = replace_frontmatter_tags(&content, &new_tags)
+                && fs::write(path, &new_content).is_ok()
+            {
+                files_updated += 1;
             }
         })?;
         self.reindex()?;
@@ -2027,24 +2022,19 @@ impl Project {
             }
 
             // Due date notification — task due today or overdue
-            if let Some(due) = task.due_date {
-                if due <= today {
-                    let days = (today - due).num_days();
-                    let body = if days == 0 {
-                        format!("\"{}\" is due today", task.title)
-                    } else {
-                        format!("\"{}\" is {} day(s) overdue", task.title, days)
-                    };
-                    notifications.push(
-                        Notification::new(
-                            NotificationKind::DueDate,
-                            &task.title,
-                            body,
-                            &project_name,
-                        )
+            if let Some(due) = task.due_date
+                && due <= today
+            {
+                let days = (today - due).num_days();
+                let body = if days == 0 {
+                    format!("\"{}\" is due today", task.title)
+                } else {
+                    format!("\"{}\" is {} day(s) overdue", task.title, days)
+                };
+                notifications.push(
+                    Notification::new(NotificationKind::DueDate, &task.title, body, &project_name)
                         .for_task(task.id.clone()),
-                    );
-                }
+                );
             }
 
             // Decay notification — task is fading

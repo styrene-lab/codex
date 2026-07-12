@@ -142,6 +142,7 @@ impl<'de> Deserialize<'de> for Cell {
 }
 
 impl Cell {
+    #[allow(clippy::too_many_arguments)]
     pub fn html(
         id: impl Into<String>,
         x: u32,

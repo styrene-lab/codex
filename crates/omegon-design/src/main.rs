@@ -80,7 +80,7 @@ async fn main() -> Result<()> {
             println!("  omegon-design --mcp          Run as MCP server");
             println!("  omegon-design --help         Show this help");
         }
-        Some("--rpc") | _ => {
+        _ => {
             omegon_extension::serve_v2(ext)
                 .await
                 .expect("omegon-design extension failed");

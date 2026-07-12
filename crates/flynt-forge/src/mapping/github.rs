@@ -52,12 +52,12 @@ impl TaskFieldMapper for GitHubMapper {
         }
 
         let milestone = milestone_for_due_date(task, cfg);
-        if matches!(cfg.due_date.strategy, DueDateStrategy::Label) {
-            if let Some(d) = task.due_date {
-                let label = format!("due:{}", d);
-                if !labels.contains(&label) {
-                    labels.push(label);
-                }
+        if matches!(cfg.due_date.strategy, DueDateStrategy::Label)
+            && let Some(d) = task.due_date
+        {
+            let label = format!("due:{}", d);
+            if !labels.contains(&label) {
+                labels.push(label);
             }
         }
 
@@ -165,12 +165,12 @@ impl TaskFieldMapper for GitHubMapper {
             patch.tags = Some(tags_from_labels);
         }
 
-        if cfg.sync_fields.priority && !cfg.priority.label_prefix.is_empty() {
-            if let Some(label) = priority_label {
-                if let Some(p) = priority_from_label(label, &cfg.priority.label_prefix) {
-                    patch.priority = Some(p);
-                }
-            }
+        if cfg.sync_fields.priority
+            && !cfg.priority.label_prefix.is_empty()
+            && let Some(label) = priority_label
+            && let Some(p) = priority_from_label(label, &cfg.priority.label_prefix)
+        {
+            patch.priority = Some(p);
         }
 
         if cfg.sync_fields.status {
@@ -179,19 +179,18 @@ impl TaskFieldMapper for GitHubMapper {
             let status_from_label = status_label
                 .and_then(|l| cfg.status_labels.status_for_label(l))
                 .and_then(status_from_str);
-            let status = status_from_label.unwrap_or_else(|| match issue.state {
+            let status = status_from_label.unwrap_or(match issue.state {
                 IssueState::Open => TaskStatus::Todo,
                 IssueState::Closed => TaskStatus::Done,
             });
             patch.status = Some(status);
         }
 
-        if cfg.sync_fields.due_date {
-            if let Some(m) = &issue.milestone {
-                if let Ok(d) = m.parse::<chrono::NaiveDate>() {
-                    patch.due_date = Some(Some(d));
-                }
-            }
+        if cfg.sync_fields.due_date
+            && let Some(m) = &issue.milestone
+            && let Ok(d) = m.parse::<chrono::NaiveDate>()
+        {
+            patch.due_date = Some(Some(d));
         }
 
         patch
@@ -257,10 +256,10 @@ fn collect_flynt_labels(task: &Task, cfg: &MappingConfig) -> Vec<String> {
         ));
     }
 
-    if cfg.sync_fields.status {
-        if let Some(label) = cfg.status_labels.for_status(status_to_str(task.status)) {
-            labels.push(label.clone());
-        }
+    if cfg.sync_fields.status
+        && let Some(label) = cfg.status_labels.for_status(status_to_str(task.status))
+    {
+        labels.push(label.clone());
     }
 
     labels
@@ -294,12 +293,13 @@ fn build_target_labels(task: &Task, current: &ForgeIssue, cfg: &MappingConfig) -
     }
 
     // Due-date label if that strategy is selected.
-    if cfg.sync_fields.due_date && matches!(cfg.due_date.strategy, DueDateStrategy::Label) {
-        if let Some(d) = task.due_date {
-            let label = format!("due:{}", d);
-            if !out.contains(&label) {
-                out.push(label);
-            }
+    if cfg.sync_fields.due_date
+        && matches!(cfg.due_date.strategy, DueDateStrategy::Label)
+        && let Some(d) = task.due_date
+    {
+        let label = format!("due:{}", d);
+        if !out.contains(&label) {
+            out.push(label);
         }
     }
 

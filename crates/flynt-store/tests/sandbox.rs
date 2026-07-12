@@ -93,10 +93,10 @@ default_visibility = "private"
 
     // Image
     std::fs::create_dir_all(root.join("assets")).unwrap();
-    std::fs::write(root.join("assets/photo.png"), &[0x89, 0x50, 0x4E, 0x47]).unwrap();
+    std::fs::write(root.join("assets/photo.png"), [0x89, 0x50, 0x4E, 0x47]).unwrap();
 
     let project = Arc::new(Project::open(&root).unwrap());
-    let (n, errs) = project.reindex().unwrap();
+    let (n, _errs) = project.reindex().unwrap();
     assert!(n >= 6, "Expected at least 6 docs, got {n}");
 
     (tmp, project)
@@ -164,7 +164,7 @@ fn test_find_document_by_slug() {
 
 #[test]
 fn test_create_and_update_document() {
-    let (tmp, project) = setup_project();
+    let (_tmp, project) = setup_project();
 
     // Create
     let path = Path::new("New Note.md");
@@ -1323,7 +1323,7 @@ fn test_publication_private_not_exported() {
     ).unwrap();
     project.reindex().unwrap();
 
-    let report = project.export_publication_tree(&output).unwrap();
+    let _report = project.export_publication_tree(&output).unwrap();
     // Private doc should NOT be exported
     if output.join("manifest.json").exists() {
         let manifest_raw = std::fs::read_to_string(output.join("manifest.json")).unwrap();
@@ -1364,7 +1364,7 @@ fn test_publication_policy_rules_tag_match() {
     // Re-open project to pick up new config
     let project = std::sync::Arc::new(flynt_store::project::Project::open(&project.root).unwrap());
     project.reindex().unwrap();
-    let report = project.export_publication_tree(&output).unwrap();
+    let _report = project.export_publication_tree(&output).unwrap();
 
     let manifest_raw = std::fs::read_to_string(output.join("manifest.json")).unwrap();
     let manifest: serde_json::Value = serde_json::from_str(&manifest_raw).unwrap();
@@ -1405,7 +1405,7 @@ fn test_publication_policy_rules_path_prefix() {
 
     let project = std::sync::Arc::new(flynt_store::project::Project::open(&project.root).unwrap());
     project.reindex().unwrap();
-    let report = project.export_publication_tree(&output).unwrap();
+    let _report = project.export_publication_tree(&output).unwrap();
 
     let manifest_raw = std::fs::read_to_string(output.join("manifest.json")).unwrap();
     let manifest: serde_json::Value = serde_json::from_str(&manifest_raw).unwrap();

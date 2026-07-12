@@ -428,15 +428,13 @@ fn convert_table(html: &str) -> String {
                     "tr" if !tag_lower.starts_with('/') => {
                         current_row = Vec::new();
                     }
-                    "tr" => {
-                        if !current_row.is_empty() {
-                            rows.push(current_row.clone());
-                            if is_header {
-                                // Add separator row after header
-                                let sep: Vec<String> =
-                                    current_row.iter().map(|_| "---".to_string()).collect();
-                                rows.push(sep);
-                            }
+                    "tr" if !current_row.is_empty() => {
+                        rows.push(current_row.clone());
+                        if is_header {
+                            // Add separator row after header
+                            let sep: Vec<String> =
+                                current_row.iter().map(|_| "---".to_string()).collect();
+                            rows.push(sep);
                         }
                     }
                     "th" | "td" if !tag_lower.starts_with('/') => {

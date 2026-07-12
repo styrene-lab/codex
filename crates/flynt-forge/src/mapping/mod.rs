@@ -94,7 +94,7 @@ pub trait TaskFieldMapper: Send + Sync {
 /// `<project>/.flynt/forge-mapping.toml` — defaults are baked into
 /// code (see `Default::default`) so the file is optional. Operators
 /// only need to write the file to override.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Default)]
 pub struct MappingConfig {
     #[serde(default)]
     pub sync_fields: SyncFields,
@@ -108,18 +108,6 @@ pub struct MappingConfig {
     pub due_date: DueDateMapping,
 }
 
-impl Default for MappingConfig {
-    fn default() -> Self {
-        Self {
-            sync_fields: SyncFields::default(),
-            status_to_state: StatusStateMap::default(),
-            status_labels: StatusLabelMap::default(),
-            priority: PriorityMapping::default(),
-            due_date: DueDateMapping::default(),
-        }
-    }
-}
-
 impl MappingConfig {
     /// The label prefixes flynt manages. On push we rewrite labels
     /// matching these; everything else is preserved as the operator's
@@ -131,10 +119,10 @@ impl MappingConfig {
         }
         // status labels are full strings (e.g. "status:in-progress"),
         // not a prefix — derive the prefix from the first one.
-        if let Some(first) = self.status_labels.values().next() {
-            if let Some(colon) = first.find(':') {
-                out.push(first[..=colon].to_string());
-            }
+        if let Some(first) = self.status_labels.values().next()
+            && let Some(colon) = first.find(':')
+        {
+            out.push(first[..=colon].to_string());
         }
         // Due-date label is flynt-managed when the strategy is Label.
         // Without this, a stale `due:2026-01-01` would survive across

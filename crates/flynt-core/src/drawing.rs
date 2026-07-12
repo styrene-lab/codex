@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct DrawingSpec {
     #[serde(default)]
     pub title: Option<String>,
@@ -36,7 +36,9 @@ pub struct DrawingLayout {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum LayoutDirection {
+    #[default]
     LeftToRight,
     TopDown,
 }
@@ -95,19 +97,6 @@ struct BoxGeom {
     h: f64,
 }
 
-impl Default for DrawingSpec {
-    fn default() -> Self {
-        Self {
-            title: None,
-            subtitle: None,
-            layout: DrawingLayout::default(),
-            style: DrawingStyle::default(),
-            components: Vec::new(),
-            connections: Vec::new(),
-        }
-    }
-}
-
 impl Default for DrawingLayout {
     fn default() -> Self {
         Self {
@@ -115,12 +104,6 @@ impl Default for DrawingLayout {
             spacing_x: default_spacing_x(),
             spacing_y: default_spacing_y(),
         }
-    }
-}
-
-impl Default for LayoutDirection {
-    fn default() -> Self {
-        Self::LeftToRight
     }
 }
 

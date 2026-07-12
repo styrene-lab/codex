@@ -224,28 +224,23 @@ fn execute_document_query(lines: &[&str], store: &dyn ProjectStore) -> Result<St
                 if let Some(val) = extract_quoted(clause) {
                     tag_filter = Some(val);
                 }
-            } else if clause_upper.contains("TITLE CONTAINS") {
-                if let Some(val) = extract_quoted(clause) {
-                    title_filter = Some(val.to_lowercase());
-                }
+            } else if clause_upper.contains("TITLE CONTAINS")
+                && let Some(val) = extract_quoted(clause)
+            {
+                title_filter = Some(val.to_lowercase());
             }
         } else if upper.starts_with("SORT") {
-            let parts: Vec<&str> = line
-                .get(4..)
-                .unwrap_or("")
-                .trim()
-                .split_whitespace()
-                .collect();
+            let parts: Vec<&str> = line.get(4..).unwrap_or("").split_whitespace().collect();
             if let Some(f) = parts.first() {
                 sort_field = f.to_lowercase();
             }
             if parts.get(1).map(|s| s.to_uppercase()) == Some("DESC".into()) {
                 sort_desc = true;
             }
-        } else if upper.starts_with("LIMIT") {
-            if let Some(n) = line.get(5..).unwrap_or("").trim().parse::<usize>().ok() {
-                limit = n;
-            }
+        } else if upper.starts_with("LIMIT")
+            && let Ok(n) = line.get(5..).unwrap_or("").trim().parse::<usize>()
+        {
+            limit = n;
         }
     }
 
@@ -267,13 +262,13 @@ fn execute_document_query(lines: &[&str], store: &dyn ProjectStore) -> Result<St
     // Sort
     match sort_field.as_str() {
         "updated_at" | "updated" | "date" => {
-            docs.sort_by(|a, b| a.updated_at.cmp(&b.updated_at));
+            docs.sort_by_key(|a| a.updated_at);
             if sort_desc {
                 docs.reverse();
             }
         }
         "title" | "name" => {
-            docs.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+            docs.sort_by_key(|a| a.title.to_lowercase());
             if sort_desc {
                 docs.reverse();
             }
@@ -310,14 +305,15 @@ fn execute_task_query(lines: &[&str], store: &dyn ProjectStore) -> Result<String
         if upper.contains("NOT ARCHIVED") {
             tasks.retain(|t| t.status != TaskStatus::Archived);
         }
-        if upper.starts_with("WHERE") && upper.contains("PRIORITY") {
-            if let Some(val) = extract_quoted(line) {
-                match val.to_lowercase().as_str() {
-                    "high" => tasks.retain(|t| t.priority == Priority::High),
-                    "critical" => tasks.retain(|t| t.priority == Priority::Critical),
-                    "low" => tasks.retain(|t| t.priority == Priority::Low),
-                    _ => {}
-                }
+        if upper.starts_with("WHERE")
+            && upper.contains("PRIORITY")
+            && let Some(val) = extract_quoted(line)
+        {
+            match val.to_lowercase().as_str() {
+                "high" => tasks.retain(|t| t.priority == Priority::High),
+                "critical" => tasks.retain(|t| t.priority == Priority::Critical),
+                "low" => tasks.retain(|t| t.priority == Priority::Low),
+                _ => {}
             }
         }
     }

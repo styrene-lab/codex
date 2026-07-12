@@ -20,32 +20,24 @@ pub use flynt_models::task::{
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum MetadataProtection {
+    #[default]
     PlaintextIndexed,
     EncryptedOpaque,
 }
 
-impl Default for MetadataProtection {
-    fn default() -> Self {
-        Self::PlaintextIndexed
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
+#[derive(Default)]
 pub enum MetadataValue {
+    #[default]
     Null,
     Bool(bool),
     Integer(i64),
     Float(f64),
     String(String),
     StringList(Vec<String>),
-}
-
-impl Default for MetadataValue {
-    fn default() -> Self {
-        Self::Null
-    }
 }
 
 pub type MetadataMap = BTreeMap<String, MetadataValue>;
@@ -522,8 +514,8 @@ impl Board {
     /// of `Done` for non-recoverable runs.
     ///
     /// No longer the *default* shape of a fresh board (the kanban
-    /// "+ New board" button uses `minimalist` now); status-as-lifecycle
-    /// + columns-as-buckets keeps the kanban surface simple and lets the
+    /// "+ New board" button uses `minimalist` now). Status-as-lifecycle
+    /// plus columns-as-buckets keeps the kanban surface simple and lets the
     /// task's own status pill carry workflow signal.
     pub fn default_sprint(name: impl Into<String>) -> Self {
         Self {
@@ -831,10 +823,10 @@ pub fn resolve_omegon_binary(config: &LocalRuntimeConfig) -> std::path::PathBuf 
 
     // 4. Channel-matched version in ~/.omegon/versions/ as a fallback.
     let versions_dir = std::path::PathBuf::from(&home).join(".omegon/versions");
-    if versions_dir.is_dir() {
-        if let Some(path) = resolve_from_versions_dir(&versions_dir, &config.omegon_channel) {
-            return path;
-        }
+    if versions_dir.is_dir()
+        && let Some(path) = resolve_from_versions_dir(&versions_dir, &config.omegon_channel)
+    {
+        return path;
     }
 
     std::path::PathBuf::from("omegon")

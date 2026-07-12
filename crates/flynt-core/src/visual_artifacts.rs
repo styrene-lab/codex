@@ -489,12 +489,10 @@ fn collect_wrappers(
             };
             if let Some(target) =
                 single_embed_target(content_without_frontmatter(body.trim()).trim())
+                && target.extension().and_then(|ext| ext.to_str()) == Some(extension)
+                && let Ok(wrapper) = path.strip_prefix(project_root)
             {
-                if target.extension().and_then(|ext| ext.to_str()) == Some(extension) {
-                    if let Ok(wrapper) = path.strip_prefix(project_root) {
-                        wrappers.push((target, wrapper.to_path_buf()));
-                    }
-                }
+                wrappers.push((target, wrapper.to_path_buf()));
             }
         }
     }
@@ -670,7 +668,10 @@ mod tests {
         fs::write(tmp.path().join("diagrams/flow.md"), "![[flow.d2]]").unwrap();
 
         let artifact = discover_d2_artifacts(tmp.path()).pop().unwrap();
-        assert_eq!(artifact.wrapper_path, Some(PathBuf::from("diagrams/flow.md")));
+        assert_eq!(
+            artifact.wrapper_path,
+            Some(PathBuf::from("diagrams/flow.md"))
+        );
     }
 
     #[test]
@@ -736,7 +737,10 @@ mod tests {
 
         let artifacts = discover_excalidraw_artifacts(tmp.path());
         assert_eq!(artifacts.len(), 1);
-        assert_eq!(artifacts[0].wrapper_path, Some(PathBuf::from("drawings/map.md")));
+        assert_eq!(
+            artifacts[0].wrapper_path,
+            Some(PathBuf::from("drawings/map.md"))
+        );
     }
 
     #[test]
@@ -771,9 +775,7 @@ mod tests {
         let artifacts = discover_excalidraw_artifacts(tmp.path());
         let local = artifacts
             .iter()
-            .find(|artifact| {
-                artifact.source_path == PathBuf::from("drawings/nested/local.excalidraw")
-            })
+            .find(|artifact| artifact.source_path == Path::new("drawings/nested/local.excalidraw"))
             .unwrap();
         assert_eq!(
             local.wrapper_path,
@@ -781,9 +783,12 @@ mod tests {
         );
         let global = artifacts
             .iter()
-            .find(|artifact| artifact.source_path == PathBuf::from("drawings/global.excalidraw"))
+            .find(|artifact| artifact.source_path == Path::new("drawings/global.excalidraw"))
             .unwrap();
-        assert_eq!(global.wrapper_path, Some(PathBuf::from("drawings/global.md")));
+        assert_eq!(
+            global.wrapper_path,
+            Some(PathBuf::from("drawings/global.md"))
+        );
     }
 
     #[test]

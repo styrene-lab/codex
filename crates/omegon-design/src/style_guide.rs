@@ -71,14 +71,12 @@ fn load_level(path: PathBuf, level: &'static str) -> StyleGuideLevel {
             // Skip the frontmatter block (TOML +++…+++ or YAML ---…---) before
             // looking for a body headline. The first non-empty, non-heading
             // line after the frontmatter is treated as the summary.
-            let body_start = if content.starts_with("+++\n") {
-                content[4..]
-                    .find("\n+++")
+            let body_start = if let Some(body) = content.strip_prefix("+++\n") {
+                body.find("\n+++")
                     .map(|i| i + 4 + "\n+++".len())
                     .unwrap_or(0)
-            } else if content.starts_with("---\n") {
-                content[4..]
-                    .find("\n---")
+            } else if let Some(body) = content.strip_prefix("---\n") {
+                body.find("\n---")
                     .map(|i| i + 4 + "\n---".len())
                     .unwrap_or(0)
             } else {
