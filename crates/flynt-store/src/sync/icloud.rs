@@ -95,14 +95,14 @@ pub fn detect_conflicts(project_root: &Path) -> Vec<(PathBuf, PathBuf)> {
         let path = entry.path();
 
         // iCloud conflict pattern: "filename 2.md", "filename 3.md"
-        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-            if stem.ends_with(" 2") || stem.ends_with(" 3") || stem.ends_with(" 4") {
-                let base = stem.rsplit_once(' ').map(|(b, _)| b).unwrap_or(stem);
-                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-                let original = path.parent().unwrap_or(path).join(format!("{base}.{ext}"));
-                if original.exists() && original != path {
-                    conflicts.push((original, path.to_path_buf()));
-                }
+        if let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+            && (stem.ends_with(" 2") || stem.ends_with(" 3") || stem.ends_with(" 4"))
+        {
+            let base = stem.rsplit_once(' ').map(|(b, _)| b).unwrap_or(stem);
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            let original = path.parent().unwrap_or(path).join(format!("{base}.{ext}"));
+            if original.exists() && original != path {
+                conflicts.push((original, path.to_path_buf()));
             }
         }
     }

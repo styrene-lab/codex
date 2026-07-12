@@ -625,7 +625,7 @@ impl ProjectStore for SqliteStore {
             .execution
             .as_ref()
             .filter(|e| !e.is_empty())
-            .map(|e| serde_json::to_string(e))
+            .map(serde_json::to_string)
             .transpose()?;
         conn.execute(
             r#"INSERT INTO tasks (id, board_id, column_name, title, description, priority, status, tags, document_refs, due_date, position, created_at, updated_at, decay, last_touched_at, external_refs, design_node_id, execution, openspec_change, engagement_id)
@@ -692,10 +692,10 @@ impl ProjectStore for SqliteStore {
         if let Some(v) = &patch.description {
             task.description = v.clone();
         }
-        if let Some(v) = patch.priority.clone() {
+        if let Some(v) = patch.priority {
             task.priority = v;
         }
-        if let Some(v) = patch.status.clone() {
+        if let Some(v) = patch.status {
             task.status = v;
         }
         if let Some(v) = &patch.tags {
@@ -713,7 +713,7 @@ impl ProjectStore for SqliteStore {
         if let Some(v) = patch.position {
             task.position = v;
         }
-        if let Some(v) = patch.decay.clone() {
+        if let Some(v) = patch.decay {
             task.decay = v;
         }
         if let Some(v) = patch.design_node_id {

@@ -118,10 +118,8 @@ pub fn start_auto_sync(
                             continue;
                         }
                         SyncOutcome::Synced { pulled, pushed, .. } => {
-                            if pulled {
-                                if let Some(ref cb) = reindex {
-                                    cb();
-                                }
+                            if pulled && let Some(ref cb) = reindex {
+                                cb();
                             }
                             if pushed {
                                 let _ = status_tx.send(AutoSyncStatus::Pushing);

@@ -102,20 +102,20 @@ fn detect_google_drive() -> Option<CloudProvider> {
     #[cfg(target_os = "macos")]
     {
         let cloud_storage = home.join("Library/CloudStorage");
-        if cloud_storage.is_dir() {
-            if let Ok(entries) = std::fs::read_dir(&cloud_storage) {
-                for entry in entries.filter_map(|e| e.ok()) {
-                    let name = entry.file_name().to_string_lossy().to_string();
-                    if name.starts_with("GoogleDrive") {
-                        let my_drive = entry.path().join("My Drive");
-                        if my_drive.is_dir() {
-                            return Some(CloudProvider {
-                                id: "google-drive",
-                                label: "Google Drive",
-                                description: "15 GB free, syncs across all platforms",
-                                sync_root: my_drive,
-                            });
-                        }
+        if cloud_storage.is_dir()
+            && let Ok(entries) = std::fs::read_dir(&cloud_storage)
+        {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with("GoogleDrive") {
+                    let my_drive = entry.path().join("My Drive");
+                    if my_drive.is_dir() {
+                        return Some(CloudProvider {
+                            id: "google-drive",
+                            label: "Google Drive",
+                            description: "15 GB free, syncs across all platforms",
+                            sync_root: my_drive,
+                        });
                     }
                 }
             }
@@ -173,18 +173,18 @@ fn detect_onedrive() -> Option<CloudProvider> {
     #[cfg(target_os = "macos")]
     {
         let cloud_storage = home.join("Library/CloudStorage");
-        if cloud_storage.is_dir() {
-            if let Ok(entries) = std::fs::read_dir(&cloud_storage) {
-                for entry in entries.filter_map(|e| e.ok()) {
-                    let name = entry.file_name().to_string_lossy().to_string();
-                    if name.starts_with("OneDrive") {
-                        return Some(CloudProvider {
-                            id: "onedrive",
-                            label: "OneDrive",
-                            description: "5 GB free, included with Microsoft 365",
-                            sync_root: entry.path(),
-                        });
-                    }
+        if cloud_storage.is_dir()
+            && let Ok(entries) = std::fs::read_dir(&cloud_storage)
+        {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with("OneDrive") {
+                    return Some(CloudProvider {
+                        id: "onedrive",
+                        label: "OneDrive",
+                        description: "5 GB free, included with Microsoft 365",
+                        sync_root: entry.path(),
+                    });
                 }
             }
         }

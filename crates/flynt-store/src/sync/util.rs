@@ -36,10 +36,11 @@ pub fn repo_signature(repo: &Repository) -> Result<Signature<'static>> {
         if let Ok(local) = config.open_level(git2::ConfigLevel::Local) {
             let name = local.get_string("user.name");
             let email = local.get_string("user.email");
-            if let (Ok(name), Ok(email)) = (name, email) {
-                if !name.is_empty() && !email.is_empty() {
-                    return Ok(Signature::now(&name, &email)?);
-                }
+            if let (Ok(name), Ok(email)) = (name, email)
+                && !name.is_empty()
+                && !email.is_empty()
+            {
+                return Ok(Signature::now(&name, &email)?);
             }
         }
     }
