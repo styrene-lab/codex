@@ -17,7 +17,6 @@ use std::{
 };
 use tracing::{debug, info, warn};
 
-
 enum DesignLifecycleStatus {
     Seed,
     Exploring,
@@ -149,6 +148,13 @@ pub struct ImportReport {
 pub struct PublicationExportReport {
     pub exported: usize,
     pub skipped_private: usize,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OkfExportReport {
+    pub exported: usize,
+    pub skipped: usize,
     pub errors: Vec<String>,
 }
 
@@ -1115,6 +1121,53 @@ impl Project {
         Ok(ImportDisposition::Imported)
     }
 
+    /// Export project knowledge as an Open Knowledge Format-style Markdown bundle.
+    ///
+    /// This is an interchange projection, not Flynt's native storage format.
+    /// The first pass exports indexed markdown documents with OKF-compatible
+    /// YAML frontmatter and preserves Flynt metadata under a namespaced key.
+    pub fn export_okf_bundle(&self, output_root: &Path) -> Result<OkfExportReport> {
+        let mut exported = 0usize;
+        let mut skipped = 0usize;
+        let mut errors = Vec::new();
+        let mut index_entries = Vec::new();
+
+        fs::create_dir_all(output_root)?;
+
+        for meta in self.store.list_documents()? {
+            if !should_export_okf_document(&meta.path) {
+                skipped += 1;
+                continue;
+            }
+            let Some(document) = self.store.get_document(&meta.id)? else {
+                skipped += 1;
+                continue;
+            };
+            match write_okf_document(output_root, &document) {
+                Ok(path) => {
+                    exported += 1;
+                    index_entries.push((document.title.clone(), path));
+                }
+                Err(err) => errors.push(format!("{}: {err}", document.path.display())),
+            }
+        }
+
+        index_entries.sort_by(|a, b| a.0.cmp(&b.0));
+        let mut index = String::from(
+            "---\ntype: Index\ntitle: Flynt OKF Export\ndescription: Exported Flynt project knowledge bundle.\ntags: [flynt, okf]\n---\n\n# Flynt OKF Export\n\n",
+        );
+        for (title, path) in &index_entries {
+            index.push_str(&format!("- [{}]({})\n", title, path.display()));
+        }
+        fs::write(output_root.join("index.md"), index)?;
+
+        Ok(OkfExportReport {
+            exported,
+            skipped,
+            errors,
+        })
+    }
+
     /// Export public knowledge documents into a normalized publish tree suitable for a static site generator.
     pub fn export_publication_tree(&self, output_root: &Path) -> Result<PublicationExportReport> {
         let mut exported = 0usize;
@@ -1341,7 +1394,8 @@ impl Project {
                 .find(|column| column.name.eq_ignore_ascii_case("Active"))
                 .map(|column| column.name.clone())
                 .unwrap_or_else(|| {
-                    board.columns
+                    board
+                        .columns
                         .first()
                         .map(|column| column.name.clone())
                         .unwrap_or_else(|| "Active".to_string())
@@ -2056,6 +2110,88 @@ fn extract_raw_frontmatter_block(raw: &str) -> Option<String> {
         offset += line.len();
     }
     None
+}
+
+fn should_export_okf_document(path: &Path) -> bool {
+    path.extension().and_then(|ext| ext.to_str()) == Some("md") && !has_hidden_component(path)
+}
+
+fn write_okf_document(output_root: &Path, document: &Document) -> Result<PathBuf> {
+    validate_document_relative_path(&document.path, "okf document path")?;
+    let output_path = output_root.join(&document.path);
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let okf_type = document
+        .frontmatter
+        .kind
+        .as_deref()
+        .map(okf_type_for_kind)
+        .unwrap_or("Document");
+    let description = first_non_heading_paragraph(&document.content)
+        .unwrap_or_else(|| format!("Flynt document {}", document.path.display()));
+    let tags = yaml_inline_string_array(&document.frontmatter.tags);
+    let timestamp = document.updated_at.to_rfc3339();
+    let entity_kind = document.frontmatter.kind.as_deref().unwrap_or("document");
+    let frontmatter = format!(
+        "---\ntype: {}\ntitle: {}\ndescription: {}\nresource: {}\ntags: {}\ntimestamp: {}\nflynt:\n  id: {}\n  path: {}\n  entity_kind: {}\n---\n\n",
+        yaml_string(okf_type),
+        yaml_string(&document.title),
+        yaml_string(&description),
+        yaml_string(&format!("flynt://document/{}", document.id.0)),
+        tags,
+        yaml_string(&timestamp),
+        yaml_string(&document.id.0.to_string()),
+        yaml_string(&document.path.display().to_string()),
+        yaml_string(entity_kind),
+    );
+    fs::write(&output_path, format!("{}{}", frontmatter, document.content))?;
+    Ok(document.path.clone())
+}
+
+fn okf_type_for_kind(kind: &str) -> &'static str {
+    match kind {
+        "design_node" => "Concept",
+        "task" => "Task",
+        "contact" => "Person",
+        _ => "Document",
+    }
+}
+
+fn first_non_heading_paragraph(content: &str) -> Option<String> {
+    content
+        .split("\n\n")
+        .map(|block| block.trim())
+        .filter(|block| !block.is_empty())
+        .find(|block| !block.starts_with('#') && !block.starts_with("![["))
+        .map(|block| block.lines().map(str::trim).collect::<Vec<_>>().join(" "))
+        .map(|text| text.chars().take(240).collect())
+}
+
+fn yaml_inline_string_array(values: &[String]) -> String {
+    if values.is_empty() {
+        "[]".to_string()
+    } else {
+        format!(
+            "[{}]",
+            values
+                .iter()
+                .map(|v| yaml_string(v))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
+}
+
+fn yaml_string(value: &str) -> String {
+    format!(
+        "\"{}\"",
+        value
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+            .replace('\r', "\\r")
+    )
 }
 
 fn validate_document_relative_path(path: &Path, label: &str) -> Result<()> {
@@ -3795,6 +3931,53 @@ See [[roadmap]].\n",
         let rendered = canonical_document_source(&doc);
         assert!(rendered.ends_with('\n'));
         assert!(rendered.contains("\n\nBody\n"));
+    }
+
+    #[test]
+    fn okf_export_preserves_document_body_and_namespaces_flynt_metadata() {
+        let tmp = TempDir::new().unwrap();
+        let project_root = tmp.path().join("project");
+        let project = Project::open(&project_root).unwrap();
+
+        let note_path = project_root.join("notes/brief.md");
+        fs::create_dir_all(note_path.parent().unwrap()).unwrap();
+        fs::write(
+            &note_path,
+            "+++\ntitle = \"Brief\"\ntags = [\"alpha\", \"beta\"]\n+++\n\n# Brief\n\nBody survives export.\n",
+        )
+        .unwrap();
+        project.index_file(&note_path).unwrap();
+
+        let design_path = project_root.join("design/system.md");
+        fs::create_dir_all(design_path.parent().unwrap()).unwrap();
+        fs::write(
+            &design_path,
+            "+++\ntitle = \"System\"\nkind = \"design_node\"\n+++\n\n# System\n\nDesign body.\n",
+        )
+        .unwrap();
+        project.index_file(&design_path).unwrap();
+
+        let output_root = tmp.path().join("okf");
+        let report = project.export_okf_bundle(&output_root).unwrap();
+        assert_eq!(report.exported, 2);
+        assert_eq!(report.skipped, 0);
+        assert!(report.errors.is_empty());
+
+        let note = fs::read_to_string(output_root.join("notes/brief.md")).unwrap();
+        assert!(note.contains("type: \"Document\""));
+        assert!(note.contains("title: \"Brief\""));
+        assert!(note.contains("tags: [\"alpha\", \"beta\"]"));
+        assert!(note.contains("flynt:\n  id:"));
+        assert!(note.contains("path: \"notes/brief.md\""));
+        assert!(note.ends_with("# Brief\n\nBody survives export.\n"));
+
+        let design = fs::read_to_string(output_root.join("design/system.md")).unwrap();
+        assert!(design.contains("type: \"Concept\""));
+        assert!(design.contains("entity_kind: \"design_node\""));
+
+        let index = fs::read_to_string(output_root.join("index.md")).unwrap();
+        assert!(index.contains("[Brief](notes/brief.md)"));
+        assert!(index.contains("[System](design/system.md)"));
     }
 
     #[test]
