@@ -17,13 +17,14 @@
 //! `git clone` against an authenticated forge work without prompting.
 //!
 //! Looks up tokens by host, in order:
-//!   1. `FLYNT_<HOST_UPPER>_TOKEN` — e.g. FLYNT_GITHUB_COM_TOKEN
-//!     Dots and hyphens in the host become underscores, so
-//!     `git-codecommit.us-east-1.amazonaws.com` resolves to
-//!     `FLYNT_GIT_CODECOMMIT_US_EAST_1_AMAZONAWS_COM_TOKEN`.
-//!   2. for github.com specifically, `FLYNT_GITHUB_TOKEN` (matches
-//!      what flynt-agent's bootstrap_secrets path uses)
-//!   3. for github.com, `GITHUB_TOKEN` (CI convention)
+//!
+//! 1. `FLYNT_<HOST_UPPER>_TOKEN` — e.g. FLYNT_GITHUB_COM_TOKEN.
+//!    Dots and hyphens in the host become underscores, so
+//!    `git-codecommit.us-east-1.amazonaws.com` resolves to
+//!    `FLYNT_GIT_CODECOMMIT_US_EAST_1_AMAZONAWS_COM_TOKEN`.
+//! 2. For github.com specifically, `FLYNT_GITHUB_TOKEN` (matches
+//!    what flynt-agent's bootstrap_secrets path uses).
+//! 3. For github.com, `GITHUB_TOKEN` (CI convention).
 //!
 //! Only HTTPS is served; ssh has its own auth path. Username is
 //! returned as `x-access-token` — GitHub's documented PAT-over-HTTPS
