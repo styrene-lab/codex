@@ -1285,19 +1285,11 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
                 inTable = false; isHeader = true;
             }}
 
-            // Task checkboxes: - [ ] or - [x]
-            const taskMatch = text.match(/^(\s*[-*]\s*)\[([ xX])\]\s/);
-            if (taskMatch) {{
-                const prefixLen = taskMatch[1].length;
-                const checked = taskMatch[2] !== ' ';
-                const replaceFrom = line.from + prefixLen;
-                const replaceTo = line.from + prefixLen + 3;
-                decs.push(Decoration.replace({{
-                    widget: new TaskCheckWidget(checked, line.from),
-                }}).range(replaceFrom, replaceTo));
-                if (prefixLen > 0) {{
-                    decs.push(Decoration.replace({{}}).range(line.from, line.from + prefixLen));
-                }}
+            // Task checkboxes are owned by the editor compatibility adapter's
+            // taskListExtension. Keeping a second renderer here referenced a
+            // function-local TaskCheckWidget that is not in this script's
+            // scope and crashed editor initialization for every note.
+            if (text.match(/^(\s*[-*]\s*)\[([ xX])\]\s/)) {{
                 continue;
             }}
 
@@ -1313,18 +1305,11 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
                 }} else break;
             }}
 
-            // Embed: ![[file.excalidraw]] or ![[image.png]]
-            const embedMatch = trimmed.match(/^!\[\[(.+?)\]\]$/);
-            if (embedMatch) {{
-                const ref = embedMatch[1];
-                let type = 'other';
-                if (ref.endsWith('.excalidraw')) type = 'drawing';
-                else if (/\.(png|jpg|jpeg|gif|svg|webp)$/i.test(ref)) type = 'image';
-                if (type !== 'other') {{
-                    decs.push(Decoration.replace({{
-                        widget: new EmbedWidget(ref, type),
-                    }}).range(line.from, line.to));
-                }}
+            // Embeds are rendered by FlyntEditorCompat's embedExtension,
+            // which owns resolution and navigation. Do not duplicate that
+            // widget here; its EmbedWidget is intentionally function-local.
+            if (trimmed.match(/^!\[\[(.+?)\]\]$/)) {{
+                continue;
             }}
         }}
         return Decoration.set(decs, true);
@@ -3098,6 +3083,19 @@ pub fn NotesView() -> Element {
                     crate::views::ExcalidrawView { key: "{source_path.display()}", path: source_path }
                 }
             },
+            crate::visual_artifact_surface::VisualArtifactSurface::Flow { source_path } => {
+                rsx! {
+                    div {
+                        key: "flow-{source_path.display()}",
+                        style: "display:flex;flex-direction:column;flex:1;overflow:hidden;min-height:0;height:100%;",
+                        crate::components::TabBar {}
+                        div {
+                            style: "display:flex;flex-direction:column;flex:1;overflow:hidden;padding:0;min-height:0;",
+                            crate::views::FlowView { path: source_path }
+                        }
+                    }
+                }
+            }
             crate::visual_artifact_surface::VisualArtifactSurface::DesignBoard { source_path } => {
                 rsx! {
                     div {

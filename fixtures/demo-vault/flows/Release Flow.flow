@@ -1,19 +1,182 @@
++++
+id = "0dd7c6b0-701a-5fea-8dd5-55fb69631c58"
+kind = "flow"
+
+[data]
+title = "Release Flow"
+schema_version = 1
++++
 {
-  "schema_version": 1,
-  "id": "qbf-release-flow",
-  "meta": { "title": "Release Flow" },
+  "meta": {
+    "title": "Release Flow"
+  },
   "nodes": [
-    {"id":"brief","kind":"input","position":[80,180],"data":{"name":"Brief"},"sockets":[{"name":"release","direction":"output","ty":"Release"}]},
-    {"id":"review","kind":"decision","position":[340,180],"data":{"name":"Review"},"sockets":[{"name":"release","direction":"input","ty":"Release"},{"name":"pass","direction":"output","ty":"Release"},{"name":"fix","direction":"output","ty":"Issue"}]},
-    {"id":"validate","kind":"step","position":[620,100],"data":{"name":"Validate"},"sockets":[{"name":"release","direction":"input","ty":"Release"},{"name":"artifact","direction":"output","ty":"Artifact"}]},
-    {"id":"rework","kind":"step","position":[620,280],"data":{"name":"Rework"},"sockets":[{"name":"issue","direction":"input","ty":"Issue"},{"name":"release","direction":"output","ty":"Release"}]},
-    {"id":"ship","kind":"output","position":[900,100],"data":{"name":"Ship"},"sockets":[{"name":"artifact","direction":"input","ty":"Artifact"}]}
+    {
+      "id": "99321e30-4059-5a46-a3a0-3df5a62405e7",
+      "kind": "input",
+      "position": [
+        80,
+        180
+      ],
+      "data": {
+        "name": "Brief"
+      },
+      "sockets": [
+        {
+          "name": "release",
+          "direction": "output",
+          "ty": "Release"
+        }
+      ]
+    },
+    {
+      "id": "e1c1cf0d-f72b-5955-a15a-cba054416e6b",
+      "kind": "decision",
+      "position": [
+        340,
+        180
+      ],
+      "data": {
+        "name": "Review"
+      },
+      "sockets": [
+        {
+          "name": "release",
+          "direction": "input",
+          "ty": "Release"
+        },
+        {
+          "name": "pass",
+          "direction": "output",
+          "ty": "Release"
+        },
+        {
+          "name": "fix",
+          "direction": "output",
+          "ty": "Issue"
+        }
+      ]
+    },
+    {
+      "id": "0ed5832e-3dbd-5a84-9af2-7aa37bb4cf84",
+      "kind": "step",
+      "position": [
+        620,
+        100
+      ],
+      "data": {
+        "name": "Validate"
+      },
+      "sockets": [
+        {
+          "name": "release",
+          "direction": "input",
+          "ty": "Release"
+        },
+        {
+          "name": "artifact",
+          "direction": "output",
+          "ty": "Artifact"
+        }
+      ]
+    },
+    {
+      "id": "0e3efb61-7fb9-543c-a45e-ddc9656e3291",
+      "kind": "step",
+      "position": [
+        620,
+        280
+      ],
+      "data": {
+        "name": "Rework"
+      },
+      "sockets": [
+        {
+          "name": "issue",
+          "direction": "input",
+          "ty": "Issue"
+        },
+        {
+          "name": "release",
+          "direction": "output",
+          "ty": "Release"
+        }
+      ]
+    },
+    {
+      "id": "ff54c40a-8750-5ab9-a788-927a4411ec18",
+      "kind": "output",
+      "position": [
+        900,
+        100
+      ],
+      "data": {
+        "name": "Ship"
+      },
+      "sockets": [
+        {
+          "name": "artifact",
+          "direction": "input",
+          "ty": "Artifact"
+        }
+      ]
+    }
   ],
   "edges": [
-    {"id":"e-brief-review","source":{"node":"brief","socket":"release"},"target":{"node":"review","socket":"release"}},
-    {"id":"e-review-validate","source":{"node":"review","socket":"pass"},"target":{"node":"validate","socket":"release"}},
-    {"id":"e-review-rework","source":{"node":"review","socket":"fix"},"target":{"node":"rework","socket":"issue"}},
-    {"id":"e-rework-review","source":{"node":"rework","socket":"release"},"target":{"node":"review","socket":"release"}},
-    {"id":"e-validate-ship","source":{"node":"validate","socket":"artifact"},"target":{"node":"ship","socket":"artifact"}}
+    {
+      "id": "67e25cc2-b4db-591b-941e-2b47fe3f5fbf",
+      "source": {
+        "node": "99321e30-4059-5a46-a3a0-3df5a62405e7",
+        "socket": "release"
+      },
+      "target": {
+        "node": "e1c1cf0d-f72b-5955-a15a-cba054416e6b",
+        "socket": "release"
+      }
+    },
+    {
+      "id": "ecf03c3b-905a-5d02-bc68-3241cae97be9",
+      "source": {
+        "node": "e1c1cf0d-f72b-5955-a15a-cba054416e6b",
+        "socket": "pass"
+      },
+      "target": {
+        "node": "0ed5832e-3dbd-5a84-9af2-7aa37bb4cf84",
+        "socket": "release"
+      }
+    },
+    {
+      "id": "04cbb20e-45be-56d0-ba77-f71a8d04070a",
+      "source": {
+        "node": "e1c1cf0d-f72b-5955-a15a-cba054416e6b",
+        "socket": "fix"
+      },
+      "target": {
+        "node": "0e3efb61-7fb9-543c-a45e-ddc9656e3291",
+        "socket": "issue"
+      }
+    },
+    {
+      "id": "8ef96f53-e7e4-5ea5-bc17-9306da012d88",
+      "source": {
+        "node": "0e3efb61-7fb9-543c-a45e-ddc9656e3291",
+        "socket": "release"
+      },
+      "target": {
+        "node": "e1c1cf0d-f72b-5955-a15a-cba054416e6b",
+        "socket": "release"
+      }
+    },
+    {
+      "id": "9f3ca6c3-9c48-503d-8886-7b95161bb950",
+      "source": {
+        "node": "0ed5832e-3dbd-5a84-9af2-7aa37bb4cf84",
+        "socket": "artifact"
+      },
+      "target": {
+        "node": "ff54c40a-8750-5ab9-a788-927a4411ec18",
+        "socket": "artifact"
+      }
+    }
   ]
 }

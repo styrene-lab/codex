@@ -7,6 +7,7 @@ pub enum VisualArtifactSurface {
     ExcalidrawPreview { source_path: PathBuf },
     ExcalidrawEditor { source_path: PathBuf },
     DesignBoard { source_path: PathBuf },
+    Flow { source_path: PathBuf },
 }
 
 pub fn resolve_wrapper_surface(
@@ -17,6 +18,7 @@ pub fn resolve_wrapper_surface(
 ) -> Option<VisualArtifactSurface> {
     resolve_excalidraw_surface(project_root, rel_path, body, frontmatter)
         .or_else(|| resolve_design_board_surface(project_root, rel_path, body))
+        .or_else(|| resolve_flow_surface(project_root, rel_path, body, frontmatter))
 }
 
 fn resolve_excalidraw_surface(
@@ -65,6 +67,37 @@ fn resolve_design_board_surface(
     )
 }
 
+fn resolve_flow_surface(
+    project_root: &Path,
+    rel_path: &Path,
+    body: &str,
+    frontmatter: &Frontmatter,
+) -> Option<VisualArtifactSurface> {
+    let from_body = flow_embed_path(body);
+    let from_recovery = if from_body.is_none() && frontmatter.tags.iter().any(|tag| tag == "flow") {
+        rel_path
+            .file_stem()
+            .map(|stem| format!("{}.flow", stem.to_string_lossy()))
+    } else {
+        None
+    };
+    resolve_sibling_artifact(
+        project_root,
+        rel_path,
+        from_body.or(from_recovery),
+        VisualArtifactKind::Flow,
+    )
+}
+
+fn flow_embed_path(body: &str) -> Option<String> {
+    let trimmed = body.trim();
+    let inner = trimmed.strip_prefix("![[")?.strip_suffix("]]")?.trim();
+    Path::new(inner)
+        .extension()
+        .is_some_and(|extension| extension == "flow")
+        .then(|| inner.to_string())
+}
+
 fn resolve_sibling_artifact(
     project_root: &Path,
     rel_path: &Path,
@@ -82,6 +115,7 @@ fn resolve_sibling_artifact(
             Some(VisualArtifactSurface::ExcalidrawPreview { source_path })
         }
         VisualArtifactKind::DesignBoard => Some(VisualArtifactSurface::DesignBoard { source_path }),
+        VisualArtifactKind::Flow => Some(VisualArtifactSurface::Flow { source_path }),
         _ => None,
     }
 }
@@ -136,6 +170,48 @@ mod tests {
             surface,
             Some(VisualArtifactSurface::ExcalidrawPreview {
                 source_path: PathBuf::from("drawings/sketch.excalidraw")
+            })
+        );
+    }
+
+    #[test]
+    fn resolves_flow_wrapper_to_flow_surface() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("flows")).unwrap();
+        std::fs::write(tmp.path().join("flows/Release Flow.flow"), "{}").unwrap();
+
+        let surface = resolve_wrapper_surface(
+            tmp.path(),
+            Path::new("flows/Release Flow.md"),
+            "![[Release Flow.flow]]\n",
+            &frontmatter_with_tags(&["flow"]),
+        );
+
+        assert_eq!(
+            surface,
+            Some(VisualArtifactSurface::Flow {
+                source_path: PathBuf::from("flows/Release Flow.flow")
+            })
+        );
+    }
+
+    #[test]
+    fn recovers_flow_wrapper_from_tag_and_sibling() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("flows")).unwrap();
+        std::fs::write(tmp.path().join("flows/release.flow"), "{}").unwrap();
+
+        let surface = resolve_wrapper_surface(
+            tmp.path(),
+            Path::new("flows/release.md"),
+            "wrapper body missing",
+            &frontmatter_with_tags(&["flow"]),
+        );
+
+        assert_eq!(
+            surface,
+            Some(VisualArtifactSurface::Flow {
+                source_path: PathBuf::from("flows/release.flow")
             })
         );
     }
