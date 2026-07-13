@@ -1469,6 +1469,7 @@ _flyntDrain();
 document.addEventListener('click', function(e) {
     const embed = e.target.closest('.excalidraw-embed[data-drawing]');
     if (embed) {
+        window._flyntNotify('preview-clear', '');
         const drawing = embed.getAttribute('data-drawing');
         if (drawing) {
             window._flyntNotify('open-drawing', drawing);
@@ -1477,6 +1478,7 @@ document.addEventListener('click', function(e) {
     const note = e.target.closest('a[data-flynt-note]');
     if (note) {
         e.preventDefault();
+        window._flyntNotify('preview-clear', '');
         const slug = note.getAttribute('data-flynt-note');
         if (slug) {
             window._flyntNotify('nav', slug);
@@ -1503,6 +1505,7 @@ document.addEventListener('mouseover', function(e) {
 document.addEventListener('mouseout', function(e) {
     const note = e.target.closest('a[data-flynt-note]');
     if (!note) return;
+    if (e.relatedTarget && note.contains(e.relatedTarget)) return;
     if (note._flyntPreviewTimer) clearTimeout(note._flyntPreviewTimer);
     note._flyntPreviewArmed = false;
     window._flyntNotify('preview-clear', '');
@@ -2269,6 +2272,9 @@ pub fn NotesView() -> Element {
             .peek()
             .as_ref()
             .map(|(id, _, _, _, _, _, _)| id.clone());
+        if previous_doc_id.as_ref() != selected_id.as_ref() {
+            *hover_preview.write() = None;
+        }
         let Some(doc_id) = selected_id else {
             *doc_data.write() = None;
             return;
