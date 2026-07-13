@@ -296,7 +296,7 @@ pub fn App() -> Element {
                     let filename = format!("{title}.md");
                     let path = std::path::PathBuf::from(&filename);
                     let content = format!("+++\ntitle = \"{title}\"\ntags = []\n+++\n\n");
-                    if project.save_document_content(&path, &content).is_ok() {
+                    if project.create_document_source(&path, &content).is_ok() {
                         let _ = project.reindex();
                         if let Ok(Some(doc)) =
                             project.store.find_document_by_slug(&title.to_lowercase())
@@ -327,7 +327,7 @@ pub fn App() -> Element {
                         if let Some(parent) = abs.parent() {
                             let _ = std::fs::create_dir_all(parent);
                         }
-                        let _ = project.save_document_content(&path, &content);
+                        let _ = project.create_document_source(&path, &content);
                         let _ = project.reindex();
                     }
                     let title = date.format("%A, %B %-d, %Y").to_string();
@@ -744,7 +744,7 @@ pub fn App() -> Element {
                                         // Create a welcome note
                                         let welcome_path = std::path::PathBuf::from("Welcome.md");
                                         let welcome_content = include_str!("../assets/welcome-note.md");
-                                        let _ = project.save_document_content(&welcome_path, welcome_content);
+                                        let _ = project.create_document_source(&welcome_path, welcome_content);
                                         let _ = project.reindex();
 
                                         let mut profile = launcher_profile();
@@ -797,7 +797,7 @@ pub fn App() -> Element {
                                     Ok(project) => {
                                         let welcome_path = std::path::PathBuf::from("Welcome.md");
                                         let welcome_content = include_str!("../assets/welcome-note.md");
-                                        let _ = project.save_document_content(&welcome_path, welcome_content);
+                                        let _ = project.create_document_source(&welcome_path, welcome_content);
                                         let _ = project.reindex();
 
                                         let mut profile = launcher_profile();

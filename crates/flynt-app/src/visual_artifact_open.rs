@@ -152,7 +152,7 @@ fn ensure_visual_artifact_wrapper(
     let content =
         format!("+++\ntitle = \"{escaped_title}\"\ntags = [\"{tag}\"]\n+++\n\n![[{file_name}]]\n");
     project
-        .save_document_content(&wrapper_path, &content)
+        .create_document_source(&wrapper_path, &content)
         .ok()?;
     Some(wrapper_path)
 }

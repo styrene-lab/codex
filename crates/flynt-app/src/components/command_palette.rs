@@ -302,7 +302,7 @@ fn execute_command(
                 let filename = format!("{title}.md");
                 let path = std::path::PathBuf::from(&filename);
                 let content = format!("+++\ntitle = \"{title}\"\ntags = []\n+++\n\n");
-                if project.save_document_content(&path, &content).is_ok() {
+                if project.create_document_source(&path, &content).is_ok() {
                     let _ = project.reindex();
                     if let Ok(Some(doc)) =
                         project.store.find_document_by_slug(&title.to_lowercase())
@@ -338,7 +338,7 @@ fn execute_command(
                     let mut ar = *active_route;
                     spawn(async move {
                         let project = c.project();
-                        if project.save_document_content(&path, &content).is_ok() {
+                        if project.create_document_source(&path, &content).is_ok() {
                             let _ = project.reindex();
                             if let Ok(Some(doc)) =
                                 project.store.find_document_by_slug(&title.to_lowercase())
@@ -444,7 +444,7 @@ fn execute_command(
                     if let Some(parent) = abs.parent() {
                         let _ = std::fs::create_dir_all(parent);
                     }
-                    let _ = project.save_document_content(&path, &content);
+                    let _ = project.create_document_source(&path, &content);
                     let _ = project.reindex();
                 }
                 let title = date.format("%A, %B %-d, %Y").to_string();
@@ -1040,7 +1040,7 @@ pub fn CommandPalette(mut open: Signal<bool>, mode: Signal<PaletteMode>) -> Elem
                                             ts.format("%H:%M"),
                                             prompt,
                                         );
-                                        let _ = project.save_document_content(
+                                        let _ = project.create_document_source(
                                             std::path::Path::new(&del_path),
                                             &del_content,
                                         );

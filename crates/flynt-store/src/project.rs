@@ -585,6 +585,24 @@ impl Project {
         self.save_document_content_inner(rel_path, content, true)
     }
 
+    /// Write complete markdown source to a new document and index it.
+    ///
+    /// Unlike [`save_document_content`], `source` may include frontmatter.
+    /// The destination must not already exist, preventing this whole-source
+    /// creation path from replacing established metadata.
+    pub fn create_document_source(&self, rel_path: &Path, source: &str) -> Result<()> {
+        let abs_path = self.root.join(rel_path);
+        if abs_path.exists() {
+            anyhow::bail!("document already exists: {}", rel_path.display());
+        }
+        if let Some(parent) = abs_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&abs_path, source)?;
+        self.index_file(&abs_path)?;
+        Ok(())
+    }
+
     /// Move a plain markdown document to another project-relative path.
     ///
     /// This is intentionally path-based rather than title-based: the agent can
@@ -658,6 +676,17 @@ impl Project {
         if starts_with_frontmatter && existing_fm.is_none() {
             anyhow::bail!(
                 "refusing to save {}: existing frontmatter is unterminated",
+                rel_path.display()
+            );
+        }
+        if existing_fm.is_some()
+            && (content.starts_with("+++\n")
+                || content.starts_with("+++\r\n")
+                || content.starts_with("---\n")
+                || content.starts_with("---\r\n"))
+        {
+            anyhow::bail!(
+                "refusing to save {}: body-only save received a second frontmatter block",
                 rel_path.display()
             );
         }
@@ -4887,13 +4916,8 @@ Imported body.
 
     #[test]
     fn save_document_content_preserves_recognized_frontmatter_fields() {
-        // Limit of the preservation guarantee: fields the Frontmatter
-        // parser recognizes (kind, data, aliases, tags, …) survive a
-        // body edit. Truly unknown TOP-level keys flow into metadata
-        // via serde flatten and also survive. Unknown nested [tables]
-        // do NOT survive because the parser rejects them and
-        // index_file rewrites the frontmatter — that's a known
-        // limitation, not the case we need to fix for tasks.
+        // Body edits preserve the raw frontmatter block verbatim, including
+        // recognized fields and unknown nested tables.
         let tmp = TempDir::new().unwrap();
         let root = tmp.path().to_path_buf();
         let project = Project::open(&root).unwrap();
@@ -4916,6 +4940,38 @@ Imported body.
     }
 
     #[test]
+    fn create_document_source_writes_full_frontmatter_source() {
+        let tmp = TempDir::new().unwrap();
+        let project = Project::open(tmp.path()).unwrap();
+        let rel = std::path::PathBuf::from("new.md");
+        let source = "---\ntitle: New\ncustom: retained\n---\n\nBody";
+
+        project.create_document_source(&rel, source).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(project.root.join(rel)).unwrap(),
+            source
+        );
+    }
+
+    #[test]
+    fn create_document_source_refuses_overwrite() {
+        let tmp = TempDir::new().unwrap();
+        let project = Project::open(tmp.path()).unwrap();
+        let rel = std::path::PathBuf::from("existing.md");
+        std::fs::write(project.root.join(&rel), "original").unwrap();
+
+        let error = project
+            .create_document_source(&rel, "replacement")
+            .expect_err("create must not overwrite an existing document");
+        assert!(error.to_string().contains("already exists"));
+        assert_eq!(
+            std::fs::read_to_string(project.root.join(rel)).unwrap(),
+            "original"
+        );
+    }
+
+    #[test]
     fn save_document_content_preserves_yaml_frontmatter_verbatim() {
         let tmp = TempDir::new().unwrap();
         let project = Project::open(tmp.path()).unwrap();
@@ -4932,6 +4988,25 @@ Imported body.
 
         let after = std::fs::read_to_string(project.root.join(&rel)).unwrap();
         assert_eq!(after, format!("{frontmatter}\n\nEdited body"));
+    }
+
+    #[test]
+    fn save_document_content_refuses_frontmatter_as_replacement_body() {
+        let tmp = TempDir::new().unwrap();
+        let project = Project::open(tmp.path()).unwrap();
+        let rel = std::path::PathBuf::from("note.md");
+        let original = "+++\ntitle = \"Original\"\n+++\n\nOriginal body";
+        std::fs::write(project.root.join(&rel), original).unwrap();
+
+        let error = project
+            .save_document_content(&rel, "---\ntitle: Replacement\n---\n\nBody")
+            .expect_err("body-only save must reject duplicate frontmatter");
+
+        assert!(error.to_string().contains("second frontmatter block"));
+        assert_eq!(
+            std::fs::read_to_string(project.root.join(&rel)).unwrap(),
+            original
+        );
     }
 
     #[test]

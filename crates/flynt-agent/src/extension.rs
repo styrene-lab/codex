@@ -1234,7 +1234,7 @@ impl Extension for FlyntExtension {
                 );
                 let rel = std::path::Path::new(path);
                 self.project
-                    .save_document_content(rel, &full)
+                    .create_document_source(rel, &full)
                     .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
                 Ok(json!({ "created": path }))
             }
@@ -1686,7 +1686,7 @@ impl Extension for FlyntExtension {
                 );
                 let rel = std::path::Path::new(&md_rel);
                 self.project
-                    .save_document_content(rel, &md_content)
+                    .create_document_source(rel, &md_content)
                     .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
 
                 Ok(json!({
@@ -1752,7 +1752,7 @@ impl Extension for FlyntExtension {
                 );
                 let rel = std::path::Path::new(&md_rel);
                 self.project
-                    .save_document_content(rel, &md_content)
+                    .create_document_source(rel, &md_content)
                     .map_err(|e| omegon_extension::Error::internal_error(e.to_string()))?;
 
                 Ok(json!({

@@ -119,7 +119,7 @@ pub fn drawing_create_spec(project: &Project, params: Value) -> ExtResult<Value>
         name.replace('"', "\\\"")
     );
     project
-        .save_document_content(&wrapper_rel, &md_content)
+        .create_document_source(&wrapper_rel, &md_content)
         .map_err(|e| ExtError::internal_error(e.to_string()))?;
 
     let render = render_excalidraw(&spec);
