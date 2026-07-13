@@ -3599,7 +3599,8 @@ pub fn NotesView() -> Element {
                                 .unwrap_or("note");
                             let recovered = std::path::PathBuf::from("Recovered")
                                 .join(format!("{stem} {short}.md"));
-                            let save_result = project.save_document_content(&recovered, &snapshot.content);
+                            let save_result =
+                                project.create_document_source(&recovered, &snapshot.content);
                             match save_result {
                                 Ok(()) => {
                                     let _ = project.reindex();
