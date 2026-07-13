@@ -1786,3 +1786,23 @@
 .settings-status.err {
   color: var(--danger);
 }
+
+/* ── Apple Notes import ─────────────────────────────────────────────────── */
+.apple-notes-toolbar { display:flex; align-items:center; justify-content:space-between; gap:var(--space-4); margin:var(--space-5) 0 var(--space-2); }
+.apple-notes-toolbar h4 { margin:0 0 var(--space-1); color:var(--foreground); }
+.apple-notes-toolbar p { margin:0; color:var(--muted-foreground); font-size:var(--font-size-sm); }
+.apple-notes-toolbar-actions { display:flex; gap:var(--space-2); }
+.apple-notes-privacy { margin:0 0 var(--space-4); }
+.apple-notes-catalog { display:flex; flex-direction:column; gap:var(--space-5); max-height:48vh; overflow-y:auto; padding:var(--space-1) var(--space-2) var(--space-8) 0; }
+.apple-notes-folder { display:flex; flex-direction:column; gap:var(--space-2); }
+.apple-notes-folder h4 { margin:0; color:var(--muted-foreground); font-size:var(--font-size-xs); font-weight:var(--font-weight-semibold); letter-spacing:.07em; text-transform:uppercase; }
+.apple-notes-row { display:grid; grid-template-columns:20px minmax(0,1fr) auto; align-items:center; gap:var(--space-3); padding:var(--space-3) var(--space-4); border:1px solid var(--border); border-radius:var(--radius-md); background:var(--card); cursor:pointer; transition:border-color var(--duration-fast) var(--ease),background var(--duration-fast) var(--ease); }
+.apple-notes-row:hover { border-color:var(--primary-muted); }
+.apple-notes-row.selected { border-color:var(--primary); background:color-mix(in srgb,var(--primary) 9%,var(--card)); }
+.apple-notes-row:has(input:disabled) { opacity:.55; cursor:not-allowed; }
+.apple-notes-row-main { min-width:0; display:flex; flex-direction:column; gap:2px; }
+.apple-notes-row-main strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.apple-notes-row-main span { color:var(--muted-foreground); font-size:var(--font-size-xs); }
+.apple-notes-row-meta { display:flex; gap:var(--space-1); }
+.apple-notes-sticky-action { position:sticky; bottom:0; z-index:3; display:flex; align-items:center; justify-content:flex-end; gap:var(--space-4); margin-top:calc(-1 * var(--space-4)); padding:var(--space-4); border-top:1px solid var(--border); background:color-mix(in srgb,var(--background) 92%,transparent); backdrop-filter:blur(12px); }
+.apple-notes-selection-count { color:var(--muted-foreground); font-size:var(--font-size-sm); }

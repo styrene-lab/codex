@@ -113,18 +113,44 @@ pub fn AppleNotesImportSection() -> Element {
                     p { class: "settings-message err", "{message}" }
                 }
                 if let Some((folders, note_count)) = counts {
-                    div { class: "settings-card",
-                        h4 { "Apple Notes is ready" }
-                        p { "Found {note_count} notes across {folders} folders in {catalog.read().as_ref().map_or(0, |value| value.accounts.len())} accounts." }
-                        p { class: "settings-hint", "Select up to 100 notes. Bodies are read only when you create the preview." }
+                    div { class: "apple-notes-toolbar",
+                        div {
+                            h4 { "Apple Notes is ready" }
+                            p { "{note_count} notes · {folders} folders · {catalog.read().as_ref().map_or(0, |value| value.accounts.len())} account" }
+                        }
+                        div { class: "apple-notes-toolbar-actions",
+                            button {
+                                class: "btn btn-ghost btn-sm",
+                                onclick: move |_| {
+                                    let unlocked = notes.iter()
+                                        .filter(|note| !note.password_protected)
+                                        .take(100)
+                                        .map(|note| note.id.clone())
+                                        .collect();
+                                    *selected.write() = unlocked;
+                                    preview.write().clear();
+                                },
+                                "Select all"
+                            }
+                            button {
+                                class: "btn btn-ghost btn-sm",
+                                disabled: selected_count == 0,
+                                onclick: move |_| {
+                                    selected.write().clear();
+                                    preview.write().clear();
+                                },
+                                "Clear"
+                            }
+                        }
                     }
+                    p { class: "settings-hint apple-notes-privacy", "Metadata only · note bodies remain unread until preview · maximum 100" }
                     div { class: "apple-notes-catalog",
                         for note in notes.iter() {
                             {
                                 let note_id = note.id.clone();
                                 let checked = selected.read().contains(&note.id);
                                 rsx! {
-                                    label { class: "apple-notes-row",
+                                    label { class: if checked { "apple-notes-row selected" } else { "apple-notes-row" },
                                         input {
                                             r#type: "checkbox",
                                             checked,
@@ -151,9 +177,10 @@ pub fn AppleNotesImportSection() -> Element {
                             }
                         }
                     }
-                    div { class: "settings-actions",
+                    div { class: "apple-notes-sticky-action",
+                        span { class: "apple-notes-selection-count", "{selected_count} selected" }
                         button {
-                            class: "settings-button primary",
+                            class: "btn btn-primary",
                             disabled: selected_count == 0 || *loading.read(),
                             onclick: move |_| {
                                 let ids = selected.read().iter().cloned().collect::<Vec<_>>();
@@ -169,7 +196,7 @@ pub fn AppleNotesImportSection() -> Element {
                                     *loading.write() = false;
                                 });
                             },
-                            "Preview {selected_count} selected"
+                            if *loading.read() { "Preparing preview…" } else { "Review selected notes →" }
                         }
                     }
                 }
