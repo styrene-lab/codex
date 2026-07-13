@@ -449,6 +449,8 @@ impl Project {
     pub fn index_file(&self, path: &Path) -> Result<()> {
         let raw = fs::read_to_string(path)?;
         let rel_path = path.strip_prefix(&self.root)?.to_owned();
+        let original_frontmatter = extract_raw_frontmatter_block(&raw);
+        let had_frontmatter = original_frontmatter.is_some();
         let (body, mut frontmatter, links) = parse_document_source(&raw);
 
         // Derive title: H1 > frontmatter.title > [data].title > filename
@@ -478,7 +480,11 @@ impl Project {
         // (or the project-wide default allows it).
         if frontmatter.id.is_none() {
             frontmatter.id = Some(id.0);
-            if self.config.indexing.should_write_frontmatter(&rel_path) {
+            // Existing frontmatter is user-authored data. Do not transcode or
+            // rewrite it merely to inject Flynt's index ID: that can discard
+            // unknown YAML/TOML keys. Files without frontmatter may receive a
+            // canonical Flynt TOML block when their indexing scope permits it.
+            if !had_frontmatter && self.config.indexing.should_write_frontmatter(&rel_path) {
                 if frontmatter.kind.is_none()
                     && let Some(scope) = self.config.indexing.scope_for_path(&rel_path)
                     && let Some(ref k) = scope.kind
@@ -639,9 +645,22 @@ impl Project {
         if let Some(parent) = abs_path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let existing_fm = fs::read_to_string(&abs_path)
-            .ok()
-            .and_then(|raw| extract_raw_frontmatter_block(&raw));
+        let existing_raw = fs::read_to_string(&abs_path).ok();
+        let starts_with_frontmatter = existing_raw.as_deref().is_some_and(|raw| {
+            raw.starts_with("+++\n")
+                || raw.starts_with("+++\r\n")
+                || raw.starts_with("---\n")
+                || raw.starts_with("---\r\n")
+        });
+        let existing_fm = existing_raw
+            .as_deref()
+            .and_then(extract_raw_frontmatter_block);
+        if starts_with_frontmatter && existing_fm.is_none() {
+            anyhow::bail!(
+                "refusing to save {}: existing frontmatter is unterminated",
+                rel_path.display()
+            );
+        }
         let to_write = match existing_fm {
             Some(fm_block) => {
                 // Trim leading newlines from body; we'll add exactly
@@ -2075,20 +2094,26 @@ impl Project {
     }
 }
 
-/// If `raw` starts with a `+++` frontmatter block, return that block
-/// (including the opening and closing fences) verbatim. Otherwise
-/// return None. Used by save_document_content to preserve unknown
+/// If `raw` starts with a TOML (`+++`) or YAML (`---`) frontmatter block,
+/// return that block (including the opening and closing fences) verbatim.
+/// Otherwise return None. Used by body-only save paths to preserve unknown
 /// frontmatter fields when re-writing a document body.
 fn extract_raw_frontmatter_block(raw: &str) -> Option<String> {
-    let r = raw
+    let (fence, r) = if let Some(rest) = raw
         .strip_prefix("+++\n")
-        .or_else(|| raw.strip_prefix("+++\r\n"))?;
+        .or_else(|| raw.strip_prefix("+++\r\n"))
+    {
+        ("+++", rest)
+    } else {
+        let rest = raw
+            .strip_prefix("---\n")
+            .or_else(|| raw.strip_prefix("---\r\n"))?;
+        ("---", rest)
+    };
     let mut offset = 0usize;
     for line in r.split_inclusive('\n') {
         let trimmed = line.trim_end_matches('\n').trim_end_matches('\r').trim();
-        if trimmed == "+++" {
-            // Length of the frontmatter section: prefix "+++\n" + r
-            // up through this closing line (without trailing newline).
+        if trimmed == fence {
             let prefix_len = raw.len() - r.len();
             let end_in_r = offset + line.len()
                 - (line.len() - line.trim_end_matches('\n').trim_end_matches('\r').len());
@@ -4891,6 +4916,46 @@ Imported body.
     }
 
     #[test]
+    fn save_document_content_preserves_yaml_frontmatter_verbatim() {
+        let tmp = TempDir::new().unwrap();
+        let project = Project::open(tmp.path()).unwrap();
+        let rel = std::path::PathBuf::from("yaml.md");
+        let frontmatter =
+            "---\ntitle: Release Brief\naliases: [QBF Brief]\ncustom:\n  nested: value\n---";
+        std::fs::write(
+            project.root.join(&rel),
+            format!("{frontmatter}\n\nOriginal body"),
+        )
+        .unwrap();
+
+        project.save_document_content(&rel, "Edited body").unwrap();
+
+        let after = std::fs::read_to_string(project.root.join(&rel)).unwrap();
+        assert_eq!(after, format!("{frontmatter}\n\nEdited body"));
+    }
+
+    #[test]
+    fn save_document_content_refuses_unterminated_frontmatter() {
+        let tmp = TempDir::new().unwrap();
+        let project = Project::open(tmp.path()).unwrap();
+        for (name, original) in [
+            ("toml.md", "+++\ntitle = \"Broken\"\nBody"),
+            ("yaml.md", "---\ntitle: Broken\nBody"),
+        ] {
+            let rel = std::path::PathBuf::from(name);
+            std::fs::write(project.root.join(&rel), original).unwrap();
+            let error = project
+                .save_document_content(&rel, "replacement")
+                .expect_err("malformed frontmatter must block body save");
+            assert!(error.to_string().contains("unterminated"));
+            assert_eq!(
+                std::fs::read_to_string(project.root.join(&rel)).unwrap(),
+                original
+            );
+        }
+    }
+
+    #[test]
     fn extract_raw_frontmatter_block_basic() {
         let raw = "+++\nid = \"x\"\ntitle = \"y\"\n+++\n\nbody";
         let got = super::extract_raw_frontmatter_block(raw).expect("should extract");
@@ -4898,6 +4963,10 @@ Imported body.
         assert!(got.ends_with("+++"), "block: {got:?}");
         assert!(got.contains("id = \"x\""));
         assert!(!got.contains("body"));
+
+        let yaml = "---\ntitle: y\ncustom:\n  nested: true\n---\n\nbody";
+        let got = super::extract_raw_frontmatter_block(yaml).expect("should extract YAML");
+        assert_eq!(got, "---\ntitle: y\ncustom:\n  nested: true\n---");
     }
 
     #[test]

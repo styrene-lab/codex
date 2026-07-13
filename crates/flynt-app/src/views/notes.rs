@@ -285,6 +285,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn strips_toml_and_yaml_frontmatter_without_accepting_unterminated_blocks() {
+        assert_eq!(
+            content_without_frontmatter("+++\ntitle = \"TOML\"\n+++\n\nBody"),
+            "\nBody"
+        );
+        assert_eq!(
+            content_without_frontmatter("---\r\ntitle: YAML\r\n---\r\n\r\nBody"),
+            "\r\nBody"
+        );
+        let malformed = "---\ntitle: Broken\nBody";
+        assert_eq!(content_without_frontmatter(malformed), malformed);
+    }
+
+    #[test]
     fn extracts_headings_skipping_fenced_code() {
         let headings = extract_headings(
             r#"# Alpha
@@ -400,13 +414,27 @@ fn is_d2_path(path: &std::path::Path) -> bool {
 }
 
 fn content_without_frontmatter(content: &str) -> &str {
-    let Some(rest) = content.strip_prefix("+++") else {
+    let (fence, rest) = if let Some(rest) = content
+        .strip_prefix("+++\n")
+        .or_else(|| content.strip_prefix("+++\r\n"))
+    {
+        ("+++", rest)
+    } else if let Some(rest) = content
+        .strip_prefix("---\n")
+        .or_else(|| content.strip_prefix("---\r\n"))
+    {
+        ("---", rest)
+    } else {
         return content;
     };
-    let Some(end) = rest.find("\n+++") else {
-        return content;
-    };
-    &rest[end + 5..]
+    let mut consumed = 0usize;
+    for line in rest.split_inclusive('\n') {
+        consumed += line.len();
+        if line.trim_end_matches(['\r', '\n']).trim() == fence {
+            return &rest[consumed..];
+        }
+    }
+    content
 }
 
 fn d2_embed_path(content: &str) -> Option<String> {
@@ -741,7 +769,9 @@ fn preprocess(src: &str) -> String {
 fn build_artifact_link_index(root: &std::path::Path) -> std::collections::HashMap<String, String> {
     let mut out = std::collections::HashMap::new();
     let mut artifacts = Vec::new();
-    artifacts.extend(flynt_core::visual_artifacts::discover_excalidraw_artifacts(root));
+    artifacts.extend(flynt_core::visual_artifacts::discover_excalidraw_artifacts(
+        root,
+    ));
     artifacts.extend(flynt_core::visual_artifacts::discover_design_board_artifacts(root));
     artifacts.extend(flynt_core::visual_artifacts::discover_flow_artifacts(root));
 
@@ -755,7 +785,11 @@ fn build_artifact_link_index(root: &std::path::Path) -> std::collections::HashMa
         let source = artifact.source_path.to_string_lossy().to_string();
         insert_artifact_link_alias(&mut out, &artifact.title, kind);
         insert_artifact_link_alias(&mut out, &source, kind);
-        if let Some(name) = artifact.source_path.file_name().and_then(|name| name.to_str()) {
+        if let Some(name) = artifact
+            .source_path
+            .file_name()
+            .and_then(|name| name.to_str())
+        {
             insert_artifact_link_alias(&mut out, name, kind);
         }
         if let Some(wrapper) = artifact.wrapper_path {
@@ -2231,7 +2265,10 @@ pub fn NotesView() -> Element {
     use_effect(move || {
         let _ver = *render_ver.read();
         let selected_id = tab_state.read().active_id().cloned();
-        let previous_doc_id = doc_data.peek().as_ref().map(|(id, _, _, _, _, _, _)| id.clone());
+        let previous_doc_id = doc_data
+            .peek()
+            .as_ref()
+            .map(|(id, _, _, _, _, _, _)| id.clone());
         let Some(doc_id) = selected_id else {
             *doc_data.write() = None;
             return;
@@ -2868,7 +2905,9 @@ pub fn NotesView() -> Element {
 
     // Gate on doc_data (synchronous, instant) not rendered (async, slow).
     // The editor gets raw content immediately; HTML preview swaps in when ready.
-    let Some((_doc_id, rel_path, title, body, frontmatter, created_at, updated_at)) = doc_data.read().clone() else {
+    let Some((_doc_id, rel_path, title, body, frontmatter, created_at, updated_at)) =
+        doc_data.read().clone()
+    else {
         return rsx! {
             crate::components::TabBar {}
             if has_active {
@@ -3605,4 +3644,3 @@ pub fn NotesView() -> Element {
         }
     }
 }
-

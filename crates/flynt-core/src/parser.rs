@@ -22,15 +22,13 @@ fn split_frontmatter(raw: &str) -> (Frontmatter, String) {
         let fm: Frontmatter = toml::from_str(fm_str).unwrap_or_default();
         return (fm, body);
     }
-    // Try YAML frontmatter: ---\n...\n---  (stored as TOML-compatible struct via serde)
+    // Try YAML frontmatter: ---\n...\n---
     if let Some(rest) = raw.strip_prefix("---\n")
         && let Some(end) = rest.find("\n---")
     {
-        // We accept basic YAML-looking TOML-compatible values (tags, aliases, status)
         let fm_str = &rest[..end];
         let body = rest[end + 4..].trim_start_matches('\n').to_string();
-        // Best-effort: parse as TOML (most frontmatter keys are compatible)
-        let fm: Frontmatter = toml::from_str(fm_str).unwrap_or_default();
+        let fm: Frontmatter = serde_yaml::from_str(fm_str).unwrap_or_default();
         return (fm, body);
     }
     (Frontmatter::default(), raw.to_string())
@@ -246,9 +244,19 @@ mod tests {
 
     #[test]
     fn yaml_frontmatter_parsed() {
-        let raw = "---\ntitle = \"YAML-ish\"\ntags = [\"yaml\"]\n---\n\nBody.";
+        let raw = "---\ntitle: YAML\ntags: [yaml]\naliases:\n  - Y\n---\n\nBody.";
         let (body, fm, _) = parse_document_source(raw);
-        assert_eq!(fm.title.as_deref(), Some("YAML-ish"));
+        assert_eq!(fm.title.as_deref(), Some("YAML"));
+        assert_eq!(fm.tags, vec!["yaml"]);
+        assert_eq!(fm.aliases, vec!["Y"]);
+        assert_eq!(body, "Body.");
+    }
+
+    #[test]
+    fn malformed_yaml_frontmatter_is_not_interpreted_as_metadata() {
+        let raw = "---\ntitle: [unterminated\n---\n\nBody.";
+        let (body, fm, _) = parse_document_source(raw);
+        assert!(fm.title.is_none());
         assert_eq!(body, "Body.");
     }
 
