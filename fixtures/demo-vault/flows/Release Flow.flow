@@ -1,120 +1,19 @@
 {
   "schema_version": 1,
-  "id": "release-flow",
-  "meta": {
-    "title": "Release Flow"
-  },
+  "id": "qbf-release-flow",
+  "meta": { "title": "Release Flow" },
   "nodes": [
-    {
-      "id": "brief",
-      "kind": "input",
-      "position": [
-        80,
-        160
-      ],
-      "data": {
-        "name": "Brief"
-      },
-      "sockets": [
-        {
-          "name": "out",
-          "direction": "output"
-        }
-      ]
-    },
-    {
-      "id": "tasks",
-      "kind": "step",
-      "position": [
-        340,
-        160
-      ],
-      "data": {
-        "name": "Tasks"
-      },
-      "sockets": [
-        {
-          "name": "in",
-          "direction": "input"
-        },
-        {
-          "name": "out",
-          "direction": "output"
-        }
-      ]
-    },
-    {
-      "id": "screens",
-      "kind": "step",
-      "position": [
-        600,
-        160
-      ],
-      "data": {
-        "name": "Screenshots"
-      },
-      "sockets": [
-        {
-          "name": "in",
-          "direction": "input"
-        },
-        {
-          "name": "out",
-          "direction": "output"
-        }
-      ]
-    },
-    {
-      "id": "release",
-      "kind": "output",
-      "position": [
-        860,
-        160
-      ],
-      "data": {
-        "name": "Release"
-      },
-      "sockets": [
-        {
-          "name": "in",
-          "direction": "input"
-        }
-      ]
-    }
+    {"id":"brief","kind":"input","position":[80,180],"data":{"name":"Brief"},"sockets":[{"name":"release","direction":"output","ty":"Release"}]},
+    {"id":"review","kind":"decision","position":[340,180],"data":{"name":"Review"},"sockets":[{"name":"release","direction":"input","ty":"Release"},{"name":"pass","direction":"output","ty":"Release"},{"name":"fix","direction":"output","ty":"Issue"}]},
+    {"id":"validate","kind":"step","position":[620,100],"data":{"name":"Validate"},"sockets":[{"name":"release","direction":"input","ty":"Release"},{"name":"artifact","direction":"output","ty":"Artifact"}]},
+    {"id":"rework","kind":"step","position":[620,280],"data":{"name":"Rework"},"sockets":[{"name":"issue","direction":"input","ty":"Issue"},{"name":"release","direction":"output","ty":"Release"}]},
+    {"id":"ship","kind":"output","position":[900,100],"data":{"name":"Ship"},"sockets":[{"name":"artifact","direction":"input","ty":"Artifact"}]}
   ],
   "edges": [
-    {
-      "id": "e1",
-      "source": {
-        "node": "brief",
-        "socket": "out"
-      },
-      "target": {
-        "node": "tasks",
-        "socket": "in"
-      }
-    },
-    {
-      "id": "e2",
-      "source": {
-        "node": "tasks",
-        "socket": "out"
-      },
-      "target": {
-        "node": "screens",
-        "socket": "in"
-      }
-    },
-    {
-      "id": "e3",
-      "source": {
-        "node": "screens",
-        "socket": "out"
-      },
-      "target": {
-        "node": "release",
-        "socket": "in"
-      }
-    }
+    {"id":"e-brief-review","source":{"node":"brief","socket":"release"},"target":{"node":"review","socket":"release"}},
+    {"id":"e-review-validate","source":{"node":"review","socket":"pass"},"target":{"node":"validate","socket":"release"}},
+    {"id":"e-review-rework","source":{"node":"review","socket":"fix"},"target":{"node":"rework","socket":"issue"}},
+    {"id":"e-rework-review","source":{"node":"rework","socket":"release"},"target":{"node":"review","socket":"release"}},
+    {"id":"e-validate-ship","source":{"node":"validate","socket":"artifact"},"target":{"node":"ship","socket":"artifact"}}
   ]
 }

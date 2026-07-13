@@ -6,7 +6,7 @@
       "id": "write-surface",
       "title": "Write surface",
       "surface": "write",
-      "doc": "Welcome.md",
+      "doc": "notes/Release Brief.md",
       "output": "write-surface.png",
       "placeholder": "write-surface.svg",
       "description": "Markdown editing with project navigation and document context."

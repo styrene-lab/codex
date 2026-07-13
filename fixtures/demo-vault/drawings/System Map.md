@@ -1,6 +1,6 @@
 ---
 title: System Map
-tags: [drawing, demo]
+tags: [drawing, architecture]
 ---
 
 ![[System Map.excalidraw]]

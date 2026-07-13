@@ -1,22 +1,29 @@
 ---
-title: Flynt Demo Vault
-tags: [demo, flynt, screenshots]
+title: Quick Brown Fox
+aliases: [QBF, Demo Project]
+tags: [demo, release]
 ---
 
-# Flynt Demo Vault
+# Quick Brown Fox
 
-This vault is structured for public documentation screenshots and release QA. It exercises the main Flynt surfaces with non-sensitive, realistic project data.
+Ship one tiny release that exercises every Flynt surface. Start with the [[notes/Release Brief|Release Brief]], follow the [[diagrams/Architecture|Architecture]], then use [[notes/Release Runbook|Release Runbook]].
 
-Start with [[notes/Product Brief|Product Brief]], then inspect [[docs/Release Runbook|Release Runbook]], [[boards/Launch Dashboard|Launch Dashboard]], and the task board.
+> [!NOTE]
+> The quick brown fox jumps over the lazy dog: one coherent project, complete surface coverage, no filler.
 
-## Screenshot scenarios
+| Surface | Artifact | Signal |
+| --- | --- | --- |
+| Write + Graph | [[notes/Release Brief|Release Brief]] | links, metadata, rich Markdown |
+| Tasks | Launch board | ready, doing, blocked, done, archived |
+| Design | [[boards/Launch Dashboard|Launch Dashboard]] | board, drawing, D2, flow |
+| Omegon | `Ship the QBF release` | executable task contract |
 
-- **Write:** open [[notes/Product Brief|Product Brief]].
-- **Graph:** use the graph surface from [[notes/Product Brief|Product Brief]].
-- **Tasks:** inspect the Launch Board task files under `tasks/`.
-- **Design:** open [[boards/Launch Dashboard|Launch Dashboard]].
-- **Omegon:** inspect `.omegon/agent-journal.md` and runtime guidance.
+- [x] Define the release
+- [ ] Clear the blocked review
+- [ ] Publish after validation
 
-## Demo-safe constraint
+```sh
+python3 scripts/check-demo-vault.py
+```
 
-Everything in this vault is safe for public screenshots: no tokens, no customer names, no private local paths, and no real operator notes.
+External reference: [Flynt](https://github.com/styrene-lab/flynt).

@@ -1,0 +1,31 @@
+direction: right
+
+project: Project files {
+  shape: package
+  style.fill: "#0e1622"
+  style.stroke: "#2ab4c8"
+}
+index: Local index {
+  shape: cylinder
+  style.fill: "#131e2e"
+  style.stroke: "#1a8898"
+}
+surfaces: Flynt surfaces {
+  write: Write
+  graph: Graph
+  tasks: Tasks
+  design: Design
+}
+omegon: Omegon {
+  style.fill: "#1a1040"
+  style.stroke: "#6060c0"
+}
+sync: Optional sync {
+  style.fill: "#0e2e20"
+  style.stroke: "#1ab878"
+}
+
+project -> index: derive
+index -> surfaces: project
+surfaces -> omegon: tools
+project -> sync: transport

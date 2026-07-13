@@ -1,6 +1,6 @@
 ---
 title: Release Flow
-tags: [flow, demo]
+tags: [flow, release]
 ---
 
 ![[Release Flow.flow]]
