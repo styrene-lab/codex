@@ -1,0 +1,19 @@
+[package]
+name = "block"
+version = "0.1.6"
+authors = ["Steven Sheldon"]
+
+description = "Rust interface for Apple's C language extension of blocks (Flynt compatibility patch)."
+keywords = ["blocks", "osx", "ios", "objective-c"]
+readme = "README.md"
+repository = "http://github.com/SSheldon/rust-block"
+documentation = "http://ssheldon.github.io/rust-objc/block/"
+license = "MIT"
+
+[features]
+# The upstream tests require an unpublished Objective-C helper crate. Flynt
+# validates this compatibility patch through the macOS application test suite.
+upstream-tests = []
+
+# The original 0.1.6 manifest referenced an unpublished path-only dev helper.
+# Keep the vendored compatibility patch self-contained for workspace builds.

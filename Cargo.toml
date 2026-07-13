@@ -82,3 +82,9 @@ flynt-store = { path = "crates/flynt-store" }
 flynt-forge = { path = "crates/flynt-forge" }
 flynt-flow = { path = "crates/flynt-flow" }
 flynt-agent = { path = "crates/flynt-agent" }
+
+[patch.crates-io]
+# `block` 0.1.6 models an Objective-C runtime symbol as an uninhabited enum.
+# Current Rust warns and a future Rust release will reject that extern static.
+# Keep the crate API/ABI intact while using an opaque inhabited FFI marker.
+block = { path = "vendor/block" }
