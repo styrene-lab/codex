@@ -10,6 +10,11 @@
     <key>com.apple.security.app-sandbox</key>
     <false/>
 
+    <!-- Permission is still requested by macOS only when the operator starts
+         an Apple Notes import. -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+
     <!-- Hardened runtime entitlements (required for notarization) -->
     <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
     <true/>

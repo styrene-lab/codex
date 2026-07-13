@@ -74,6 +74,11 @@ bundle:
     /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 13.0" "$PLIST" 2>/dev/null || \
     /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 13.0" "$PLIST"
 
+    # Apple Notes Automation permission — requested only when the operator
+    # explicitly starts an Apple Notes import.
+    /usr/libexec/PlistBuddy -c "Set :NSAppleEventsUsageDescription 'Flynt can copy notes you select from Apple Notes into your Flynt project. Your Apple Notes remain unchanged.'" "$PLIST" 2>/dev/null || \
+    /usr/libexec/PlistBuddy -c "Add :NSAppleEventsUsageDescription string 'Flynt can copy notes you select from Apple Notes into your Flynt project. Your Apple Notes remain unchanged.'" "$PLIST"
+
     # flynt-note:// URL scheme
     /usr/libexec/PlistBuddy -c "Delete :CFBundleURLTypes" "$PLIST" 2>/dev/null || true
     /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$PLIST"

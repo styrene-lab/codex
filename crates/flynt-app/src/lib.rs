@@ -15,6 +15,7 @@
 
 pub mod acp;
 pub mod app;
+pub mod apple_notes;
 pub mod armory_install;
 pub mod armory_resolution;
 pub mod bootstrap;
