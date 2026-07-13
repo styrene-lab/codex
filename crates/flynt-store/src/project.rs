@@ -591,6 +591,7 @@ impl Project {
     /// The destination must not already exist, preventing this whole-source
     /// creation path from replacing established metadata.
     pub fn create_document_source(&self, rel_path: &Path, source: &str) -> Result<()> {
+        validate_document_relative_path(rel_path, "document path")?;
         let abs_path = self.root.join(rel_path);
         let parent = abs_path.parent().unwrap_or(&self.root);
         fs::create_dir_all(parent)?;
@@ -664,6 +665,7 @@ impl Project {
         content: &str,
         notify: bool,
     ) -> Result<()> {
+        validate_document_relative_path(rel_path, "document path")?;
         let abs_path = self.root.join(rel_path);
         if let Some(parent) = abs_path.parent() {
             fs::create_dir_all(parent)?;
@@ -4977,6 +4979,37 @@ Imported body.
             std::fs::read_to_string(project.root.join(rel)).unwrap(),
             "original"
         );
+    }
+
+    #[test]
+    fn create_document_source_refuses_paths_outside_project() {
+        let tmp = TempDir::new().unwrap();
+        let project = Project::open(tmp.path()).unwrap();
+
+        for path in ["../escaped.md", "/tmp/escaped.md", "not-markdown.txt"] {
+            let error = project
+                .create_document_source(std::path::Path::new(path), "content")
+                .expect_err("invalid document path must be rejected");
+            assert!(
+                error.to_string().contains("project-relative")
+                    || error.to_string().contains("must end in .md"),
+                "unexpected error for {path}: {error:#}"
+            );
+        }
+    }
+
+    #[test]
+    fn save_document_content_refuses_paths_outside_project() {
+        let tmp = TempDir::new().unwrap();
+        let project = Project::open(tmp.path()).unwrap();
+        let escaped = tmp.path().parent().unwrap().join("escaped.md");
+        let _ = std::fs::remove_file(&escaped);
+
+        project
+            .save_document_content(std::path::Path::new("../escaped.md"), "content")
+            .expect_err("body save must not escape the project");
+
+        assert!(!escaped.exists());
     }
 
     #[test]
