@@ -3,7 +3,7 @@
 //! The simplest sync path: the project folder lives inside iCloud Drive.
 //! Apple handles all file sync transparently. No server, no tokens, no git.
 //!
-//! On macOS: ~/Library/Mobile Documents/com~apple~CloudDrive/Flynt/
+//! On macOS: ~/Library/Mobile Documents/com~apple~CloudDocs/Flynt/
 //! On iOS: app's iCloud container (requires entitlement)
 //!
 //! Flynt just needs to:
@@ -12,12 +12,13 @@
 //! 3. Detect and resolve conflicts (.icloud suffix files)
 
 use anyhow::Result;
+use flynt_core::models::{ProjectConfig, SyncConfig};
 use std::path::{Path, PathBuf};
 use tracing::info;
 
 /// Get the iCloud Drive root on macOS.
 pub fn icloud_drive_root() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join("Library/Mobile Documents/com~apple~CloudDrive"))
+    dirs::home_dir().map(|h| h.join("Library/Mobile Documents/com~apple~CloudDocs"))
 }
 
 /// Get the default Flynt project path inside iCloud Drive.
@@ -122,25 +123,39 @@ pub fn create_icloud_project(project_name: &str) -> Result<PathBuf> {
     std::fs::create_dir_all(&root)?;
     std::fs::create_dir_all(root.join(".flynt"))?;
 
-    // Write config with iCloud sync
-    let config = format!(
-        r#"project_name = "{project_name}"
-
-[sync]
-backend = "icloud"
-
-[appearance]
-theme = "alpharius"
-font_size = "medium"
-
-[local_runtime]
-
-[publication]
-default_visibility = "private"
-"#
-    );
-    std::fs::write(root.join(".flynt/config.toml"), config)?;
+    let config = ProjectConfig {
+        project_name: project_name.to_string(),
+        sync: SyncConfig::ICloud,
+        ..ProjectConfig::default()
+    };
+    std::fs::write(
+        root.join(".flynt/config.toml"),
+        toml::to_string_pretty(&config)?,
+    )?;
 
     info!("Created iCloud project at {}", root.display());
     Ok(root)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn icloud_root_uses_cloud_docs_container() {
+        let root = icloud_drive_root().unwrap();
+        assert!(root.ends_with("Library/Mobile Documents/com~apple~CloudDocs"));
+    }
+
+    #[test]
+    fn serialized_icloud_project_config_round_trips() {
+        let config = ProjectConfig {
+            project_name: "Round Trip".into(),
+            sync: SyncConfig::ICloud,
+            ..ProjectConfig::default()
+        };
+        let source = toml::to_string_pretty(&config).unwrap();
+        let parsed: ProjectConfig = toml::from_str(&source).unwrap();
+        assert!(matches!(parsed.sync, SyncConfig::ICloud));
+    }
 }
