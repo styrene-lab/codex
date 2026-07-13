@@ -56,23 +56,21 @@ pub fn create_cloud_project(
     }
     std::fs::create_dir_all(project_root.join(".flynt"))?;
 
-    // Determine the sync config based on provider type
-    let sync_backend = match provider.id {
-        "icloud" => "i_cloud",
-        _ => "none", // filesystem sync providers don't need a backend — they just sync the folder
+    let sync = if provider.id == "icloud" {
+        flynt_core::models::SyncConfig::ICloud
+    } else {
+        // Filesystem sync providers replicate the project folder themselves.
+        flynt_core::models::SyncConfig::None
     };
-
-    let config = format!(
-        r#"project_name = "{project_name}"
-
-[sync]
-backend = "{sync_backend}"
-
-[appearance]
-theme = "alpharius"
-"#
-    );
-    std::fs::write(project_root.join(".flynt/config.toml"), config)?;
+    let config = flynt_core::models::ProjectConfig {
+        project_name: project_name.to_string(),
+        sync,
+        ..flynt_core::models::ProjectConfig::default()
+    };
+    std::fs::write(
+        project_root.join(".flynt/config.toml"),
+        toml::to_string_pretty(&config)?,
+    )?;
 
     Ok(project_root)
 }
