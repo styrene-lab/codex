@@ -1,4 +1,5 @@
 pub mod agent_rail;
+pub mod apple_notes_import;
 pub mod command_palette;
 pub mod context_menu;
 pub mod daemon_settings;

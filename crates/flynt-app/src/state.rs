@@ -127,8 +127,9 @@ pub enum SettingsPage {
     GeneralSync,
     GeneralIdentity,
     GeneralUpdates,
-    // Project — single page (name + location + indexing + visualization + publication)
+    // Project — project configuration and migration/import tools
     Project,
+    ProjectImports,
     // Omegon — expanded into sub-pages
     OmegonProfile,
     OmegonProviders,
@@ -149,6 +150,7 @@ impl SettingsPage {
             Self::GeneralIdentity => "Identity",
             Self::GeneralUpdates => "Updates",
             Self::Project => "Project",
+            Self::ProjectImports => "Imports",
             Self::OmegonProfile => "Profile",
             Self::OmegonProviders => "Providers",
             Self::OmegonExtensions => "Extensions",
@@ -173,7 +175,7 @@ impl SettingsPage {
             | Self::GeneralSync
             | Self::GeneralIdentity
             | Self::GeneralUpdates => SettingsCategory::General,
-            Self::Project => SettingsCategory::Project,
+            Self::Project | Self::ProjectImports => SettingsCategory::Project,
             Self::OmegonProfile
             | Self::OmegonProviders
             | Self::OmegonExtensions
@@ -194,6 +196,7 @@ impl SettingsPage {
             Self::GeneralIdentity,
             Self::GeneralUpdates,
             Self::Project,
+            Self::ProjectImports,
             Self::OmegonProfile,
             Self::OmegonProviders,
             Self::OmegonExtensions,

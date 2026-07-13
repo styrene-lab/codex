@@ -973,6 +973,10 @@ pub fn SettingsView() -> Element {
                 // ════════════════════════════════════════════════════════════
                 // Omegon → Profile: agent profile + posture
                 // ════════════════════════════════════════════════════════════
+                if *active_page.read() == SettingsPage::ProjectImports {
+                    crate::components::apple_notes_import::AppleNotesImportSection {}
+                }
+
                 if *active_page.read() == SettingsPage::OmegonProfile {
                     crate::components::omegon::OmegonSettingsSection {}
                 }

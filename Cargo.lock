@@ -2307,6 +2307,7 @@ dependencies = [
  "flynt-store",
  "futures",
  "hex",
+ "html2md-rs",
  "muda",
  "once_cell",
  "open",
@@ -3163,6 +3164,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cc627f471c528ff0c4a49e1d5e60450c8f6461dd6d10ba9dcd3a61d3dff7728d"
 dependencies = [
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "html2md-rs"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "153717a95db950deae78899e9b3ba69702ead5b50c98f83f0f8d366c17605819"
+dependencies = [
+ "percent-encoding",
 ]
 
 [[package]]
