@@ -1,0 +1,28 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+---
+<DocsLayout title="Flynt 0.13.0" description="Apple Notes migration, safer document writes, and current sync posture.">
+  <h1>Flynt 0.13.0</h1>
+  <p class="lead">This release adds selective Apple Notes migration on macOS and hardens Flynt's document and visual-artifact boundaries.</p>
+
+  <h2>Highlights</h2>
+  <ul>
+    <li>Browse Apple Notes metadata, select unlocked notes, review Markdown previews, and explicitly copy them into the active project.</li>
+    <li>Preserve source identity and timestamps so repeated imports skip known notes.</li>
+    <li>Keep TOML and YAML frontmatter intact during body edits and contain document writes to the project root.</li>
+    <li>Resolve Excalidraw, design-board, and flow wrappers through a shared visual-artifact boundary.</li>
+    <li>Reject debug or stale-asset coworker packages before distribution.</li>
+  </ul>
+
+  <h2>Cross-Mac sync posture</h2>
+  <p>Flynt projects remain ordinary folders. For same-iCloud testing, place the project in iCloud Drive and open that same folder on each Mac after Finder reports it downloaded. Use one writer at a time during the first validation pass.</p>
+  <p>This is intentionally not presented as a Flynt conflict-free sync engine. iCloud performs file replication; conflict copies and simultaneous edits remain visible filesystem events that the operator must reconcile.</p>
+
+  <h2>Known Apple Notes limits</h2>
+  <ul>
+    <li>macOS only.</li>
+    <li>Copy-only, selected-note import—not background synchronization.</li>
+    <li>Locked notes are skipped.</li>
+    <li>Attachment metadata is reported, but binary attachment copying is deferred.</li>
+  </ul>
+</DocsLayout>

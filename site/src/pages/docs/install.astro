@@ -1,9 +1,11 @@
 ---
 import DocsLayout from "../../layouts/DocsLayout.astro";
 ---
-<DocsLayout title="Install Flynt" description="Install Flynt 0.12.x on macOS.">
-  <h1>Install</h1><p class="lead">The primary 0.12.x distribution path is macOS artifacts from GitHub Releases.</p>
-  <h2>macOS</h2><ul><li><strong>PKG:</strong> preferred for direct installation and local update validation.</li><li><strong>DMG:</strong> open and drag <code>Flynt.app</code> to Applications.</li></ul>
+<DocsLayout title="Install Flynt" description="Install Flynt 0.13.0 on macOS.">
+  <h1>Install</h1><p class="lead">Flynt 0.13.0 is distributed as a signed macOS app bundle and release archive.</p>
+  <h2>macOS</h2><ul><li><strong>Signed app:</strong> move <code>Flynt.app</code> to Applications, then open it normally.</li><li><strong>Validation archive:</strong> the Quick Brown Fox package keeps the app and a disposable project together for cross-Mac testing.</li></ul>
   <p><a class="btn btn-primary" href="https://github.com/styrene-lab/flynt/releases/latest">Download latest release</a></p>
+  <h2>Apple Notes permission</h2><p>Flynt asks for Automation access only after you choose <strong>Settings → Project → Imports → Browse Apple Notes</strong>. Discovery reads titles, folders, dates, lock/shared state, and attachment counts. Bodies are requested only for notes you select and review. Apple Notes is never modified.</p>
+  <h2>Using the same project on two Macs</h2><p>Place the project folder inside iCloud Drive and let Finder finish uploading before opening it on the second Mac. Use one writer at a time during validation. Flynt treats iCloud as folder replication; iCloud conflict copies remain operator-managed.</p>
   <h2>Omegon runtime</h2><p>The embedded agent panel checks for a compatible local <code>omegon</code> binary and project-scoped Flynt agent extension. If setup is incomplete, use <strong>Settings → Omegon → Runtime</strong> or the panel preflight card.</p>
 </DocsLayout>

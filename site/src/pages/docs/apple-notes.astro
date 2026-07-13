@@ -1,0 +1,38 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+---
+<DocsLayout title="Import Apple Notes into Flynt" description="Selectively copy Apple Notes into a Flynt 0.13.0 project on macOS.">
+  <h1>Import from Apple Notes</h1>
+  <p class="lead">Flynt 0.13.0 can copy selected Apple Notes into the active project while leaving Apple Notes and iCloud Notes unchanged.</p>
+
+  <h2>Before you begin</h2>
+  <ul>
+    <li>Use the macOS Flynt app on a Mac where the desired Apple Notes are available.</li>
+    <li>Open the Flynt project that should receive the imported material.</li>
+    <li>Locked notes cannot be imported. Unlock or duplicate them in Apple Notes first if appropriate.</li>
+  </ul>
+
+  <h2>Import workflow</h2>
+  <ol>
+    <li>Open <strong>Settings → Project → Imports</strong>.</li>
+    <li>Click <strong>Browse Apple Notes</strong> and approve the macOS Automation prompt.</li>
+    <li>Select individual unlocked notes or use <strong>Select all unlocked</strong>.</li>
+    <li>Choose <strong>Review selected notes →</strong>. Flynt fetches bodies only at this step.</li>
+    <li>Review each Markdown preview, destination path, and fidelity warning.</li>
+    <li>Choose <strong>Import</strong> to copy the reviewed notes into the project.</li>
+  </ol>
+
+  <h2>Where notes go</h2>
+  <p>Imported material is written under <code>Apple Notes Import/&lt;folder path&gt;/</code>. Flynt preserves stable Apple Notes account/note identity, source folder, timestamps, shared state, and import warnings in frontmatter. Re-importing the same stable source skips it instead of creating another copy.</p>
+
+  <h2>Fidelity limits</h2>
+  <ul>
+    <li>Rich text is converted from Apple Notes HTML to Markdown with plaintext fallback.</li>
+    <li>Shared notes become independent snapshots; collaboration state is not reproduced.</li>
+    <li>Attachments are reported during preview but binary attachment transfer is not part of 0.13.0.</li>
+    <li>Folder names and filenames are sanitized so writes remain inside the Flynt project.</li>
+  </ul>
+
+  <h2>If permission is denied</h2>
+  <p>Open <strong>System Settings → Privacy &amp; Security → Automation</strong>, allow Flynt to control Notes, return to Flynt, and click <strong>Browse Apple Notes</strong> again.</p>
+</DocsLayout>

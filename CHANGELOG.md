@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.13.0 — 2026-07-13
+
+### Added
+- **Apple Notes migration on macOS** — browse Notes metadata, select unlocked notes, review rich-text-to-Markdown previews, and explicitly copy selected material into a project-contained `Apple Notes Import/` tree while leaving Apple Notes unchanged.
+- **Apple Notes provenance and repeat-import safety** — imported notes retain stable account/note identity, source folder and timestamps, shared/locked/attachment fidelity warnings, and skip previously imported stable source IDs.
+- **Cross-Mac validation package** — a signed Apple-silicon package includes the Quick Brown Fox project, deterministic launch instructions, archive size/profile/signature guards, and a two-Mac iCloud Drive verification checklist.
+- **Unified visual artifact opening** — Excalidraw, design-board, and flow wrappers resolve through one surface boundary, including bounded recovery for damaged wrapper metadata.
+- **Richer Markdown reading** — live Markdown supports admonitions, safer frontmatter preservation, and navigation-aware link previews.
+
+### Changed
+- **Document write contracts** now separate complete-source creation from body-only editing, preserve TOML/YAML frontmatter verbatim, reject path traversal, and avoid accidental metadata replacement.
+- **Distribution packaging** now requires a clean release bundle, rejects duplicate content-hashed resources and oversized/debug binaries, and validates the signed app again after ZIP extraction.
+- **Embedded surface UX** now clears stale hover previews and edit modes during navigation and reports invalid flow data instead of silently presenting an empty canvas.
+
+### Fixed
+- Prevented flow wrappers from being rendered as missing-note Markdown and updated the demo flow to the canonical frontmatter-backed format.
+- Removed stale Dioxus bundle assets that inflated coworker archives from roughly 49 MiB to roughly 19 MiB.
+- Hardened workspace Clippy compatibility and patched the legacy macOS `block` dependency for current Rust while the Dioxus migration path is evaluated.
+
 ## 0.12.12 — 2026-06-11
 
 ### Added

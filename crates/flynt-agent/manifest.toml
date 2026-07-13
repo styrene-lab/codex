@@ -1,6 +1,6 @@
 [extension]
 name        = "flynt"
-version     = "0.12.12"
+version     = "0.13.0"
 description = "Project document and task tools — search, read, write, and manage kanban boards from Flynt."
 sdk_version = "0.25"
 
