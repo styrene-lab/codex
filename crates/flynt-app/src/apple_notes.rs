@@ -3,9 +3,16 @@
 //! This module deliberately exposes summaries only. Importing bodies and attachments
 //! is a separate step so opening the picker does not traverse private content.
 
+use flynt_core::models::{Frontmatter, MetadataValue};
+use flynt_store::project::Project;
 use serde::{Deserialize, Serialize};
-use std::{path::Path, process::Stdio, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    process::Stdio,
+    time::Duration,
+};
 use thiserror::Error;
+use uuid::Uuid;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 const EXPORT_TIMEOUT: Duration = Duration::from_secs(60);
@@ -171,6 +178,19 @@ pub struct PreparedAppleNote {
     pub modified_at: String,
     pub shared: bool,
     pub warnings: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImportedAppleNote {
+    pub source_id: String,
+    pub path: PathBuf,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AppleNotesImportReport {
+    pub imported: Vec<ImportedAppleNote>,
+    pub skipped_locked: usize,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -357,6 +377,114 @@ pub fn prepare_note(record: AppleNoteExportRecord) -> PreparedAppleNote {
         shared: record.shared,
         warnings,
     }
+}
+
+pub fn import_prepared_notes(
+    project: &Project,
+    notes: Vec<PreparedAppleNote>,
+) -> Result<AppleNotesImportReport, AppleNotesError> {
+    let mut report = AppleNotesImportReport::default();
+    for note in notes {
+        if note.markdown.is_empty()
+            && note
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("password-protected"))
+        {
+            report.skipped_locked += 1;
+            continue;
+        }
+        let folder = safe_relative_components(&note.folder_path);
+        let file_name = format!("{}.md", safe_component(&note.title));
+        let mut path = PathBuf::from("Apple Notes Import");
+        path.extend(folder);
+        path.push(file_name);
+        if project.root.join(&path).exists() {
+            path.set_file_name(format!(
+                "{}-{}.md",
+                safe_component(&note.title),
+                stable_suffix(&note.source_id)
+            ));
+        }
+
+        let mut frontmatter = Frontmatter {
+            id: Some(Uuid::new_v4()),
+            title: Some(note.title.clone()),
+            tags: vec!["apple-notes-import".into()],
+            source_format: Some("apple_notes".into()),
+            source_path: Some(format!("apple-notes://{}", note.source_id)),
+            imported_reference: false,
+            ..Frontmatter::default()
+        };
+        frontmatter.metadata.insert(
+            "apple_notes_id".into(),
+            MetadataValue::String(note.source_id.clone()),
+        );
+        frontmatter.metadata.insert(
+            "apple_notes_folder".into(),
+            MetadataValue::String(note.folder_path.clone()),
+        );
+        frontmatter.metadata.insert(
+            "apple_notes_created_at".into(),
+            MetadataValue::String(note.created_at.clone()),
+        );
+        frontmatter.metadata.insert(
+            "apple_notes_modified_at".into(),
+            MetadataValue::String(note.modified_at.clone()),
+        );
+        frontmatter.metadata.insert(
+            "apple_notes_shared".into(),
+            MetadataValue::Bool(note.shared),
+        );
+        let encoded = toml::to_string(&frontmatter).map_err(|error| AppleNotesError::Process {
+            message: sanitize_process_error(&error.to_string()),
+        })?;
+        let source = format!("+++\n{encoded}+++\n\n{}\n", note.markdown);
+        project
+            .create_document_source(&path, &source)
+            .map_err(|error| AppleNotesError::Process {
+                message: sanitize_process_error(&error.to_string()),
+            })?;
+        report.imported.push(ImportedAppleNote {
+            source_id: note.source_id,
+            path,
+            warnings: note.warnings,
+        });
+    }
+    Ok(report)
+}
+
+fn safe_relative_components(path: &str) -> Vec<String> {
+    path.split('/')
+        .filter(|part| !part.trim().is_empty())
+        .map(safe_component)
+        .collect()
+}
+
+fn safe_component(value: &str) -> String {
+    let cleaned: String = value
+        .chars()
+        .map(|character| match character {
+            '/' | ':' | '\\' | '\0' => '-',
+            control if control.is_control() => ' ',
+            other => other,
+        })
+        .collect();
+    let cleaned = cleaned.trim().trim_matches('.').trim();
+    if cleaned.is_empty() {
+        "Untitled".into()
+    } else {
+        cleaned.chars().take(120).collect()
+    }
+}
+
+fn stable_suffix(source_id: &str) -> String {
+    let mut hash = 0xcbf29ce484222325_u64;
+    for byte in source_id.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:08x}").chars().take(8).collect()
 }
 
 fn parse_catalog(bytes: &[u8]) -> Result<AppleNotesCatalog, AppleNotesError> {
