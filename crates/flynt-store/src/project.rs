@@ -592,13 +592,18 @@ impl Project {
     /// creation path from replacing established metadata.
     pub fn create_document_source(&self, rel_path: &Path, source: &str) -> Result<()> {
         let abs_path = self.root.join(rel_path);
-        if abs_path.exists() {
-            anyhow::bail!("document already exists: {}", rel_path.display());
-        }
-        if let Some(parent) = abs_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::write(&abs_path, source)?;
+        let parent = abs_path.parent().unwrap_or(&self.root);
+        fs::create_dir_all(parent)?;
+        let mut temp = tempfile::NamedTempFile::new_in(parent)?;
+        std::io::Write::write_all(&mut temp, source.as_bytes())?;
+        temp.as_file().sync_all()?;
+        temp.persist_noclobber(&abs_path).map_err(|error| {
+            if error.error.kind() == std::io::ErrorKind::AlreadyExists {
+                anyhow::anyhow!("document already exists: {}", rel_path.display())
+            } else {
+                anyhow::anyhow!(error.error)
+            }
+        })?;
         self.index_file(&abs_path)?;
         Ok(())
     }
@@ -4964,7 +4969,10 @@ Imported body.
         let error = project
             .create_document_source(&rel, "replacement")
             .expect_err("create must not overwrite an existing document");
-        assert!(error.to_string().contains("already exists"));
+        assert!(
+            error.to_string().contains("already exists"),
+            "unexpected error: {error:#}"
+        );
         assert_eq!(
             std::fs::read_to_string(project.root.join(rel)).unwrap(),
             "original"
