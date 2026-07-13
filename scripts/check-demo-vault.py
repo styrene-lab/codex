@@ -72,8 +72,18 @@ def main() -> int:
         "diagrams/Architecture.md": "![[Architecture.d2]]",
     }
     for relative, embed in wrappers.items():
-        if embed not in (VAULT / relative).read_text():
+        wrapper_body = (VAULT / relative).read_text()
+        if embed not in wrapper_body:
             fail(f"{relative} does not embed {embed}")
+        if relative.startswith(("diagrams/", "drawings/", "boards/", "flows/")):
+            body = re.sub(
+                r"\A(?:\+\+\+|---)\n.*?\n(?:\+\+\+|---)\n?",
+                "",
+                wrapper_body,
+                flags=re.S,
+            ).strip()
+            if body != embed:
+                fail(f"{relative} must be a pure artifact wrapper; put prose in a linked note")
 
     board = json.loads((VAULT / "boards/Launch Dashboard.board").read_text())
     if len(board.get("cells", [])) != 4 or {c["id"] for c in board["cells"]} != {"hero", "stats", "status", "route"}:
