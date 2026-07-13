@@ -984,6 +984,7 @@ pub enum SyncConfig {
     #[default]
     None,
     /// iCloud: project_root must already be inside iCloud Drive; no extra config needed.
+    #[serde(alias = "icloud")]
     ICloud,
     Git {
         remote: String,
@@ -1671,6 +1672,13 @@ backend = "none"
         let serialized = toml::to_string(&cfg).unwrap();
         assert!(serialized.contains("project_name = \"fresh\""));
         assert!(!serialized.contains("vault_name"));
+    }
+
+    #[test]
+    fn sync_config_accepts_legacy_icloud_spelling() {
+        let parsed: SyncConfig = toml::from_str("backend = \"icloud\"\n").unwrap();
+        assert!(matches!(parsed, SyncConfig::ICloud));
+        assert_eq!(toml::to_string(&parsed).unwrap(), "backend = \"i_cloud\"\n");
     }
 
     #[test]

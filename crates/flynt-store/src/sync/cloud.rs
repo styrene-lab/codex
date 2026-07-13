@@ -58,7 +58,7 @@ pub fn create_cloud_project(
 
     // Determine the sync config based on provider type
     let sync_backend = match provider.id {
-        "icloud" => "icloud",
+        "icloud" => "i_cloud",
         _ => "none", // filesystem sync providers don't need a backend — they just sync the folder
     };
 
@@ -237,6 +237,29 @@ mod tests {
 
         let config = std::fs::read_to_string(result.join(".flynt/config.toml")).unwrap();
         assert!(config.contains("TestProject"));
+        assert!(config.contains("backend = \"none\""));
+        let parsed: flynt_core::models::ProjectConfig = toml::from_str(&config).unwrap();
+        assert!(matches!(parsed.sync, flynt_core::models::SyncConfig::None));
+    }
+
+    #[test]
+    fn create_icloud_cloud_project_writes_parseable_backend() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let provider = CloudProvider {
+            id: "icloud",
+            label: "iCloud Drive",
+            description: "test",
+            sync_root: tmp.path().to_path_buf(),
+        };
+
+        let result = create_cloud_project(&provider, "Synced").unwrap();
+        let config = std::fs::read_to_string(result.join(".flynt/config.toml")).unwrap();
+        assert!(config.contains("backend = \"i_cloud\""));
+        let parsed: flynt_core::models::ProjectConfig = toml::from_str(&config).unwrap();
+        assert!(matches!(
+            parsed.sync,
+            flynt_core::models::SyncConfig::ICloud
+        ));
     }
 
     #[test]
