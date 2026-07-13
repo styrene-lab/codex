@@ -49,10 +49,8 @@ pub fn ExcalidrawView(path: PathBuf) -> Element {
             // Restore tab bar when leaving drawing mode (cleanup)
             window._excalidrawCleanup = function() {
                 // Unmount React to free memory
-                if (window.FlyntExcalidraw && window.FlyntExcalidraw._root) {
-                    try { window.FlyntExcalidraw._root.unmount(); } catch(e) {}
-                    window.FlyntExcalidraw._root = null;
-                    window.FlyntExcalidraw._api = null;
+                if (window.FlyntExcalidraw && window.FlyntExcalidraw.unmount) {
+                    try { window.FlyntExcalidraw.unmount(); } catch(e) {}
                 }
                 window._excalidrawLatest = null;
                 window._excSaveQueue = [];

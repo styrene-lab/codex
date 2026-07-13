@@ -12,6 +12,7 @@ interface FlyntExcalidrawBridge {
   _root: Root | null;
   _api: ExcalidrawApi | null;
   mount(containerId: string, sceneJson: string, onChange: (data: string) => void): void;
+  unmount(): void;
   exportSvg(): Promise<string>;
 }
 
@@ -24,24 +25,40 @@ const bridge: FlyntExcalidrawBridge = {
     this._root?.unmount();
     this._api = null;
     this._root = createRoot(container);
-    let scene: Record<string, unknown> = {};
-    try { scene = JSON.parse(sceneJson) as Record<string, unknown>; } catch { /* empty scene */ }
-    let mounted = false;
+    let scene: Record<string, unknown>;
+    try {
+      const parsed: unknown = JSON.parse(sceneJson);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("scene root must be an object");
+      }
+      scene = parsed as Record<string, unknown>;
+    } catch (error) {
+      this._root.unmount();
+      this._root = null;
+      throw new Error(`Invalid Excalidraw scene JSON: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    // Excalidraw invokes onChange once with its restored/normalized initial
+    // scene. Consume exactly that callback as the baseline. Time-based arming
+    // can either persist a late mount callback or discard a fast user edit.
+    let sawInitialChange = false;
     this._root.render(
       <Excalidraw
         initialData={scene}
-        excalidrawAPI={(api) => {
-          this._api = api;
-          // Excalidraw emits normalized scene data while mounting. Arm change
-          // propagation after React has committed that initial state so merely
-          // opening a drawing can never become a persisted edit.
-          queueMicrotask(() => { mounted = true; });
-        }}
+        excalidrawAPI={(api) => { this._api = api; }}
         onChange={(elements, appState, files) => {
-          if (mounted) onChange(serializeAsJSON(elements, appState, files, "local"));
+          if (!sawInitialChange) {
+            sawInitialChange = true;
+            return;
+          }
+          onChange(serializeAsJSON(elements, appState, files, "local"));
         }}
       />,
     );
+  },
+  unmount() {
+    this._root?.unmount();
+    this._root = null;
+    this._api = null;
   },
   async exportSvg() {
     if (!this._api) return "";
