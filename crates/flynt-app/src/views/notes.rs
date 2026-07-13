@@ -299,6 +299,27 @@ mod tests {
     }
 
     #[test]
+    fn renders_github_admonitions_as_semantic_callouts() {
+        let html = render_html("> [!TIP]\n> A failed check returns work to Doing.");
+        assert!(html.contains("class=\"admonition admonition-tip\""));
+        assert!(html.contains("class=\"admonition-title\">Tip</div>"));
+        assert!(html.contains("A failed check returns work to Doing."));
+        assert!(!html.contains("[!TIP]"));
+
+        let html = render_html("> [!WARNING]\n> Publishing stays blocked.");
+        assert!(html.contains("class=\"admonition admonition-warning\""));
+        assert!(html.contains("class=\"admonition-title\">Warning</div>"));
+        assert!(!html.contains("project://localhost/%21WARNING"));
+    }
+
+    #[test]
+    fn ordinary_blockquotes_remain_blockquotes() {
+        let html = render_html("> Ordinary quoted text.");
+        assert!(html.contains("<blockquote>"));
+        assert!(!html.contains("class=\"admonition"));
+    }
+
+    #[test]
     fn extracts_headings_skipping_fenced_code() {
         let headings = extract_headings(
             r#"# Alpha
@@ -714,7 +735,50 @@ fn postprocess_html(html: String) -> String {
         }
     }
     result.push_str(rest);
-    result
+    render_admonitions(result)
+}
+
+fn render_admonitions(mut html: String) -> String {
+    const KINDS: [(&str, &str); 6] = [
+        ("NOTE", "Note"),
+        ("TIP", "Tip"),
+        ("IMPORTANT", "Important"),
+        ("WARNING", "Warning"),
+        ("CAUTION", "Caution"),
+        ("DANGER", "Danger"),
+    ];
+
+    for (marker, title) in KINDS {
+        let needles = [
+            format!("<blockquote>\n<p>[!{marker}]"),
+            format!("<blockquote>\n<p><a href=\"project://localhost/%21{marker}\">!{marker}</a>"),
+        ];
+        let replacement = format!(
+            "<aside class=\"admonition admonition-{}\" role=\"note\"><div class=\"admonition-title\">{title}</div><div class=\"admonition-body\"><p>",
+            marker.to_ascii_lowercase()
+        );
+        while let Some((start, needle_len)) = needles
+            .iter()
+            .filter_map(|needle| html.find(needle).map(|start| (start, needle.len())))
+            .min_by_key(|(start, _)| *start)
+        {
+            let body_start = start + needle_len;
+            let Some(relative_end) = html[body_start..].find("</blockquote>") else {
+                break;
+            };
+            let end = body_start + relative_end;
+            html.replace_range(
+                start..end + "</blockquote>".len(),
+                &format!(
+                    "{}{}{}",
+                    replacement,
+                    &html[body_start..end],
+                    "</div></aside>"
+                ),
+            );
+        }
+    }
+    html
 }
 
 fn preprocess(src: &str) -> String {
@@ -956,9 +1020,11 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
     ]);
 
     // ── Live preview: hide markdown punctuation on non-active lines ──
-    const hideMarkupPlugin = EditorView.decorations.compute(['doc'], (state) => {{ try {{
+    const hideMarkupPlugin = EditorView.decorations.compute(['doc', 'selection'], (state) => {{ try {{
         const decs = [];
         const doc = state.doc;
+        const sel = state.selection.main;
+        const activeLine = doc.lineAt(sel.head).number;
 
         // Performance: only hide markup on small documents
         if (doc.lines > 150) return Decoration.none;
@@ -1063,6 +1129,36 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
                     decs.push(Decoration.replace({{}}).range(line.from + end, line.from + end + 1));
                     idx = end + 1;
                 }} else {{ idx++; }}
+            }}
+
+            // Render GitHub/Obsidian admonitions in Live mode. The previous
+            // HTML postprocessor only affected static preview; notes normally
+            // use this CodeMirror surface.
+            const admonition = text.match(/^\s*>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|DANGER)\]\s*$/i);
+            if (admonition) {{
+                let end = i;
+                while (end < doc.lines && /^\s*>/.test(doc.line(end + 1).text)) end++;
+                const from = line.from;
+                const to = doc.line(end).to;
+                if (sel.head < from || sel.head > to) {{
+                    const kind = admonition[1].toLowerCase();
+                    const title = admonition[1].charAt(0) + admonition[1].slice(1).toLowerCase();
+                    const body = [];
+                    for (let row = i + 1; row <= end; row++) {{
+                        body.push(doc.line(row).text.replace(/^\s*>\s?/, ''));
+                    }}
+                    const escape = value => value
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;');
+                    const h = '<aside class="admonition admonition-' + kind + '">' +
+                        '<div class="admonition-title">' + title + '</div>' +
+                        '<div class="admonition-body"><p>' + escape(body.join('\n')) + '</p></div></aside>';
+                    decs.push(Decoration.replace({{ widget: new TableWidget(h) }}).range(from, to));
+                }}
+                i = end;
+                continue;
             }}
 
             // Tables — find full table block and replace with rendered widget
@@ -1386,6 +1482,10 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
     }}
     const flyntLocalExtensions = [
                 livePreview,
+                hideMarkupPlugin,
+                combinedPlugin,
+                wikilinkHidePlugin,
+                codeBlockPlugin,
                 window.FlyntEditorCompat.embedExtension({{ EditorView, Decoration, WidgetType }}, flyntEmbedResolver),
                 window.FlyntEditorCompat.contextMenuExtension(EditorView),
                 window.FlyntEditorCompat.wikilinkInteractionExtension(EditorView),
@@ -2523,12 +2623,17 @@ pub fn NotesView() -> Element {
                     .as_ref()
                     .map(|(_, path, _, _, _, _, _)| path.clone())
             });
-        if active_path
+        let active_is_d2 = active_path
             .as_ref()
-            .is_some_and(|path| is_d2_path(path) || d2_embed_path(&edit_body.read()).is_some())
-            && *mode.read() == EditMode::Live
-        {
+            .is_some_and(|path| is_d2_path(path) || d2_embed_path(&edit_body.read()).is_some());
+        if active_is_d2 && *mode.read() == EditMode::Live {
             mode.set(EditMode::Diagram);
+        } else if !active_is_d2 && *mode.read() == EditMode::Diagram {
+            // Diagram mode belongs to the document that selected it. When a
+            // drawing/D2 tab closes and a markdown note becomes active again,
+            // restore that note's normal live renderer instead of leaving the
+            // shared NotesView mode stranded on an empty Diagram branch.
+            mode.set(EditMode::Live);
         }
     }
     use_effect(move || {

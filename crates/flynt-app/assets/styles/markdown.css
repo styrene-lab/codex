@@ -1118,6 +1118,50 @@
   line-height: 1.6;
 }
 
+/* ── Admonitions / GitHub-style alerts ───────────────────────────────────── */
+.markdown-body .admonition,
+#flynt-cm-editor .admonition {
+  --admonition-color: var(--primary);
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: var(--space-4) 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--admonition-color) 45%, var(--border));
+  border-left: 4px solid var(--admonition-color);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--admonition-color) 8%, var(--card));
+  color: var(--foreground);
+  font-style: normal;
+}
+
+.markdown-body .admonition-title,
+#flynt-cm-editor .admonition-title {
+  margin-bottom: var(--space-2);
+  color: var(--admonition-color);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.markdown-body .admonition-body > :first-child,
+#flynt-cm-editor .admonition-body > :first-child { margin-top: 0; }
+.markdown-body .admonition-body > :last-child,
+#flynt-cm-editor .admonition-body > :last-child { margin-bottom: 0; }
+.markdown-body .admonition-tip,
+.markdown-body .admonition-note,
+#flynt-cm-editor .admonition-tip,
+#flynt-cm-editor .admonition-note { --admonition-color: var(--primary); }
+.markdown-body .admonition-important,
+#flynt-cm-editor .admonition-important { --admonition-color: var(--primary-bright); }
+.markdown-body .admonition-warning,
+.markdown-body .admonition-caution,
+#flynt-cm-editor .admonition-warning,
+#flynt-cm-editor .admonition-caution { --admonition-color: var(--warning, #c86418); }
+.markdown-body .admonition-danger,
+#flynt-cm-editor .admonition-danger { --admonition-color: var(--destructive, #c83030); }
+
 /* ── Blockquote ───────────────────────────────────────────────────────────── */
 .markdown-body blockquote {
   border-left:  3px solid var(--prose-blockquote-bar);
