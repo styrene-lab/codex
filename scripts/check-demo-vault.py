@@ -4,13 +4,14 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-VAULT = ROOT / "fixtures/demo-vault"
+VAULT = Path(os.environ.get("FLYNT_DEMO_VAULT", ROOT / "fixtures/demo-vault")).resolve()
 BOARD_ID = "564f64c1-2e9c-4c7d-bc6d-84ecf0f5c6c1"
 
 REQUIRED = {
@@ -36,10 +37,10 @@ def fail(message: str) -> None:
     raise SystemExit(1)
 
 
-def frontmatter(path: Path) -> dict:
+def frontmatter(path: Path, artifact: str = "task") -> dict:
     raw = path.read_text()
     if not raw.startswith("+++\n"):
-        fail(f"{path.relative_to(VAULT)} lacks TOML task frontmatter")
+        fail(f"{path.relative_to(VAULT)} lacks TOML {artifact} frontmatter")
     end = raw.find("\n+++", 4)
     if end < 0:
         fail(f"{path.relative_to(VAULT)} has unterminated frontmatter")
@@ -96,7 +97,13 @@ def main() -> int:
     if not {"rectangle", "text", "arrow"}.issubset(element_types):
         fail("drawing must cover shapes, labels, and connections")
 
-    flow = json.loads((VAULT / "flows/Release Flow.flow").read_text())
+    flow_path = VAULT / "flows/Release Flow.flow"
+    flow_raw = flow_path.read_text()
+    flow_fm = frontmatter(flow_path, "flow")
+    if flow_fm.get("kind") != "flow" or flow_fm.get("data", {}).get("schema_version") != 1:
+        fail("flow must use canonical kind=flow TOML frontmatter at schema version 1")
+    flow_body = re.sub(r"\A\+\+\+\n.*?\n\+\+\+\n?", "", flow_raw, flags=re.S)
+    flow = json.loads(flow_body)
     if len(flow.get("nodes", [])) < 5 or len(flow.get("edges", [])) < 5:
         fail("flow must cover branching and a feedback path")
     socket_types = {socket.get("ty") for node in flow["nodes"] for socket in node.get("sockets", [])}

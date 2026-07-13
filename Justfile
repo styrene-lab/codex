@@ -47,6 +47,9 @@ build:
 bundle:
     #!/usr/bin/env bash
     set -euo pipefail
+    # Dioxus does not clean content-hashed resources before rebundling. A stale
+    # output tree silently accumulates full copies of large JS bundles.
+    rm -rf target/dx/flynt/release/macos/Flynt.app
     cd crates/flynt-app && dx bundle --platform desktop --release && cd ../..
     # Dioxus outputs to target/dx/; copy to dist/
     rm -rf dist/Flynt.app
