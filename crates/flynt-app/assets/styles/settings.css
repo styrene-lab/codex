@@ -1806,3 +1806,21 @@
 .apple-notes-row-meta { display:flex; gap:var(--space-1); }
 .apple-notes-sticky-action { position:sticky; bottom:0; z-index:3; display:flex; align-items:center; justify-content:flex-end; gap:var(--space-4); margin-top:calc(-1 * var(--space-4)); padding:var(--space-4); border-top:1px solid var(--border); background:color-mix(in srgb,var(--background) 92%,transparent); backdrop-filter:blur(12px); }
 .apple-notes-selection-count { color:var(--muted-foreground); font-size:var(--font-size-sm); }
+
+.apple-notes-browse-action { display:flex; align-items:center; gap:var(--space-3); margin-top:var(--space-4); }
+.apple-notes-browse-action > span { color:var(--muted-foreground); font-size:var(--font-size-xs); }
+.apple-notes-browse-button { min-height:38px; padding:0 var(--space-5); font-weight:var(--font-weight-semibold); }
+.apple-notes-row-copy { min-width:0; display:flex; flex-direction:column; gap:var(--space-1); }
+.apple-notes-row-copy > strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--foreground); font-size:var(--font-size-sm); }
+.apple-notes-row-details { display:flex; align-items:center; gap:var(--space-2); min-width:0; color:var(--muted-foreground); font-size:var(--font-size-xs); }
+.apple-notes-folder-label { max-width:26rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.apple-notes-date { flex:none; padding-left:var(--space-2); border-left:1px solid var(--border); font-variant-numeric:tabular-nums; }
+.apple-notes-row-meta { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:var(--space-1); }
+
+.apple-notes-action-bar { display:flex; align-items:center; justify-content:flex-end; gap:var(--space-4); margin-top:var(--space-4); padding-top:var(--space-4); border-top:1px solid var(--border); }
+.apple-notes-progress { display:flex; align-items:center; gap:var(--space-3); margin-top:var(--space-4); padding:var(--space-3) var(--space-4); border:1px solid var(--primary-muted); border-radius:var(--radius-md); background:color-mix(in srgb,var(--primary) 7%,var(--card)); }
+.apple-notes-progress > span:last-child { display:flex; flex-direction:column; gap:2px; }
+.apple-notes-progress strong { color:var(--foreground); font-size:var(--font-size-sm); }
+.apple-notes-progress small { color:var(--muted-foreground); font-size:var(--font-size-xs); }
+.apple-notes-spinner { width:18px; height:18px; flex:none; border:2px solid color-mix(in srgb,var(--primary) 25%,transparent); border-top-color:var(--primary); border-radius:50%; animation:apple-notes-spin .8s linear infinite; }
+@keyframes apple-notes-spin { to { transform:rotate(360deg); } }

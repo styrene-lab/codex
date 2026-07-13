@@ -28,6 +28,10 @@ fn catalog_counts(catalog: &AppleNotesCatalog) -> (usize, usize) {
     })
 }
 
+fn display_date(timestamp: &str) -> &str {
+    timestamp.get(..10).unwrap_or(timestamp)
+}
+
 fn flatten_catalog(catalog: &AppleNotesCatalog) -> Vec<AppleNoteSummary> {
     fn collect(folder: &apple_notes::AppleNotesFolder, output: &mut Vec<AppleNoteSummary>) {
         output.extend(folder.notes.iter().cloned());
@@ -48,6 +52,7 @@ fn flatten_catalog(catalog: &AppleNotesCatalog) -> Vec<AppleNoteSummary> {
 #[component]
 pub fn AppleNotesImportSection() -> Element {
     let mut loading = use_signal(|| false);
+    let mut loading_status = use_signal(|| Option::<String>::None);
     let mut catalog = use_signal(|| Option::<AppleNotesCatalog>::None);
     let mut error = use_signal(|| Option::<String>::None);
     let mut selected = use_signal(HashSet::<String>::new);
@@ -60,6 +65,7 @@ pub fn AppleNotesImportSection() -> Element {
             return;
         }
         *loading.write() = true;
+        *loading_status.write() = Some("Opening Apple Notes and reading account metadata…".into());
         *error.write() = None;
         spawn(async move {
             match apple_notes::discover().await {
@@ -78,6 +84,7 @@ pub fn AppleNotesImportSection() -> Element {
                 Err(err) => *error.write() = Some(err.to_string()),
             }
             *loading.write() = false;
+            *loading_status.write() = None;
         });
     };
 
@@ -102,11 +109,23 @@ pub fn AppleNotesImportSection() -> Element {
                 if !apple_notes::is_available() {
                     p { class: "settings-hint", "Apple Notes import is available in the macOS app." }
                 } else {
-                    button {
-                        class: "settings-button primary",
+                    div { class: "apple-notes-browse-action",
+                        button {
+                            class: "btn btn-primary apple-notes-browse-button",
                         disabled: *loading.read(),
                         onclick: discover,
-                        if *loading.read() { "Reading Apple Notes…" } else { "Browse Apple Notes" }
+                            if *loading.read() { "Reading Apple Notes…" } else { "Browse Apple Notes" }
+                        }
+                        span { "Metadata only until you choose notes" }
+                    }
+                }
+                if let Some(status) = loading_status.read().as_ref() {
+                    div { class: "apple-notes-progress", role: "status", aria_live: "polite",
+                        span { class: "apple-notes-spinner", aria_hidden: "true" }
+                        span {
+                            strong { "Reading Apple Notes" }
+                            small { "{status}" }
+                        }
                     }
                 }
                 if let Some(message) = error.read().as_ref() {
@@ -167,17 +186,22 @@ pub fn AppleNotesImportSection() -> Element {
                                         }
                                         span { class: "apple-notes-row-copy",
                                             strong { "{note.name}" }
-                                            small { "{note.folder_path} · modified {note.modified_at}" }
+                                            span { class: "apple-notes-row-details",
+                                                span { class: "apple-notes-folder-label", "{note.folder_path}" }
+                                                span { class: "apple-notes-date", "Modified {display_date(&note.modified_at)}" }
+                                            }
                                         }
-                                        if note.password_protected { span { class: "settings-badge", "Locked" } }
-                                        if note.shared { span { class: "settings-badge", "Shared" } }
-                                        if note.attachment_count > 0 { span { class: "settings-badge", "{note.attachment_count} attachments" } }
+                                        span { class: "apple-notes-row-meta",
+                                            if note.password_protected { span { class: "settings-badge", "Locked" } }
+                                            if note.shared { span { class: "settings-badge", "Shared" } }
+                                            if note.attachment_count > 0 { span { class: "settings-badge", "{note.attachment_count} files" } }
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                    div { class: "apple-notes-sticky-action",
+                    div { class: "apple-notes-action-bar",
                         span { class: "apple-notes-selection-count", "{selected_count} selected" }
                         button {
                             class: "btn btn-primary",
@@ -185,6 +209,7 @@ pub fn AppleNotesImportSection() -> Element {
                             onclick: move |_| {
                                 let ids = selected.read().iter().cloned().collect::<Vec<_>>();
                                 *loading.write() = true;
+                                *loading_status.write() = Some(format!("Reading {} selected note bodies…", ids.len()));
                                 *error.write() = None;
                                 spawn(async move {
                                     match apple_notes::export_selected(&ids).await {
@@ -194,6 +219,7 @@ pub fn AppleNotesImportSection() -> Element {
                                         Err(err) => *error.write() = Some(err.to_string()),
                                     }
                                     *loading.write() = false;
+                                    *loading_status.write() = None;
                                 });
                             },
                             if *loading.read() { "Preparing preview…" } else { "Review selected notes →" }
@@ -230,7 +256,7 @@ pub fn AppleNotesImportSection() -> Element {
                 }
                 if let Some(value) = report.read().as_ref() {
                     p { class: "settings-message ok",
-                        "Imported {value.imported.len()} notes; skipped {value.skipped_locked} locked notes. Apple Notes was not changed."
+                        "Imported {value.imported.len()} notes; skipped {value.skipped_locked} locked and {value.skipped_existing} previously imported notes. Apple Notes was not changed."
                     }
                 }
             }

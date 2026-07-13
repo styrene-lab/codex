@@ -3,10 +3,14 @@
 //! This module deliberately exposes summaries only. Importing bodies and attachments
 //! is a separate step so opening the picker does not traverse private content.
 
-use flynt_core::models::{Frontmatter, MetadataValue};
+use flynt_core::{
+    models::{Frontmatter, MetadataValue},
+    store::ProjectStore,
+};
 use flynt_store::project::Project;
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashSet,
     path::{Path, PathBuf},
     process::Stdio,
     time::Duration,
@@ -171,6 +175,7 @@ pub struct AppleNoteAttachment {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PreparedAppleNote {
     pub source_id: String,
+    pub account_id: String,
     pub title: String,
     pub folder_path: String,
     pub markdown: String,
@@ -191,6 +196,7 @@ pub struct ImportedAppleNote {
 pub struct AppleNotesImportReport {
     pub imported: Vec<ImportedAppleNote>,
     pub skipped_locked: usize,
+    pub skipped_existing: usize,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -369,6 +375,7 @@ pub fn prepare_note(record: AppleNoteExportRecord) -> PreparedAppleNote {
     };
     PreparedAppleNote {
         source_id: record.id,
+        account_id: record.account_id,
         title: record.name,
         folder_path: record.folder_path,
         markdown,
@@ -384,7 +391,26 @@ pub fn import_prepared_notes(
     notes: Vec<PreparedAppleNote>,
 ) -> Result<AppleNotesImportReport, AppleNotesError> {
     let mut report = AppleNotesImportReport::default();
+    let existing_source_ids: HashSet<String> = project
+        .store
+        .list_documents()
+        .map_err(|error| AppleNotesError::Process {
+            message: sanitize_process_error(&error.to_string()),
+        })?
+        .into_iter()
+        .filter_map(|document| project.store.get_document(&document.id).ok().flatten())
+        .filter_map(|document| {
+            (document.frontmatter.source_format.as_deref() == Some("apple_notes"))
+                .then_some(document.frontmatter.source_path)
+                .flatten()
+        })
+        .collect();
     for note in notes {
+        let source_path = format!("apple-notes://{}/{}", note.account_id, note.source_id);
+        if existing_source_ids.contains(&source_path) {
+            report.skipped_existing += 1;
+            continue;
+        }
         if note.markdown.is_empty()
             && note
                 .warnings
@@ -412,7 +438,7 @@ pub fn import_prepared_notes(
             title: Some(note.title.clone()),
             tags: vec!["apple-notes-import".into()],
             source_format: Some("apple_notes".into()),
-            source_path: Some(format!("apple-notes://{}", note.source_id)),
+            source_path: Some(source_path),
             imported_reference: false,
             ..Frontmatter::default()
         };
