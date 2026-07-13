@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "esbuild": "^0.24.0",
+    "esbuild": "0.28.1",
     "typescript": "5.6"
   }
 }
