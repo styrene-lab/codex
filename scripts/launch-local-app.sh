@@ -18,8 +18,14 @@ APP="$ROOT/target/dx/flynt/debug/macos/Flynt.app"
 cd "$ROOT"
 if ! command -v dx >/dev/null 2>&1; then
   echo "Dioxus CLI (dx) is required for an operator-facing macOS launch." >&2
-  echo "Install it with: cargo install dioxus-cli --version 0.7.9 --locked" >&2
+  echo "Install it with: cargo install dioxus-cli --version 0.8.0-alpha.0 --locked" >&2
   exit 127
+fi
+DX_VERSION="$(dx --version 2>/dev/null || true)"
+if [[ "$DX_VERSION" != dioxus\ 0.8.0-alpha.0* ]]; then
+  echo "Flynt requires Dioxus CLI 0.8.0-alpha.0; found: ${DX_VERSION:-unknown}" >&2
+  echo "Install it with: cargo install dioxus-cli --version 0.8.0-alpha.0 --locked --force" >&2
+  exit 2
 fi
 dx build --macos -p flynt-app --bin flynt
 if [[ ! -d "$APP/Contents/Resources" ]]; then

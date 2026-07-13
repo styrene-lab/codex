@@ -75,7 +75,7 @@ Packaging policy is documented in [docs/packaging.md](docs/packaging.md).
 
 ```sh
 # Prerequisites: Rust toolchain + dioxus-cli
-cargo install dioxus-cli
+cargo install dioxus-cli --version 0.8.0-alpha.0 --locked
 
 # Desktop
 cd crates/flynt-app && dx build --platform desktop --release

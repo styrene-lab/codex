@@ -66,7 +66,7 @@ tokio-util = { version = "0.7", features = ["compat"] }
 
 # UI
 dirs = "5"
-dioxus = { version = "0.7", features = ["launch", "devtools", "logger", "lib", "desktop"] }
+dioxus = { version = "0.8.0-alpha.0", features = ["launch", "devtools", "logger", "lib", "desktop"] }
 
 # Forge contract (shared types across styrene ecosystem)
 styrene-forge = "0.1.0"
@@ -82,9 +82,3 @@ flynt-store = { path = "crates/flynt-store" }
 flynt-forge = { path = "crates/flynt-forge" }
 flynt-flow = { path = "crates/flynt-flow" }
 flynt-agent = { path = "crates/flynt-agent" }
-
-[patch.crates-io]
-# `block` 0.1.6 models an Objective-C runtime symbol as an uninhabited enum.
-# Current Rust warns and a future Rust release will reject that extern static.
-# Keep the crate API/ABI intact while using an opaque inhabited FFI marker.
-block = { path = "vendor/block" }

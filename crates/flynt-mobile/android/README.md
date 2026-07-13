@@ -30,7 +30,7 @@ Install the local prerequisites once:
 brew install openjdk
 brew install --cask android-commandlinetools android-platform-tools android-ndk
 rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
-cargo install dioxus-cli --version 0.7.9 --locked
+cargo install dioxus-cli --version 0.8.0-alpha.0 --locked
 yes | sdkmanager --licenses
 sdkmanager "platforms;android-35" "build-tools;35.0.0"
 ```

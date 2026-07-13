@@ -37,7 +37,7 @@ test/git-sync-coverage
 rustup toolchain install stable
 
 # Dioxus CLI (for desktop/mobile builds)
-cargo install dioxus-cli
+cargo install dioxus-cli --version 0.8.0-alpha.0 --locked
 
 # macOS desktop
 # Nothing extra — wry uses WKWebView

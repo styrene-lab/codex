@@ -14,7 +14,7 @@ cd "$ROOT/crates/flynt-app"
 dx build --platform desktop --release
 cd "$ROOT"
 
-APP="target/dx/flynt-app/release/macos/FlyntApp.app"
+APP="target/dx/flynt/release/macos/Flynt.app"
 # Copy icon as both names — Dioxus sets CFBundleIconFile to "icon.icns"
 cp crates/flynt-app/assets/icon.icns "$APP/Contents/Resources/icon.icns"
 cp crates/flynt-app/assets/icon.icns "$APP/Contents/Resources/AppIcon.icns"
@@ -47,7 +47,7 @@ codesign -f -s "$SIGN_ID" \
   "$APP"
 
 # DMG — styled installer with background + icon layout
-# Stage the app as "Flynt.app" (Dioxus outputs "FlyntApp.app")
+# Stage the Dioxus bundle for DMG creation.
 DMG_STAGING=$(mktemp -d)
 cp -R "$APP" "$DMG_STAGING/Flynt.app"
 codesign -f -s "$SIGN_ID" --keychain "$KEYCHAIN" --options runtime --timestamp --entitlements "$ENTITLEMENTS" "$DMG_STAGING/Flynt.app"
@@ -122,7 +122,7 @@ if [[ "$(uname)" == "Linux" ]]; then
   dx build --platform desktop --release
   cd "$ROOT"
 
-  LINUX_BIN="target/dx/flynt-app/release/linux/flynt-app"
+  LINUX_BIN="target/dx/flynt/release/linux/app/flynt"
   if [ -f "$LINUX_BIN" ]; then
     # Create tarball with binary + icon + .desktop file
     LINUX_STAGING=$(mktemp -d)
