@@ -78,6 +78,22 @@ jobs:
       - name: Run workspace tests
         run: cargo test --workspace --all-targets
 
+  editor-bundles:
+    name: Editor bundles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            crates/flynt-app/build/editor/package-lock.json
+            crates/flynt-app/build/excalidraw/package-lock.json
+            crates/flynt-app/build/flow/package-lock.json
+      - name: Verify pinned editor bundles
+        run: python3 scripts/check-editor-bundles.py
+
   release-surfaces:
     name: Release surfaces
     runs-on: ubuntu-latest

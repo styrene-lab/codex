@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -25,13 +26,17 @@ def main() -> int:
     failures: list[str] = []
     for name, artifacts in SURFACES.items():
         build_dir = ROOT / "crates/flynt-app/build" / name
+        node_modules = build_dir / "node_modules"
         before = {artifact: digest(VENDOR / artifact) for artifact in artifacts}
-        subprocess.run(["npm", "ci", "--ignore-scripts"], cwd=build_dir, check=True)
-        subprocess.run(["npm", "run", "build"], cwd=build_dir, check=True)
-        for artifact in artifacts:
-            after = digest(VENDOR / artifact)
-            if after != before[artifact]:
-                failures.append(f"{artifact} is stale or non-reproducible")
+        try:
+            subprocess.run(["npm", "ci", "--ignore-scripts"], cwd=build_dir, check=True)
+            subprocess.run(["npm", "run", "build"], cwd=build_dir, check=True)
+            for artifact in artifacts:
+                after = digest(VENDOR / artifact)
+                if after != before[artifact]:
+                    failures.append(f"{artifact} is stale or non-reproducible")
+        finally:
+            shutil.rmtree(node_modules, ignore_errors=True)
 
     if failures:
         print("editor bundle verification failed:", file=sys.stderr)

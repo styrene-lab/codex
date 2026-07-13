@@ -8,8 +8,8 @@ prebuilt and committed under `assets/vendor/`).
 
 ```sh
 cd crates/flynt-app/build/flow
-npm install         # one-time
-npm run build       # writes assets/vendor/flow.bundle.js (minified, ~xxxkb)
+npm ci              # deterministic install from package-lock.json
+npm run build       # writes assets/vendor/flow.bundle.js (minified)
 ```
 
 For development with source maps:
