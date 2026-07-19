@@ -48,16 +48,16 @@ Create a snapshot without launching:
 scripts/prepare-candidate.sh /path/to/canonical-vault [snapshot-parent]
 ```
 
-Candidate snapshots are writable test artifacts, not backups. Promotion means publishing and installing the tested commit through the signed Stable release path; it never means copying Candidate state back over the canonical vault automatically.
+Candidate snapshots are writable test artifacts, not backups. Each snapshot includes a SHA-256 manifest; verify an untouched snapshot with `scripts/verify-candidate.sh <snapshot>`. Candidate launch runs the non-GUI smoke gate automatically before building the bundle. Snapshots are retained per source vault (five by default, configurable with `FLYNT_CANDIDATE_RETAIN`). Promotion means publishing and installing the tested commit through the signed Stable release path; it never means copying Candidate state back over the canonical vault automatically.
 
 ## Stable promotion gate
 
 Before replacing the daily driver:
 
 1. Run targeted Rust tests and `cargo check -p flynt-app`.
-2. Run `python3 scripts/test-daily-driver-isolation.py`.
-3. Validate the Candidate bundle against a fresh snapshot.
-4. Verify startup, note editing, task mutation, search, agent startup, sync status, and restart.
+2. Run `python3 scripts/test-daily-driver-isolation.py` and `python3 scripts/test-candidate-snapshot.py`.
+3. Validate snapshot integrity and project startup with `scripts/candidate-smoke.sh <snapshot>`.
+4. Validate the Candidate bundle against that fresh snapshot.
 5. Build/sign/notarize through the normal release process.
 6. Install the signed Stable artifact deliberately.
 7. Retain the previous Stable installer until the new build has survived normal daily use.

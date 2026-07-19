@@ -6,6 +6,7 @@ SOURCE_VAULT="${1:-}"
 [[ -n "$SOURCE_VAULT" ]] || { echo "Usage: scripts/launch-candidate.sh SOURCE_VAULT [SNAPSHOT_PARENT]" >&2; exit 2; }
 SNAPSHOT_PARENT="${2:-$HOME/.local/share/flynt/candidates}"
 PROJECT="$($ROOT/scripts/prepare-candidate.sh "$SOURCE_VAULT" "$SNAPSHOT_PARENT")"
+"$ROOT/scripts/candidate-smoke.sh" "$PROJECT"
 BASE_APP="$ROOT/target/dx/flynt/release/macos/Flynt.app"
 CANDIDATE_APP="$ROOT/target/dx/flynt/release/macos/Flynt Candidate.app"
 PROFILE="${FLYNT_CANDIDATE_LAUNCHER_PROFILE:-$HOME/Library/Application Support/io.styrene.flynt.candidate/launcher-profile.json}"
