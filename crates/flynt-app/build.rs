@@ -1,4 +1,6 @@
 fn main() {
+    println!("cargo:rerun-if-env-changed=FLYNT_BUILD_IDENTITY");
+
     // Embed git commit hash at compile time
     let hash = std::process::Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])

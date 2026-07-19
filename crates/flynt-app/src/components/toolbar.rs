@@ -5,10 +5,10 @@ use crate::{
 use dioxus::prelude::*;
 use flynt_core::{models::SearchResult, store::ProjectStore};
 use flynt_store::sync::{
-    AutoSyncStatus,
     git::{GitSync, SyncDiagnostic},
     runner::BackgroundSyncRunner,
     vcs::{GitVcsAdapter, SyncOutcome},
+    AutoSyncStatus,
 };
 
 #[derive(Clone)]
@@ -383,7 +383,8 @@ pub fn Toolbar(
     let project_name = ctx.project().config.project_name.clone();
     let app_version = env!("CARGO_PKG_VERSION");
     let build_hash = env!("FLYNT_BUILD_HASH");
-    let build_label = format!("v{app_version} {build_hash}");
+    let build_identity = crate::build_identity::BuildIdentity::current();
+    let build_label = format!("{} · v{app_version} {build_hash}", build_identity.label());
     let project_root = ctx.project_root();
     let omegon = ctx.omegon();
     let omegon_icon_class = if omegon_launch_error.read().is_some() {
@@ -505,7 +506,11 @@ pub fn Toolbar(
         div { class: "toolbar",
             div { class: "toolbar-left",
                 span { class: "toolbar-project-name", "{project_name}" }
-                span { class: "toolbar-build-hash", title: "Build {build_label}", "{build_label}" }
+                span {
+                    class: "toolbar-build-hash",
+                    title: "Build {build_label}",
+                    "{build_label}"
+                }
             }
 
             div { class: "toolbar-search-wrap",

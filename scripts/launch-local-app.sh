@@ -14,6 +14,9 @@ if [[ ! -d "$PROJECT" ]]; then
 fi
 PROJECT="$(cd "$PROJECT" && pwd)"
 APP="$ROOT/target/dx/flynt/debug/macos/Flynt.app"
+DEV_APP="$ROOT/target/dx/flynt/debug/macos/Flynt Dev.app"
+DEV_BUNDLE_ID="io.styrene.flynt.dev"
+DEV_PROFILE="${FLYNT_DEV_LAUNCHER_PROFILE:-$HOME/Library/Application Support/io.styrene.flynt.dev/launcher-profile.json}"
 
 cd "$ROOT"
 if ! command -v dx >/dev/null 2>&1; then
@@ -27,15 +30,22 @@ if [[ "$DX_VERSION" != dioxus\ 0.8.0-alpha.0* ]]; then
   echo "Install it with: cargo install dioxus-cli --version 0.8.0-alpha.0 --locked --force" >&2
   exit 2
 fi
-dx build --macos -p flynt-app --bin flynt
+FLYNT_BUILD_IDENTITY=dev dx build --macos -p flynt-app --bin flynt
 if [[ ! -d "$APP/Contents/Resources" ]]; then
   echo "Dioxus build completed without producing the expected app bundle: $APP" >&2
   exit 1
 fi
-cp crates/flynt-app/assets/icon.icns "$APP/Contents/Resources/icon.icns"
-cp crates/flynt-app/assets/icon.icns "$APP/Contents/Resources/AppIcon.icns"
-osascript -e 'tell application "Flynt" to quit' >/dev/null 2>&1 || true
-pkill -x flynt >/dev/null 2>&1 || true
-open -n "$APP" --args --project "$PROJECT"
+rm -rf "$DEV_APP"
+mv "$APP" "$DEV_APP"
+cp crates/flynt-app/assets/icon.icns "$DEV_APP/Contents/Resources/icon.icns"
+cp crates/flynt-app/assets/icon.icns "$DEV_APP/Contents/Resources/AppIcon.icns"
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $DEV_BUNDLE_ID" "$DEV_APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleName Flynt Dev" "$DEV_APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Flynt Dev" "$DEV_APP/Contents/Info.plist" 2>/dev/null || \
+  /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string Flynt Dev" "$DEV_APP/Contents/Info.plist"
 
-echo "Launched $APP with project $PROJECT"
+# Target only the Dev bundle. Never terminate the installed Stable app by process name.
+osascript -e 'tell application id "io.styrene.flynt.dev" to quit' >/dev/null 2>&1 || true
+open -n "$DEV_APP" --env "FLYNT_LAUNCHER_PROFILE=$DEV_PROFILE" --args --project "$PROJECT"
+
+echo "Launched $DEV_APP with isolated profile $DEV_PROFILE and project $PROJECT"

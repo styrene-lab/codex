@@ -19,6 +19,7 @@ pub mod apple_notes;
 pub mod armory_install;
 pub mod armory_resolution;
 pub mod bootstrap;
+pub mod build_identity;
 pub mod components;
 pub mod daemon_manager;
 pub mod design_board_assets;

@@ -46,6 +46,7 @@ fn main() {
         .init();
 
     let root = project_root();
+    let build_identity = flynt_app::build_identity::BuildIdentity::current();
 
     dioxus::LaunchBuilder::desktop()
         .with_cfg(
@@ -58,7 +59,7 @@ fn main() {
                 .with_disable_context_menu(false)
                 .with_window(
                     WindowBuilder::new()
-                        .with_title("Flynt")
+                        .with_title(build_identity.app_name())
                         .with_inner_size(LogicalSize::new(1440.0f64, 960.0f64))
                         .with_min_inner_size(LogicalSize::new(800.0f64, 500.0f64))
                         .with_maximized(true)

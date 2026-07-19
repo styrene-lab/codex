@@ -49,5 +49,5 @@ On macOS, do not use `cargo run -p flynt-app` for operator-facing local validati
 scripts/launch-local-app.sh fixtures/demo-vault
 ```
 
-That script runs `dx build --macos -p flynt-app --bin flynt`, uses the Dioxus-generated bundle at `target/dx/flynt/debug/macos/Flynt.app`, installs `icon.icns`/`AppIcon.icns`, and launches with `open ... --args --project ...`. Use raw `cargo run` only for log-only/debug runs where the Dock icon is irrelevant, and say so explicitly.
+That script runs `dx build --macos -p flynt-app --bin flynt`, creates the distinct **Flynt Dev** identity (`io.styrene.flynt.dev`) with isolated launcher state, installs `icon.icns`/`AppIcon.icns`, and launches it against demo data. It must never quit or overwrite the installed Stable app. For release-like validation against real data, use `scripts/launch-candidate.sh <vault>`; it creates a writable snapshot and launches the separate **Flynt Candidate** identity. See `docs/daily-driver-isolation.md`. Use raw `cargo run` only for log-only/debug runs where the Dock icon is irrelevant, and say so explicitly.
 
