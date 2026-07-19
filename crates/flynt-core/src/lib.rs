@@ -15,6 +15,7 @@ pub mod html_to_md;
 pub mod identity;
 pub mod manifest;
 pub mod models;
+pub mod native_invocation;
 pub mod omegon_deployment;
 pub mod omegon_plan_link;
 pub mod parser;
