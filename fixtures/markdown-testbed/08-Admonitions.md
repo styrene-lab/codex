@@ -30,10 +30,10 @@ GitHub/Obsidian-style callouts: `> [!KIND]` on its own line, followed by blockqu
 ## Case variants (should be case-insensitive)
 
 > [!note]
-> Lowercase kind marker.
+> The title here is !note
 
 > [!Note]
-> Title-case kind marker.
+> The title here is !Note
 
 ## Multi-paragraph body
 
