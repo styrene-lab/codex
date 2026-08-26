@@ -30,6 +30,9 @@ Line two with no leading marker — CommonMark treats this as a lazy continuatio
 > Level 1
 >> Level 2
 >>> Level 3
+>>> Level 3 continuation
+>>Level 2 continuation
+>Level 1 continuation
 
 ## Blockquote containing a list
 

@@ -372,6 +372,19 @@ function themeExtension(EditorView: { theme(spec: unknown, options?: unknown): u
     '.cm-codeblock-first': {
       borderTopLeftRadius: '6px', borderTopRightRadius: '6px',
       paddingTop: '8px !important',
+      position: 'relative',
+    },
+    '.cm-codeblock-first[data-lang]:not([data-lang=""])::before': {
+      content: 'attr(data-lang)',
+      position: 'absolute',
+      top: '4px',
+      right: '10px',
+      fontFamily: 'var(--font-mono)',
+      fontSize: '10px',
+      letterSpacing: '0.04em',
+      textTransform: 'uppercase',
+      color: 'var(--muted-foreground, #64748b)',
+      pointerEvents: 'none',
     },
     '.cm-codeblock-last': {
       borderBottomLeftRadius: '6px', borderBottomRightRadius: '6px',

@@ -1336,7 +1336,11 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
             // Code blocks
             if (!inCodeBlock && trimmed.startsWith('```')) {{
                 inCodeBlock = true;
-                decs.push(Decoration.line({{ class: 'cm-codeblock-fence cm-codeblock-first' }}).range(line.from));
+                const lang = trimmed.slice(3).trim();
+                decs.push(Decoration.line({{
+                    class: 'cm-codeblock-fence cm-codeblock-first',
+                    attributes: {{ 'data-lang': lang }},
+                }}).range(line.from));
                 continue;
             }} else if (inCodeBlock && trimmed.startsWith('```')) {{
                 inCodeBlock = false;
