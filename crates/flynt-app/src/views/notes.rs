@@ -1121,7 +1121,7 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
             // are matched and consumed above, so only ordinary blockquote
             // lines reach here. No continue — inline formatting below still
             // applies to the quoted text.
-            const quoteMatch = text.match(/^(\s{{0,3}}>\s?)/);
+            const quoteMatch = text.match(/^((?:\s{{0,3}}>)+\s?)/);
             if (quoteMatch) {{
                 decs.push(Decoration.replace({{}}).range(line.from, line.from + quoteMatch[1].length));
                 decs.push(Decoration.line({{ class: 'cm-quote-line' }}).range(line.from));
