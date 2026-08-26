@@ -873,6 +873,11 @@
 .cm-quote-line-3 { margin-left: 2em !important; }
 .cm-quote-line-4 { margin-left: 3em !important; }
 
+/* ── CM6 emphasis (explicit — underscore delimiters aren't reliably tagged
+   by the language mode's own syntax highlighting, unlike asterisks) ──────── */
+.cm-strong-mark { font-weight: 700; color: var(--prose-heading, #f1f5f9); }
+.cm-em-mark { font-style: italic; }
+
 /* ── CM6 table rendering ──────────────────────────────────────────────────── */
 .cm-table-header {
   background:     color-mix(in srgb, var(--primary) 8%, transparent) !important;
