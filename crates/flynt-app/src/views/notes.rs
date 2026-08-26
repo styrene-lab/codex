@@ -1190,21 +1190,17 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
                 }} else break;
             }}
 
-            // Hide underscore italic/bold: _text_ and __text__. Applies an
-            // explicit cm-strong-mark/cm-em-mark over the inner range rather
-            // than relying on the language mode's own syntax highlighting —
-            // unlike '**', underscore delimiters weren't reliably tagged
-            // strong/emphasis by it, so the marker vanished but no bold/
-            // italic styling ever appeared.
+            // Bold/italic via underscores: _text_ and __text__. Unlike '**',
+            // the underscore characters themselves stay visible (not hidden)
+            // — they're kept as literal text, just styled bold/italic along
+            // with the content they wrap, via an explicit cm-strong-mark/
+            // cm-em-mark since the language mode doesn't reliably tag
+            // underscore-delimited runs strong/emphasis on its own.
             idx = 0; safety = 0;
             while ((idx = text.indexOf('__', idx)) !== -1 && safety++ < 50) {{
                 const end = text.indexOf('__', idx + 2);
                 if (end > idx) {{
-                    decs.push(Decoration.replace({{}}).range(line.from + idx, line.from + idx + 2));
-                    if (end > idx + 2) {{
-                        decs.push(Decoration.mark({{ class: 'cm-strong-mark' }}).range(line.from + idx + 2, line.from + end));
-                    }}
-                    decs.push(Decoration.replace({{}}).range(line.from + end, line.from + end + 2));
+                    decs.push(Decoration.mark({{ class: 'cm-strong-mark' }}).range(line.from + idx, line.from + end + 2));
                     idx = end + 2;
                 }} else break;
             }}
@@ -1216,11 +1212,7 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
                 if (idx > 0 && text.charAt(idx - 1).match(/[a-zA-Z0-9]/)) {{ idx++; continue; }} // mid-word
                 const end = text.indexOf('_', idx + 1);
                 if (end > idx && !(text.charAt(end - 1) === '_' || text.charAt(end + 1) === '_')) {{
-                    decs.push(Decoration.replace({{}}).range(line.from + idx, line.from + idx + 1));
-                    if (end > idx + 1) {{
-                        decs.push(Decoration.mark({{ class: 'cm-em-mark' }}).range(line.from + idx + 1, line.from + end));
-                    }}
-                    decs.push(Decoration.replace({{}}).range(line.from + end, line.from + end + 1));
+                    decs.push(Decoration.mark({{ class: 'cm-em-mark' }}).range(line.from + idx, line.from + end + 1));
                     idx = end + 1;
                 }} else {{ idx++; }}
             }}
