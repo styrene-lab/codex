@@ -167,7 +167,6 @@ interface EditorCompatModules {
   GFM: unknown;
   languages: unknown;
   createFrontmatterHider?: () => unknown;
-  createBlockRender?: () => unknown;
   Decoration?: { replace(spec?: { widget?: unknown }): { range(from: number, to: number): unknown }; set(values: unknown[]): unknown };
   WidgetType?: { new(): { eq?(other: unknown): boolean; toDOM?(): HTMLElement } };
   keymap: { of(bindings: unknown[]): unknown };
@@ -405,7 +404,6 @@ function baseExtensions(modules: EditorCompatModules, localExtensions: unknown[]
       codeLanguages: modules.languages,
       extensions: modules.GFM,
     }),
-    ...(modules.createBlockRender ? [modules.createBlockRender()] : []),
     modules.history(),
     modules.drawSelection(),
     modules.highlightActiveLine(),

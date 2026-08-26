@@ -1061,52 +1061,10 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
         closeBrackets,
         searchKeymap, highlightSelectionMatches,
         HighlightStyle, tags,
-        createLivePreview, createBlockRender, createFrontmatterHider,
+        createLivePreview, createFrontmatterHider,
     }} = CM;
 
     const livePreview = createLivePreview();
-
-    class TableWidget extends WidgetType {{
-        constructor(html) {{ super(); this._html = html; }}
-        toDOM() {{
-            const d = document.createElement('div');
-            d.className = 'cm-table-widget';
-            d.innerHTML = this._html;
-            return d;
-        }}
-        ignoreEvent() {{ return false; }}
-        eq(o) {{ return this._html === o._html; }}
-    }}
-
-    // Minimal inline markdown -> HTML for static widget bodies (admonitions,
-    // table cells) that are rendered once as a plain HTML string rather than
-    // through CodeMirror decorations. Code spans are extracted first so their
-    // content is never reinterpreted as bold/italic/link syntax, then
-    // restored verbatim after everything else runs.
-    function renderInlineMd(raw) {{
-        const escapeHtml = value => value
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
-        const mark = String.fromCharCode(1);
-        const markRe = new RegExp(mark + '(\\d+)' + mark, 'g');
-        const codeSpans = [];
-        let text = raw.replace(/`([^`]+?)`/g, (_, code) => {{
-            codeSpans.push(escapeHtml(code));
-            return mark + (codeSpans.length - 1) + mark;
-        }});
-        text = escapeHtml(text);
-        text = text.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target, display) =>
-            '<span class="cm-wikilink">' + (display || target) + '</span>');
-        text = text.replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
-        text = text.replace(/__([^_]+?)__/g, '<strong>$1</strong>');
-        text = text.replace(/~~([^~]+?)~~/g, '<del>$1</del>');
-        text = text.replace(/\*([^*]+?)\*/g, '<em>$1</em>');
-        text = text.replace(/_([^_]+?)_/g, '<em>$1</em>');
-        text = text.replace(markRe, (_, idx) => '<code>' + codeSpans[Number(idx)] + '</code>');
-        return text;
-    }}
 
     const flyntTheme = window.FlyntEditorCompat.themeExtension(EditorView);
 
@@ -1137,23 +1095,23 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
         const sel = state.selection.main;
         const activeLine = doc.lineAt(sel.head).number;
 
-        // Performance: only hide markup on small documents
-        if (doc.lines > 150) return Decoration.none;
+        // Backstop against pathological documents. This plugin dropped the
+        // admonition/table widget construction (moved to the comrak/Source-
+        // mode preview path) and is back to cheap per-line regex work, same
+        // cost class as combinedPlugin below (which has no such cap) — 150
+        // was leftover from when this plugin also built HTML widgets.
+        if (doc.lines > 5000) return Decoration.none;
 
-        // Hide TOML frontmatter (+++ ... +++)
+        // Frontmatter itself is hidden by the vendored createFrontmatterHider
+        // StateField (already unconditionally wired). Still need fmStart/fmEnd
+        // here so the loop below skips frontmatter lines entirely — treating
+        // TOML content like `title = "**bold**"` as markdown syntax would be
+        // wrong.
         let fmStart = -1, fmEnd = -1;
         if (doc.lines >= 1 && doc.line(1).text.trim() === '+++') {{
             fmStart = 1;
             for (let j = 2; j <= doc.lines; j++) {{
                 if (doc.line(j).text.trim() === '+++') {{ fmEnd = j; break; }}
-            }}
-        }}
-        if (fmStart > 0 && fmEnd > 0) {{
-            for (let fl = fmStart; fl <= fmEnd; fl++) {{
-                const fline = doc.line(fl);
-                if (fline.length > 0) {{
-                    decs.push(Decoration.replace({{}}).range(fline.from, fline.to));
-                }}
             }}
         }}
 
@@ -1238,24 +1196,6 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
                 }} else break;
             }}
 
-            // Hide wikilink brackets: [[target]] or [[target|display]]
-            idx = 0; safety = 0;
-            while ((idx = text.indexOf('[[', idx)) !== -1 && safety++ < 50) {{
-                const end = text.indexOf(']]', idx + 2);
-                if (end > idx) {{
-                    const inner = text.substring(idx + 2, end);
-                    const pipe = inner.indexOf('|');
-                    if (pipe >= 0) {{
-                        decs.push(Decoration.replace({{}}).range(line.from + idx, line.from + idx + 2 + pipe + 1));
-                        decs.push(Decoration.replace({{}}).range(line.from + end, line.from + end + 2));
-                    }} else {{
-                        decs.push(Decoration.replace({{}}).range(line.from + idx, line.from + idx + 2));
-                        decs.push(Decoration.replace({{}}).range(line.from + end, line.from + end + 2));
-                    }}
-                    idx = end + 2;
-                }} else break;
-            }}
-
             // Hide inline code backticks: `code` and multi-backtick spans
             // like ``code with a literal ` backtick``. Per CommonMark, the
             // closing delimiter must be a run of backticks the SAME LENGTH
@@ -1319,74 +1259,6 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
                 }} else {{ idx++; }}
             }}
 
-            // Render GitHub/Obsidian admonitions in Live mode. The previous
-            // HTML postprocessor only affected static preview; notes normally
-            // use this CodeMirror surface.
-            const admonition = text.match(/^\s*>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|DANGER)\]\s*$/i);
-            if (admonition) {{
-                let end = i;
-                while (end < doc.lines && /^\s*>/.test(doc.line(end + 1).text)) end++;
-                const from = line.from;
-                const to = doc.line(end).to;
-                if (sel.head < from || sel.head > to) {{
-                    const kind = admonition[1].toLowerCase();
-                    const title = kind.charAt(0).toUpperCase() + kind.slice(1);
-                    const body = [];
-                    for (let row = i + 1; row <= end; row++) {{
-                        body.push(doc.line(row).text.replace(/^\s*>\s?/, ''));
-                    }}
-                    const h = '<aside class="admonition admonition-' + kind + '">' +
-                        '<div class="admonition-title">' + title + '</div>' +
-                        '<div class="admonition-body"><p>' + renderInlineMd(body.join('\n')) + '</p></div></aside>';
-                    decs.push(Decoration.replace({{ widget: new TableWidget(h) }}).range(from, to));
-                }}
-                i = end;
-                continue;
-            }}
-
-            // Tables — find full table block and replace with rendered widget
-            if (text.indexOf('|') >= 0 && text.trim().charAt(0) === '|') {{
-                // Find table extent
-                let ts = i, te = i;
-                while (ts > 1 && doc.line(ts-1).text.trim().startsWith('|')) ts--;
-                while (te < doc.lines && doc.line(te+1).text.trim().startsWith('|')) te++;
-
-                if (i === ts) {{
-                    const tFrom = doc.line(ts).from;
-                    const tTo = doc.line(te).to;
-                    if (sel.head < tFrom || sel.head > tTo) {{
-                        // Parse table
-                        let rows = [], hasSep = false;
-                        for (let r = ts; r <= te; r++) {{
-                            const rt = doc.line(r).text.trim();
-                            let allSep = true;
-                            for (let c = 0; c < rt.length; c++) {{
-                                if ('|-: '.indexOf(rt.charAt(c)) < 0) {{ allSep = false; break; }}
-                            }}
-                            if (allSep) {{ hasSep = true; continue; }}
-                            rows.push(rt.split('|').slice(1,-1).map(s => s.trim()));
-                        }}
-                        if (rows.length > 0) {{
-                            let h = '<table class="cm-rendered-table">';
-                            rows.forEach((cells, ri) => {{
-                                h += '<tr>';
-                                const t = ri === 0 ? 'th' : 'td';
-                                cells.forEach(c => {{
-                                    let v = renderInlineMd(c);
-                                    h += '<'+t+'>'+v+'</'+t+'>';
-                                }});
-                                h += '</tr>';
-                            }});
-                            h += '</table>';
-                            const to = Math.min(tTo + 1, doc.length);
-                            decs.push(Decoration.replace({{ widget: new TableWidget(h) }}).range(tFrom, to));
-                        }}
-                    }}
-                }}
-                i = te;
-                continue;
-            }}
-
             // Hide unordered list markers: "- " or "* " or "+ " at line start
             const trimmed = text.trimStart();
             const indent = text.length - trimmed.length;
@@ -1403,21 +1275,6 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
                     decs.push(Decoration.replace({{}}).range(line.from + end, line.from + end + 2));
                     idx = end + 2;
                 }} else break;
-            }}
-        }}
-
-        // Hide frontmatter block (+++...+++)
-        let fmState = 0; // 0=before, 1=inside, 2=done
-        for (let i = 1; i <= doc.lines && fmState < 2; i++) {{
-            const line = doc.line(i);
-            if (line.text.trim() === '+++') {{
-                if (fmState === 0) {{ fmState = 1; }}
-                else {{ fmState = 2; }}
-                if (i !== activeLine) {{
-                    decs.push(Decoration.replace({{}}).range(line.from, Math.min(line.to + 1, doc.length)));
-                }}
-            }} else if (fmState === 1 && i !== activeLine) {{
-                decs.push(Decoration.replace({{}}).range(line.from, Math.min(line.to + 1, doc.length)));
             }}
         }}
 
@@ -1502,89 +1359,6 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
         return Decoration.set(decs, true);
     }});
 
-    // ── Wikilink bracket hiding — lightweight, selection-aware ──
-    // Separate from combinedPlugin so structural decorations don't recompute on cursor move.
-    const wikilinkHidePlugin = EditorView.decorations.compute(['doc', 'selection'], (state) => {{
-        const decs = [];
-        const doc = state.doc;
-        const sel = state.selection.main;
-        const activeLine = doc.lineAt(sel.head).number;
-
-        for (let i = 1; i <= doc.lines; i++) {{
-            if (i === activeLine) continue; // show raw syntax on active line
-            const line = doc.line(i);
-            const text = line.text;
-            let idx = 0, safety = 0;
-            while ((idx = text.indexOf('[[', idx)) !== -1 && safety++ < 20) {{
-                // Skip embed syntax ![[
-                if (idx > 0 && text[idx - 1] === '!') {{ idx += 2; continue; }}
-                const end = text.indexOf(']]', idx + 2);
-                if (end > idx) {{
-                    const inner = text.substring(idx + 2, end);
-                    const pipe = inner.indexOf('|');
-                    // Hide opening [[
-                    decs.push(Decoration.replace({{}}).range(line.from + idx, line.from + idx + 2));
-                    // For [[target|display]], also hide target and pipe
-                    if (pipe >= 0) {{
-                        decs.push(Decoration.replace({{}}).range(line.from + idx + 2, line.from + idx + 2 + pipe + 1));
-                    }}
-                    // Hide closing ]]
-                    decs.push(Decoration.replace({{}}).range(line.from + end, line.from + end + 2));
-                    idx = end + 2;
-                }} else break;
-            }}
-        }}
-        return Decoration.set(decs, true);
-    }});
-
-    // Legacy — kept for reference but NOT used (replaced by combinedPlugin)
-    const tablePlugin_unused = EditorView.decorations.compute(['doc'], (state) => {{
-        const decs = [];
-        const doc = state.doc;
-        let inTable = false;
-        let isHeader = true;
-        for (let i = 1; i <= doc.lines; i++) {{
-            const line = doc.line(i);
-            const t = line.text.trim();
-            if (t.startsWith('|') && t.endsWith('|')) {{
-                if (!inTable) {{ inTable = true; isHeader = true; }}
-                // Separator line (|---|---|)
-                if (t.match(/^\|[\s\-:|]+\|$/)) {{
-                    decs.push(Decoration.line({{ class: 'cm-table-sep' }}).range(line.from));
-                    isHeader = false;
-                }} else if (isHeader) {{
-                    decs.push(Decoration.line({{ class: 'cm-table-header' }}).range(line.from));
-                }} else {{
-                    decs.push(Decoration.line({{ class: 'cm-table-row' }}).range(line.from));
-                }}
-            }} else {{
-                inTable = false;
-                isHeader = true;
-            }}
-        }}
-        return Decoration.set(decs);
-    }});
-
-    const codeBlockPlugin = EditorView.decorations.compute(['doc'], (state) => {{
-        const decorations = [];
-        const doc = state.doc;
-        let inBlock = false;
-        for (let i = 1; i <= doc.lines; i++) {{
-            const line = doc.line(i);
-            const text = line.text.trimStart();
-            if (!inBlock && text.startsWith('```')) {{
-                inBlock = true;
-                decorations.push(Decoration.line({{ class: 'cm-codeblock-fence cm-codeblock-first' }}).range(line.from));
-            }} else if (inBlock && text.startsWith('```')) {{
-                inBlock = false;
-                decorations.push(Decoration.line({{ class: 'cm-codeblock-fence cm-codeblock-last' }}).range(line.from));
-            }} else if (inBlock) {{
-                decorations.push(Decoration.line({{ class: 'cm-codeblock-line' }}).range(line.from));
-            }}
-        }}
-        return Decoration.set(decorations);
-    }});
-
     const flyntEmbedResolver = window.FlyntEmbedResolver;
 
     // Save on blur / visibility change — never lose content
@@ -1656,8 +1430,6 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
                 livePreview,
                 hideMarkupPlugin,
                 combinedPlugin,
-                wikilinkHidePlugin,
-                codeBlockPlugin,
                 window.FlyntEditorCompat.embedExtension({{ EditorView, Decoration, WidgetType }}, flyntEmbedResolver),
                 window.FlyntEditorCompat.contextMenuExtension(EditorView),
                 window.FlyntEditorCompat.wikilinkInteractionExtension(EditorView),
@@ -1689,7 +1461,6 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
         GFM,
         languages,
         createFrontmatterHider,
-        createBlockRender,
         Decoration,
         WidgetType,
         keymap,

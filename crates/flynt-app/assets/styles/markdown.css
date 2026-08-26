@@ -891,12 +891,6 @@
   font-weight:    600;
   border-bottom:  2px solid var(--border);
 }
-.cm-table-sep {
-  font-size:      0.5em;
-  color:          var(--muted-foreground) !important;
-  opacity:        0.4;
-  line-height:    1;
-}
 .cm-table-row {
   border-bottom:  1px solid var(--border-dim);
 }
@@ -906,32 +900,6 @@
   font-size:      var(--font-size-sm);
   padding-left:   4px !important;
 }
-/* Rendered table widget in CM6 live mode */
-.cm-table-widget {
-  margin:         0.5em 0;
-}
-.cm-rendered-table {
-  border-collapse: collapse;
-  width:          100%;
-  font-size:      var(--font-size-sm);
-  font-family:    var(--font-sans);
-}
-.cm-rendered-table th {
-  text-align:     left;
-  font-weight:    600;
-  color:          var(--primary-bright);
-  padding:        8px 12px;
-  background:     color-mix(in srgb, var(--primary) 8%, transparent);
-  border-bottom:  2px solid var(--border);
-}
-.cm-rendered-table td {
-  padding:        8px 12px;
-  border-bottom:  1px solid var(--border-dim);
-}
-.cm-rendered-table tr:last-child td {
-  border-bottom:  none;
-}
-
 .notes-empty,
 .notes-loading {
   display:         flex;
@@ -1145,8 +1113,9 @@
 }
 
 /* ── Admonitions / GitHub-style alerts ───────────────────────────────────── */
-.markdown-body .admonition,
-#flynt-cm-editor .admonition {
+/* comrak/Source-mode preview only — Live mode no longer renders a widget for
+   these, admonition blockquotes just show as plain quoted text there. */
+.markdown-body .admonition {
   --admonition-color: var(--primary);
   display: block;
   width: 100%;
@@ -1161,8 +1130,7 @@
   font-style: normal;
 }
 
-.markdown-body .admonition-title,
-#flynt-cm-editor .admonition-title {
+.markdown-body .admonition-title {
   margin-bottom: var(--space-2);
   color: var(--admonition-color);
   font-size: var(--font-size-sm);
@@ -1171,22 +1139,14 @@
   text-transform: uppercase;
 }
 
-.markdown-body .admonition-body > :first-child,
-#flynt-cm-editor .admonition-body > :first-child { margin-top: 0; }
-.markdown-body .admonition-body > :last-child,
-#flynt-cm-editor .admonition-body > :last-child { margin-bottom: 0; }
-.markdown-body .admonition-note,
-#flynt-cm-editor .admonition-note { --admonition-color: var(--info, var(--primary)); }
-.markdown-body .admonition-tip,
-#flynt-cm-editor .admonition-tip { --admonition-color: var(--success, #1ab878); }
-.markdown-body .admonition-important,
-#flynt-cm-editor .admonition-important { --admonition-color: var(--important, #8850c8); }
-.markdown-body .admonition-warning,
-#flynt-cm-editor .admonition-warning { --admonition-color: var(--warning, #c86418); }
-.markdown-body .admonition-caution,
-#flynt-cm-editor .admonition-caution { --admonition-color: color-mix(in srgb, var(--warning, #c86418) 50%, var(--error, var(--destructive, #c83030))); }
-.markdown-body .admonition-danger,
-#flynt-cm-editor .admonition-danger { --admonition-color: var(--error, var(--destructive, #c83030)); }
+.markdown-body .admonition-body > :first-child { margin-top: 0; }
+.markdown-body .admonition-body > :last-child { margin-bottom: 0; }
+.markdown-body .admonition-note { --admonition-color: var(--info, var(--primary)); }
+.markdown-body .admonition-tip { --admonition-color: var(--success, #1ab878); }
+.markdown-body .admonition-important { --admonition-color: var(--important, #8850c8); }
+.markdown-body .admonition-warning { --admonition-color: var(--warning, #c86418); }
+.markdown-body .admonition-caution { --admonition-color: color-mix(in srgb, var(--warning, #c86418) 50%, var(--error, var(--destructive, #c83030))); }
+.markdown-body .admonition-danger { --admonition-color: var(--error, var(--destructive, #c83030)); }
 
 /* ── Blockquote ───────────────────────────────────────────────────────────── */
 .markdown-body blockquote {
