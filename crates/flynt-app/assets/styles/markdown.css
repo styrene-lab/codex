@@ -859,6 +859,14 @@
   min-height:     1px;
 }
 
+/* ── CM6 blockquote ───────────────────────────────────────────────────────── */
+.cm-quote-line {
+  border-left:    3px solid var(--prose-blockquote-bar);
+  padding-left:   var(--space-4) !important;
+  color:          var(--prose-blockquote);
+  font-style:     italic;
+}
+
 /* ── CM6 table rendering ──────────────────────────────────────────────────── */
 .cm-table-header {
   background:     color-mix(in srgb, var(--primary) 8%, transparent) !important;
