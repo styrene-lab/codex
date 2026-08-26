@@ -1188,17 +1188,38 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
                 }} else break;
             }}
 
-            // Hide inline code backticks
+            // Hide inline code backticks: `code` and multi-backtick spans
+            // like ``code with a literal ` backtick``. Per CommonMark, the
+            // closing delimiter must be a run of backticks the SAME LENGTH
+            // as the opening run — a shorter or longer run inside is just
+            // literal content, not a close. The previous version treated
+            // any '`' as a single-backtick delimiter, so an opening ``
+            // never matched as a pair and a lone backtick nested inside
+            // got misread as the real code span instead.
             idx = 0;
             safety = 0;
-            while ((idx = text.indexOf('`', idx)) !== -1 && safety++ < 50) {{
-                if (text.charAt(idx + 1) === '`') {{ idx += 2; continue; }}
-                const end = text.indexOf('`', idx + 1);
-                if (end > idx) {{
-                    decs.push(Decoration.replace({{}}).range(line.from + idx, line.from + idx + 1));
-                    decs.push(Decoration.replace({{}}).range(line.from + end, line.from + end + 1));
-                    idx = end + 1;
-                }} else break;
+            while (idx < text.length && safety++ < 50) {{
+                idx = text.indexOf('`', idx);
+                if (idx === -1) break;
+                let openEnd = idx;
+                while (text.charAt(openEnd) === '`') openEnd++;
+                const runLen = openEnd - idx;
+                let searchFrom = openEnd, closeStart = -1, closeEnd = -1;
+                while (searchFrom < text.length) {{
+                    const nextTick = text.indexOf('`', searchFrom);
+                    if (nextTick === -1) break;
+                    let runEnd = nextTick;
+                    while (text.charAt(runEnd) === '`') runEnd++;
+                    if (runEnd - nextTick === runLen) {{ closeStart = nextTick; closeEnd = runEnd; break; }}
+                    searchFrom = runEnd;
+                }}
+                if (closeStart === -1) {{ idx = openEnd; continue; }}
+                decs.push(Decoration.replace({{}}).range(line.from + idx, line.from + openEnd));
+                if (closeStart > openEnd) {{
+                    decs.push(Decoration.mark({{ class: 'cm-code-mark' }}).range(line.from + openEnd, line.from + closeStart));
+                }}
+                decs.push(Decoration.replace({{}}).range(line.from + closeStart, line.from + closeEnd));
+                idx = closeEnd;
             }}
 
             // Bold/italic via underscores: _text_ and __text__. Unlike '**',

@@ -877,6 +877,13 @@
    by the language mode's own syntax highlighting, unlike asterisks) ──────── */
 .cm-strong-mark { font-weight: 700; color: var(--prose-heading, #f1f5f9); }
 .cm-em-mark { font-style: italic; }
+.cm-code-mark {
+  font-family:      var(--font-mono);
+  color:            var(--prose-code-fg, #e2e8f0);
+  background-color: var(--prose-code-bg, rgba(30, 41, 59, 0.7));
+  border-radius:    3px;
+  padding:          1px 4px;
+}
 
 /* ── CM6 table rendering ──────────────────────────────────────────────────── */
 .cm-table-header {
