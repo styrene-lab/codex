@@ -24,6 +24,17 @@ run-debug:
 run-ui:
     FLYNT_VAULT="{{vault}}" dx serve --platform desktop
 
+# Launch a fresh build against the markdown rendering testbed vault
+# (fixtures/markdown-testbed) for visual regression review. Manual
+# inspection today — the fixed corpus + fresh-build launch here is the
+# seam a future automated screenshot-diff pass would hook into.
+ui-regression:
+    @if [[ "$(uname -s)" == "Darwin" ]]; then \
+        scripts/launch-local-app.sh fixtures/markdown-testbed; \
+    else \
+        FLYNT_VAULT="fixtures/markdown-testbed" cargo run -p flynt-app; \
+    fi
+
 check:
     cargo check
 
