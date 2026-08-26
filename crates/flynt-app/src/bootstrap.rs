@@ -16,13 +16,14 @@ use std::{
     path::{Path, PathBuf},
     process::Stdio,
     sync::{
-        Arc,
         atomic::{AtomicBool, Ordering},
+        Arc,
     },
     time::Duration,
 };
 use tokio::{process::Command, sync::broadcast};
 use tracing::{info, warn};
+use uuid::Uuid;
 
 /// Read an environment variable with fallback from the old `CODEX_*` prefix.
 /// Logs a deprecation warning when the old name is used.
@@ -63,6 +64,8 @@ pub struct LauncherProfile {
 pub struct KnownProject {
     pub name: String,
     pub root: PathBuf,
+    #[serde(default)]
+    pub project_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -185,13 +188,19 @@ impl OmegonRuntimeContext {
                 profile.known_projects.push(KnownProject {
                     name: project.name.clone(),
                     root: local_path.clone(),
+                    project_id: None,
                 });
             }
         }
         profile.known_projects.sort_by(|a, b| a.name.cmp(&b.name));
     }
 
-    pub fn register_known_project(profile: &mut LauncherProfile, root: &Path, name: &str) {
+    pub fn register_known_project(
+        profile: &mut LauncherProfile,
+        root: &Path,
+        name: &str,
+        project_id: Option<Uuid>,
+    ) {
         let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
 
         // Prune projects whose root no longer exists on disk
@@ -204,10 +213,14 @@ impl OmegonRuntimeContext {
             .find(|project| project.root == root)
         {
             existing.name = name.to_string();
+            if project_id.is_some() {
+                existing.project_id = project_id;
+            }
         } else {
             profile.known_projects.push(KnownProject {
                 name: name.to_string(),
                 root: root.clone(),
+                project_id,
             });
             profile
                 .known_projects
@@ -260,8 +273,10 @@ impl OmegonRuntimeContext {
             flynt_store::sync::GitSync::clone_repo(repo, branch, &local_path)?;
         }
 
-        // Register in launcher profile
-        Self::register_known_project(profile, &local_path, name);
+        // Register in launcher profile. No Project is open yet at this point
+        // (repo was just cloned) — project_id gets backfilled the next time
+        // this project is opened and registered.
+        Self::register_known_project(profile, &local_path, name, None);
 
         // Commit manifest changes
         let _ = Self::commit_manifest(&manifest_dir, &format!("Add project: {name}"));
@@ -356,7 +371,7 @@ impl OmegonRuntimeContext {
         project.save_config(&config)?;
         let project = Project::open_managed(path)?;
         let mut profile = Self::load_launcher_profile();
-        Self::register_known_project(&mut profile, path, name);
+        Self::register_known_project(&mut profile, path, name, project.config.project_id);
         Self::save_launcher_profile(&profile)?;
         Ok(project)
     }
@@ -659,8 +674,8 @@ impl OmegonRuntimeContext {
 #[cfg(test)]
 mod tests {
     use super::{
-        KnownProject, LauncherProfile, OmegonRuntimeContext, PendingProjectSetup,
-        publication_output_path,
+        publication_output_path, KnownProject, LauncherProfile, OmegonRuntimeContext,
+        PendingProjectSetup,
     };
     use crate::self_update::UpdateChannel;
     use flynt_core::{
@@ -671,6 +686,7 @@ mod tests {
         store::ProjectStore,
     };
     use tempfile::TempDir;
+    use uuid::Uuid;
 
     #[test]
     fn refresh_project_registry_snapshot_writes_recreates_and_loads_portable_snapshot() {
@@ -764,6 +780,7 @@ mod tests {
             known_projects: vec![KnownProject {
                 name: "Black Meridian".into(),
                 root: tmp.path().join("projects/example-org"),
+                project_id: Some(Uuid::new_v4()),
             }],
             pending_setup: Some(PendingProjectSetup::LinkGithub {
                 local_path: tmp.path().join("projects/example-org"),

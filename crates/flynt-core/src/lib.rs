@@ -16,6 +16,7 @@ pub mod identity;
 pub mod manifest;
 pub mod models;
 pub mod native_invocation;
+pub mod native_invocation_resolve;
 pub mod omegon_deployment;
 pub mod omegon_plan_link;
 pub mod parser;

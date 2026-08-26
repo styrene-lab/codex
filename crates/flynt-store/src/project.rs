@@ -16,6 +16,7 @@ use std::{
     sync::Arc,
 };
 use tracing::{debug, info, warn};
+use uuid::Uuid;
 
 enum DesignLifecycleStatus {
     Seed,
@@ -105,6 +106,9 @@ fn resolved_document_updated_at(
 #[derive(Debug, Clone, Copy, Default)]
 struct ProjectOpenOptions {
     create_portable_metadata: bool,
+    /// Whether this open call may write to `.flynt/config.toml` at all
+    /// (e.g. to backfill a missing `project_id`). `false` for read-only opens.
+    allow_write: bool,
 }
 
 /// Project manages the root directory layout:
@@ -201,6 +205,7 @@ impl Project {
             root,
             ProjectOpenOptions {
                 create_portable_metadata,
+                allow_write: true,
             },
         )
     }
@@ -212,6 +217,7 @@ impl Project {
             root,
             ProjectOpenOptions {
                 create_portable_metadata: true,
+                allow_write: true,
             },
         )
     }
@@ -224,6 +230,7 @@ impl Project {
             root,
             ProjectOpenOptions {
                 create_portable_metadata: false,
+                allow_write: false,
             },
         )
     }
@@ -247,7 +254,7 @@ impl Project {
         // defaults to the platform app-data directory.
 
         let config_path = flynt_dir.join("config.toml");
-        let config = if config_path.exists() {
+        let mut config: ProjectConfig = if config_path.exists() {
             let raw = fs::read_to_string(&config_path)?;
             toml::from_str(&raw)?
         } else {
@@ -278,6 +285,7 @@ impl Project {
             };
 
             let cfg = ProjectConfig {
+                project_id: Some(Uuid::new_v4()),
                 project_name: default_name,
                 sync: SyncConfig::None,
                 appearance: Default::default(),
@@ -293,6 +301,14 @@ impl Project {
             }
             cfg
         };
+
+        if config.project_id.is_none() {
+            config.project_id = Some(Uuid::new_v4());
+            if options.allow_write {
+                fs::create_dir_all(&flynt_dir)?;
+                fs::write(&config_path, toml::to_string(&config)?)?;
+            }
+        }
 
         if let Err(e) = ensure_flynt_gitignore_block(root) {
             tracing::warn!(
@@ -3368,6 +3384,50 @@ Original body content.
         assert!(!root.join(".flynt/config.toml").exists());
         assert!(!root.join(".flynt").exists());
         assert!(project.store.list_documents().unwrap().is_empty());
+    }
+
+    #[test]
+    fn open_read_only_never_persists_a_project_id() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().join("work-repo");
+
+        let project = Project::open_read_only(&root).unwrap();
+
+        assert!(project.config.project_id.is_some(), "id filled in-memory");
+        assert!(!root.join(".flynt/config.toml").exists());
+    }
+
+    #[test]
+    fn project_id_is_generated_once_and_stable_across_reopens() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().join("my-notes");
+
+        let first = Project::open(&root).unwrap();
+        let id = first.config.project_id.expect("id generated on first open");
+
+        let second = Project::open(&root).unwrap();
+        assert_eq!(second.config.project_id, Some(id));
+
+        let raw = std::fs::read_to_string(root.join(".flynt/config.toml")).unwrap();
+        assert!(raw.contains(&id.to_string()), "config:\n{raw}");
+    }
+
+    #[test]
+    fn existing_config_missing_project_id_is_backfilled_on_open() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().join("legacy-project");
+        std::fs::create_dir_all(root.join(".flynt")).unwrap();
+        std::fs::write(
+            root.join(".flynt/config.toml"),
+            "project_name = \"legacy-project\"\n",
+        )
+        .unwrap();
+
+        let project = Project::open(&root).unwrap();
+        let id = project.config.project_id.expect("backfilled on open");
+
+        let raw = std::fs::read_to_string(root.join(".flynt/config.toml")).unwrap();
+        assert!(raw.contains(&id.to_string()), "config:\n{raw}");
     }
 
     #[test]

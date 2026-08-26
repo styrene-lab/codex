@@ -29,6 +29,7 @@ pub mod excalidraw_preview;
 pub mod host_actions;
 pub mod icons;
 pub mod menu;
+pub mod native_invocation_execute;
 pub mod omegon_activation;
 pub mod omegon_cli_contract;
 pub mod omegon_cli_probe;

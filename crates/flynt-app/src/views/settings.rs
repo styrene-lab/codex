@@ -287,6 +287,7 @@ pub fn SettingsView() -> Element {
             omegon_bin_override: string_from_input(omegon_bin_override.read().as_str()),
         };
         let config = ProjectConfig {
+            project_id: ctx.project().config.project_id,
             project_name: project_name.read().clone(),
             sync: sync_config.read().clone(),
             appearance: AppearanceConfig {
@@ -338,6 +339,7 @@ pub fn SettingsView() -> Element {
                             &mut profile,
                             &result.new_root,
                             &project_name,
+                            config.project_id,
                         );
                         let _ =
                             crate::bootstrap::OmegonRuntimeContext::save_launcher_profile(&profile);

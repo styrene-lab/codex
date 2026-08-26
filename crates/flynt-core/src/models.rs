@@ -564,6 +564,11 @@ pub struct SearchResult {
 /// Persisted configuration stored in `<project_root>/.flynt/config.toml`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ProjectConfig {
+    /// Stable identifier for durable `flynt://project/<project_id>` links.
+    /// `None` only for projects opened read-only or without portable
+    /// metadata, where Flynt has no permission to persist one.
+    #[serde(default)]
+    pub project_id: Option<Uuid>,
     #[serde(default, alias = "vault_name")]
     pub project_name: String,
     #[serde(default)]

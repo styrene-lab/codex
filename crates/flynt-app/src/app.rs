@@ -803,7 +803,7 @@ pub fn App() -> Element {
                                         let mut profile = launcher_profile();
                                         profile.last_project_root = Some(root.clone());
                                         profile.wizard_completed = true;
-                                        OmegonRuntimeContext::register_known_project(&mut profile, &root, &name);
+                                        OmegonRuntimeContext::register_known_project(&mut profile, &root, &name, project.config.project_id);
                                         let _ = OmegonRuntimeContext::save_launcher_profile(&profile);
                                         launcher_profile.set(profile);
                                         let mut c = cloud_ctx.clone();
@@ -990,7 +990,7 @@ pub fn App() -> Element {
                                             let mut profile = launcher_profile();
                                             profile.pending_setup = Some(PendingProjectSetup::OpenExisting { path: path.clone() });
                                             profile.wizard_completed = true;
-                                            OmegonRuntimeContext::register_known_project(&mut profile, &path, &name);
+                                            OmegonRuntimeContext::register_known_project(&mut profile, &path, &name, project.config.project_id);
                                             let _ = OmegonRuntimeContext::save_launcher_profile(&profile);
                                             launcher_profile.set(profile);
                                             choose_ctx.set_runtime(runtime_state_for_project_root(path.clone()));

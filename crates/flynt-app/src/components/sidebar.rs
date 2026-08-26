@@ -1213,15 +1213,18 @@ fn ProjectSelector() -> Element {
             .and_then(|v| v.to_str())
             .unwrap_or("Flynt")
             .to_string();
-        if OmegonRuntimeContext::initialize_project(
+        if let Ok(project) = OmegonRuntimeContext::initialize_project(
             &selected_root,
             &name,
             flynt_core::models::SyncConfig::None,
-        )
-        .is_ok()
-        {
+        ) {
             let mut updated = OmegonRuntimeContext::load_launcher_profile();
-            OmegonRuntimeContext::register_known_project(&mut updated, &selected_root, &name);
+            OmegonRuntimeContext::register_known_project(
+                &mut updated,
+                &selected_root,
+                &name,
+                project.config.project_id,
+            );
             let _ = OmegonRuntimeContext::save_launcher_profile(&updated);
             profile.set(updated);
             do_switch(selected_root);
