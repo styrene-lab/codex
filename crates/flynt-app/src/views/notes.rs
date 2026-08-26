@@ -1158,6 +1158,28 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
                 return m;
             }});
 
+            // Hard line break: two-or-more trailing spaces, or an odd
+            // number of trailing backslashes, forces a break within the
+            // same paragraph. Per CommonMark both are removed entirely from
+            // rendered output — same as a soft-wrapped line ending, there's
+            // nothing left to distinguish it unless we add our own marker.
+            {{
+                const trailingSpaces = text.match(/ {{2,}}$/);
+                const trailingBackslashes = text.match(/\\+$/);
+                const hasBackslashBreak = Boolean(
+                    trailingBackslashes && trailingBackslashes[0].length % 2 === 1
+                );
+                if (trailingSpaces || hasBackslashBreak) {{
+                    if (hasBackslashBreak) {{
+                        decs.push(Decoration.replace({{}}).range(line.to - 1, line.to));
+                    }}
+                    decs.push(Decoration.widget({{
+                        widget: new TableWidget('<span class="cm-hardbreak" title="Hard line break">↵</span>'),
+                        side: 1,
+                    }}).range(line.to));
+                }}
+            }}
+
             // Hide bold markers: **text** (max 50 iterations per line)
             let idx = 0, safety = 0;
             while ((idx = text.indexOf('**', idx)) !== -1 && safety++ < 50) {{

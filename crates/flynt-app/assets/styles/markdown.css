@@ -885,6 +885,15 @@
   padding:          1px 4px;
 }
 
+/* ── CM6 hard line break indicator ───────────────────────────────────────── */
+.cm-hardbreak {
+  color:        var(--muted-foreground, #64748b);
+  opacity:      0.6;
+  font-size:    0.85em;
+  margin-left:  2px;
+  user-select:  none;
+}
+
 /* ── CM6 table rendering ──────────────────────────────────────────────────── */
 .cm-table-header {
   background:     color-mix(in srgb, var(--primary) 8%, transparent) !important;
