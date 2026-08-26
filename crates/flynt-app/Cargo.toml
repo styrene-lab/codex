@@ -23,6 +23,7 @@ tracing     = { workspace = true }
 tracing-subscriber = { workspace = true }
 chrono     = { workspace = true }
 comrak      = { workspace = true }
+ammonia     = { workspace = true }
 html2md-rs = { workspace = true }
 syntect     = { workspace = true }
 once_cell   = { workspace = true }

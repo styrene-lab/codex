@@ -332,6 +332,36 @@ mod tests {
     }
 
     #[test]
+    fn strips_event_handlers_and_script_from_raw_html() {
+        let html = render_html(
+            "<script>alert(1)</script>\n\n<img src=\"x\" onerror=\"alert(1)\" alt=\"broken\">",
+        );
+        assert!(!html.contains("<script"));
+        assert!(!html.contains("onerror"));
+        assert!(!html.contains("alert(1)"));
+        // The image tag itself is harmless and should survive.
+        assert!(html.contains("<img"));
+        assert!(html.contains("alt=\"broken\""));
+    }
+
+    #[test]
+    fn strips_javascript_urls_but_keeps_ordinary_links() {
+        let html = render_html("[bad](javascript:alert(1)) and [good](https://example.com)");
+        assert!(!html.contains("javascript:"));
+        assert!(html.contains("href=\"https://example.com\""));
+    }
+
+    #[test]
+    fn preserves_details_summary_and_query_code_class() {
+        let html = render_html("<details>\n<summary>More</summary>\n\nbody\n\n</details>");
+        assert!(html.contains("<details>"));
+        assert!(html.contains("<summary>"));
+
+        let html = render_html("```query\nTABLE\n```");
+        assert!(html.contains("class=\"language-query\""));
+    }
+
+    #[test]
     fn extracts_headings_skipping_fenced_code() {
         let headings = extract_headings(
             r#"# Alpha
@@ -524,7 +554,15 @@ fn render_html_with_store(
     opts.extension.footnotes = true;
     opts.extension.wikilinks_title_after_pipe = true;
     opts.render.unsafe_ = true;
-    let mut html = postprocess_html(markdown_to_html(&preprocess(content), &opts));
+    let raw_html = markdown_to_html(&preprocess(content), &opts);
+    // comrak's unsafe_ mode passes raw author-controlled HTML straight
+    // through — including <script> (inert via dangerous_inner_html, but
+    // still) and, more dangerously, on*="..." event-handler attributes
+    // on ordinary tags like <img onerror="...">, which DO execute once
+    // parsed into the DOM. Sanitize before any of Flynt's own trusted
+    // postprocessing runs, so admonitions/embeds/badges never have to
+    // pass back through the sanitizer themselves.
+    let mut html = postprocess_html(sanitize_html(&raw_html));
 
     // Execute inline query blocks: <pre><code class="language-query">...</code></pre>
     if let Some(store) = store {
@@ -726,6 +764,21 @@ fn html_unescape(s: &str) -> String {
         .replace("&#x27;", "'")
         .replace("&nbsp;", " ")
         .replace("&#34;", "\"")
+}
+
+/// Strip anything that could execute script from author-controlled HTML
+/// (event-handler attributes, `<script>`/`<iframe>`/`<object>`, javascript:
+/// URLs) while preserving the formatting tags this project's raw-HTML
+/// support is actually meant for. Deliberately does not allow the generic
+/// `style` attribute — inline CSS is a real (if smaller) injection surface
+/// too, and nothing in Flynt's own rendering depends on it.
+fn sanitize_html(html: &str) -> String {
+    ammonia::Builder::default()
+        .add_tags(["details", "summary"])
+        .add_tag_attributes("input", ["type", "checked", "disabled"])
+        .add_tag_attributes("code", ["class"])
+        .clean(html)
+        .to_string()
 }
 
 fn postprocess_html(html: String) -> String {
