@@ -1025,6 +1025,20 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
         eq(o) {{ return this._html === o._html; }}
     }}
 
+    // Inline-safe counterpart to TableWidget — its <div> wrapper forces a
+    // block-level break, which is wrong for a marker meant to sit at the
+    // end of an existing line (it pushed the marker onto its own row).
+    class InlineWidget extends WidgetType {{
+        constructor(html) {{ super(); this._html = html; }}
+        toDOM() {{
+            const s = document.createElement('span');
+            s.innerHTML = this._html;
+            return s;
+        }}
+        ignoreEvent() {{ return false; }}
+        eq(o) {{ return this._html === o._html; }}
+    }}
+
     // Minimal inline markdown -> HTML for static widget bodies (admonitions,
     // table cells) that are rendered once as a plain HTML string rather than
     // through CodeMirror decorations. Code spans are extracted first so their
@@ -1174,7 +1188,7 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
                         decs.push(Decoration.replace({{}}).range(line.to - 1, line.to));
                     }}
                     decs.push(Decoration.widget({{
-                        widget: new TableWidget('<span class="cm-hardbreak" title="Hard line break">↵</span>'),
+                        widget: new InlineWidget('<span class="cm-hardbreak" title="Hard line break">↵</span>'),
                         side: 1,
                     }}).range(line.to));
                 }}
