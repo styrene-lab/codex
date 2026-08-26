@@ -1116,20 +1116,29 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
                 continue;
             }}
 
-            // Blockquote: hide the '>' marker (plus one following space) and
-            // style the whole line as a quote. Admonitions ([!KIND] quotes)
-            // are matched and consumed above, so only ordinary blockquote
-            // lines reach here. No continue — inline formatting below still
+            // Blockquote: hide the '>' marker(s) (plus one following space)
+            // and style the whole line as a quote, indented per nesting
+            // depth (count of '>' chars) so >> / >>> visibly step further
+            // right than a single '>'. Admonitions ([!KIND] quotes) are
+            // matched and consumed above, so only ordinary blockquote lines
+            // reach here. No continue — inline formatting below still
             // applies to the quoted text.
             const quoteMatch = text.match(/^((?:\s{{0,3}}>)+\s?)/);
+            const quoteDepthClass = depth => 'cm-quote-line' + (depth > 1 ? ' cm-quote-line-' + Math.min(depth, 4) : '');
             if (quoteMatch) {{
+                const depth = (quoteMatch[1].match(/>/g) || []).length;
                 decs.push(Decoration.replace({{}}).range(line.from, line.from + quoteMatch[1].length));
-                decs.push(Decoration.line({{ class: 'cm-quote-line' }}).range(line.from));
-            }} else if (i > 1 && text.trim() !== '' && /^\s{{0,3}}>/.test(doc.line(i - 1).text)) {{
-                // Lazy continuation: no marker on this line, but the
-                // previous line was a blockquote line and this one isn't
-                // blank — CommonMark treats it as part of the same quote.
-                decs.push(Decoration.line({{ class: 'cm-quote-line' }}).range(line.from));
+                decs.push(Decoration.line({{ class: quoteDepthClass(depth) }}).range(line.from));
+            }} else if (i > 1 && text.trim() !== '') {{
+                const prevMatch = doc.line(i - 1).text.match(/^((?:\s{{0,3}}>)+)/);
+                if (prevMatch) {{
+                    // Lazy continuation: no marker on this line, but the
+                    // previous line was a blockquote line and this one isn't
+                    // blank — CommonMark treats it as part of the same quote,
+                    // at the same nesting depth.
+                    const depth = (prevMatch[1].match(/>/g) || []).length;
+                    decs.push(Decoration.line({{ class: quoteDepthClass(depth) }}).range(line.from));
+                }}
             }}
 
             // Hide heading markers

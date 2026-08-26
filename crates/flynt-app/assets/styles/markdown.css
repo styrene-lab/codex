@@ -860,12 +860,18 @@
 }
 
 /* ── CM6 blockquote ───────────────────────────────────────────────────────── */
+/* margin-left (not padding) steps nested levels further right so the
+   border itself — not just the text — visibly tracks nesting depth.
+   padding-left stays constant: the gap between bar and text shouldn't grow. */
 .cm-quote-line {
   border-left:    3px solid var(--prose-blockquote-bar);
   padding-left:   var(--space-4) !important;
   color:          var(--prose-blockquote);
   font-style:     italic;
 }
+.cm-quote-line-2 { margin-left: 1em !important; }
+.cm-quote-line-3 { margin-left: 2em !important; }
+.cm-quote-line-4 { margin-left: 3em !important; }
 
 /* ── CM6 table rendering ──────────────────────────────────────────────────── */
 .cm-table-header {
