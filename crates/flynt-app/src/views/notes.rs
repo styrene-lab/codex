@@ -1025,20 +1025,6 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
         eq(o) {{ return this._html === o._html; }}
     }}
 
-    // Inline-safe counterpart to TableWidget — its <div> wrapper forces a
-    // block-level break, which is wrong for a marker meant to sit at the
-    // end of an existing line (it pushed the marker onto its own row).
-    class InlineWidget extends WidgetType {{
-        constructor(html) {{ super(); this._html = html; }}
-        toDOM() {{
-            const s = document.createElement('span');
-            s.innerHTML = this._html;
-            return s;
-        }}
-        ignoreEvent() {{ return false; }}
-        eq(o) {{ return this._html === o._html; }}
-    }}
-
     // Minimal inline markdown -> HTML for static widget bodies (admonitions,
     // table cells) that are rendered once as a plain HTML string rather than
     // through CodeMirror decorations. Code spans are extracted first so their
@@ -1172,25 +1158,18 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
                 return m;
             }});
 
-            // Hard line break: two-or-more trailing spaces, or an odd
-            // number of trailing backslashes, forces a break within the
-            // same paragraph. Per CommonMark both are removed entirely from
-            // rendered output — same as a soft-wrapped line ending, there's
-            // nothing left to distinguish it unless we add our own marker.
+            // Hard line break: a trailing backslash forces a break within
+            // the same paragraph, same as two-or-more trailing spaces. Per
+            // CommonMark it's removed entirely from rendered output — no
+            // visible marker, consistent with every other hidden marker in
+            // this editor (no dedicated "show whitespace/markup" mode here).
             {{
-                const trailingSpaces = text.match(/ {{2,}}$/);
                 const trailingBackslashes = text.match(/\\+$/);
                 const hasBackslashBreak = Boolean(
                     trailingBackslashes && trailingBackslashes[0].length % 2 === 1
                 );
-                if (trailingSpaces || hasBackslashBreak) {{
-                    if (hasBackslashBreak) {{
-                        decs.push(Decoration.replace({{}}).range(line.to - 1, line.to));
-                    }}
-                    decs.push(Decoration.widget({{
-                        widget: new InlineWidget('<span class="cm-hardbreak" title="Hard line break">↵</span>'),
-                        side: 1,
-                    }}).range(line.to));
+                if (hasBackslashBreak) {{
+                    decs.push(Decoration.replace({{}}).range(line.to - 1, line.to));
                 }}
             }}
 
