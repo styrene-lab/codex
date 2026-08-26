@@ -1025,6 +1025,36 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
         eq(o) {{ return this._html === o._html; }}
     }}
 
+    // Minimal inline markdown -> HTML for static widget bodies (admonitions,
+    // table cells) that are rendered once as a plain HTML string rather than
+    // through CodeMirror decorations. Code spans are extracted first so their
+    // content is never reinterpreted as bold/italic/link syntax, then
+    // restored verbatim after everything else runs.
+    function renderInlineMd(raw) {{
+        const escapeHtml = value => value
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+        const mark = String.fromCharCode(1);
+        const markRe = new RegExp(mark + '(\\d+)' + mark, 'g');
+        const codeSpans = [];
+        let text = raw.replace(/`([^`]+?)`/g, (_, code) => {{
+            codeSpans.push(escapeHtml(code));
+            return mark + (codeSpans.length - 1) + mark;
+        }});
+        text = escapeHtml(text);
+        text = text.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target, display) =>
+            '<span class="cm-wikilink">' + (display || target) + '</span>');
+        text = text.replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+        text = text.replace(/__([^_]+?)__/g, '<strong>$1</strong>');
+        text = text.replace(/~~([^~]+?)~~/g, '<del>$1</del>');
+        text = text.replace(/\*([^*]+?)\*/g, '<em>$1</em>');
+        text = text.replace(/_([^_]+?)_/g, '<em>$1</em>');
+        text = text.replace(markRe, (_, idx) => '<code>' + codeSpans[Number(idx)] + '</code>');
+        return text;
+    }}
+
     const flyntTheme = window.FlyntEditorCompat.themeExtension(EditorView);
 
     const flyntHighlight = HighlightStyle.define([
@@ -1175,14 +1205,9 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
                     for (let row = i + 1; row <= end; row++) {{
                         body.push(doc.line(row).text.replace(/^\s*>\s?/, ''));
                     }}
-                    const escape = value => value
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;');
                     const h = '<aside class="admonition admonition-' + kind + '">' +
                         '<div class="admonition-title">' + title + '</div>' +
-                        '<div class="admonition-body"><p>' + escape(body.join('\n')) + '</p></div></aside>';
+                        '<div class="admonition-body"><p>' + renderInlineMd(body.join('\n')) + '</p></div></aside>';
                     decs.push(Decoration.replace({{ widget: new TableWidget(h) }}).range(from, to));
                 }}
                 i = end;
@@ -1217,7 +1242,7 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
                                 h += '<tr>';
                                 const t = ri === 0 ? 'th' : 'td';
                                 cells.forEach(c => {{
-                                    let v = c.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+                                    let v = renderInlineMd(c);
                                     h += '<'+t+'>'+v+'</'+t+'>';
                                 }});
                                 h += '</tr>';
