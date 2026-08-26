@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.13.0 — 2026-07-13
+## 0.13.0 — 2026-08-26
 
 ### Added
 - **Apple Notes migration on macOS** — browse Notes metadata, select unlocked notes, review rich-text-to-Markdown previews, and explicitly copy selected material into a project-contained `Apple Notes Import/` tree while leaving Apple Notes unchanged.
@@ -8,6 +8,8 @@
 - **Cross-Mac validation package** — a signed Apple-silicon package includes the Quick Brown Fox project, deterministic launch instructions, archive size/profile/signature guards, and a two-Mac iCloud Drive verification checklist.
 - **Unified visual artifact opening** — Excalidraw, design-board, and flow wrappers resolve through one surface boundary, including bounded recovery for damaged wrapper metadata.
 - **Richer Markdown reading** — live Markdown supports admonitions, safer frontmatter preservation, and navigation-aware link previews.
+- **Stable/Candidate/Dev build isolation** — separate bundle identities, window/toolbar labeling, and launcher state let a new build be validated against a real-data snapshot without risking the installed Stable app. Candidate snapshots are integrity-verified (SHA-256 manifest, symlink rejection) before launch.
+- **Native invocation foundation** — a typed, versioned `flynt://` link and capture contract, with a strict parser and project/document/task resolution against existing project data. Not yet wired to any UI surface (deep links, Share extension) — internal groundwork for a later release.
 
 ### Changed
 - **Document write contracts** now separate complete-source creation from body-only editing, preserve TOML/YAML frontmatter verbatim, reject path traversal, and avoid accidental metadata replacement.
@@ -16,6 +18,8 @@
 
 ### Fixed
 - Prevented flow wrappers from being rendered as missing-note Markdown and updated the demo flow to the canonical frontmatter-backed format.
+- Fixed a crash on every note open caused by a duplicate task-checkbox/embed renderer conflicting with the editor compatibility adapter.
+- Fixed iCloud project sync writing inconsistent backend configuration and made cloud project configuration writes serialized instead of racing.
 - Removed stale Dioxus bundle assets that inflated coworker archives from roughly 49 MiB to roughly 19 MiB.
 - Hardened workspace Clippy compatibility and patched the legacy macOS `block` dependency for current Rust while the Dioxus migration path is evaluated.
 
