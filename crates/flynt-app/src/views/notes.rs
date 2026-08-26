@@ -313,6 +313,18 @@ mod tests {
     }
 
     #[test]
+    fn renders_admonitions_case_insensitively() {
+        let html = render_html("> [!note]\n> Lowercase kind marker.");
+        assert!(html.contains("class=\"admonition admonition-note\""));
+        assert!(html.contains("class=\"admonition-title\">Note</div>"));
+        assert!(!html.contains("[!note]"));
+
+        let html = render_html("> [!Note]\n> Title-case kind marker.");
+        assert!(html.contains("class=\"admonition admonition-note\""));
+        assert!(html.contains("class=\"admonition-title\">Note</div>"));
+    }
+
+    #[test]
     fn ordinary_blockquotes_remain_blockquotes() {
         let html = render_html("> Ordinary quoted text.");
         assert!(html.contains("<blockquote>"));
@@ -749,21 +761,37 @@ fn render_admonitions(mut html: String) -> String {
     ];
 
     for (marker, title) in KINDS {
+        // Comrak lowercases nothing in the source text it emits, so a
+        // `[!note]` or `[!Note]` marker survives verbatim into the HTML.
+        // Match case-insensitively (mirroring the CM6 live-preview regex's
+        // `/i` flag) by searching an ASCII-lowercased copy of the HTML —
+        // byte offsets stay aligned since only ASCII letters change case.
+        let marker_lower = marker.to_ascii_lowercase();
         let needles = [
-            format!("<blockquote>\n<p>[!{marker}]"),
-            format!("<blockquote>\n<p><a href=\"project://localhost/%21{marker}\">!{marker}</a>"),
+            format!("<blockquote>\n<p>[!{marker_lower}]"),
+            format!(
+                "<blockquote>\n<p><a href=\"project://localhost/%21{marker_lower}\">!{marker_lower}</a>"
+            ),
         ];
         let replacement = format!(
             "<aside class=\"admonition admonition-{}\" role=\"note\"><div class=\"admonition-title\">{title}</div><div class=\"admonition-body\"><p>",
-            marker.to_ascii_lowercase()
+            marker_lower
         );
-        while let Some((start, needle_len)) = needles
-            .iter()
-            .filter_map(|needle| html.find(needle).map(|start| (start, needle.len())))
-            .min_by_key(|(start, _)| *start)
-        {
+        loop {
+            let haystack_lower = html.to_ascii_lowercase();
+            let Some((start, needle_len)) = needles
+                .iter()
+                .filter_map(|needle| {
+                    haystack_lower
+                        .find(needle.as_str())
+                        .map(|start| (start, needle.len()))
+                })
+                .min_by_key(|(start, _)| *start)
+            else {
+                break;
+            };
             let body_start = start + needle_len;
-            let Some(relative_end) = html[body_start..].find("</blockquote>") else {
+            let Some(relative_end) = haystack_lower[body_start..].find("</blockquote>") else {
                 break;
             };
             let end = body_start + relative_end;
@@ -1142,7 +1170,7 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
                 const to = doc.line(end).to;
                 if (sel.head < from || sel.head > to) {{
                     const kind = admonition[1].toLowerCase();
-                    const title = admonition[1].charAt(0) + admonition[1].slice(1).toLowerCase();
+                    const title = kind.charAt(0).toUpperCase() + kind.slice(1);
                     const body = [];
                     for (let row = i + 1; row <= end; row++) {{
                         body.push(doc.line(row).text.replace(/^\s*>\s?/, ''));

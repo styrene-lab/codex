@@ -1149,18 +1149,18 @@
 #flynt-cm-editor .admonition-body > :first-child { margin-top: 0; }
 .markdown-body .admonition-body > :last-child,
 #flynt-cm-editor .admonition-body > :last-child { margin-bottom: 0; }
-.markdown-body .admonition-tip,
 .markdown-body .admonition-note,
-#flynt-cm-editor .admonition-tip,
-#flynt-cm-editor .admonition-note { --admonition-color: var(--primary); }
+#flynt-cm-editor .admonition-note { --admonition-color: var(--info, var(--primary)); }
+.markdown-body .admonition-tip,
+#flynt-cm-editor .admonition-tip { --admonition-color: var(--success, #1ab878); }
 .markdown-body .admonition-important,
-#flynt-cm-editor .admonition-important { --admonition-color: var(--primary-bright); }
+#flynt-cm-editor .admonition-important { --admonition-color: var(--important, #8850c8); }
 .markdown-body .admonition-warning,
+#flynt-cm-editor .admonition-warning { --admonition-color: var(--warning, #c86418); }
 .markdown-body .admonition-caution,
-#flynt-cm-editor .admonition-warning,
-#flynt-cm-editor .admonition-caution { --admonition-color: var(--warning, #c86418); }
+#flynt-cm-editor .admonition-caution { --admonition-color: color-mix(in srgb, var(--warning, #c86418) 50%, var(--error, var(--destructive, #c83030))); }
 .markdown-body .admonition-danger,
-#flynt-cm-editor .admonition-danger { --admonition-color: var(--destructive, #c83030); }
+#flynt-cm-editor .admonition-danger { --admonition-color: var(--error, var(--destructive, #c83030)); }
 
 /* ── Blockquote ───────────────────────────────────────────────────────────── */
 .markdown-body blockquote {

@@ -53,6 +53,8 @@
   --error-foreground:      #c4d8e4;
   --info:                  #2ab4c8;
   --info-foreground:       #06080e;
+  --important:             #8850c8;
+  --important-foreground:  #06080e;
   --destructive:           #c83030;
   --destructive-foreground:#c4d8e4;
 
