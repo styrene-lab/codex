@@ -1,0 +1,8 @@
+project_name = "Markdown Testbed"
+
+[appearance]
+theme = "alpharius"
+
+[indexing]
+write_frontmatter = false
+track_index_snapshot = false

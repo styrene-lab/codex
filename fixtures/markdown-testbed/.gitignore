@@ -1,0 +1,13 @@
+# Flynt local/generated state
+.flynt/local/
+.flynt/runtime/
+.omegon/
+ai/
+.DS_Store
+*.tmp
+*.swp
+*~
+
+# drawing.svg and diagram.svg are intentionally tracked (required sidecars
+# for the embed-rendering fixtures in 07-Wikilinks and Embeds.md) — unlike
+# demo-vault, do not ignore drawings/*.svg here.
