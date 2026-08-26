@@ -1148,9 +1148,20 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
                 continue;
             }}
 
+            // Backslash escapes: \X hides the backslash and leaves X as
+            // literal text — X must not be treated as emphasis/code syntax
+            // by the marker loops below, so they consult `escaped`.
+            const escaped = new Set();
+            text.replace(/\\([!#$%&'()*+,\-./:;<=>?@[\]^_`{{|}}~"\\])/g, (m, ch, offset) => {{
+                decs.push(Decoration.replace({{}}).range(line.from + offset, line.from + offset + 1));
+                escaped.add(offset + 1);
+                return m;
+            }});
+
             // Hide bold markers: **text** (max 50 iterations per line)
             let idx = 0, safety = 0;
             while ((idx = text.indexOf('**', idx)) !== -1 && safety++ < 50) {{
+                if (escaped.has(idx) || escaped.has(idx + 1)) {{ idx += 2; continue; }}
                 const end = text.indexOf('**', idx + 2);
                 if (end > idx) {{
                     decs.push(Decoration.replace({{}}).range(line.from + idx, line.from + idx + 2));
@@ -1198,6 +1209,7 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
             // underscore-delimited runs strong/emphasis on its own.
             idx = 0; safety = 0;
             while ((idx = text.indexOf('__', idx)) !== -1 && safety++ < 50) {{
+                if (escaped.has(idx) || escaped.has(idx + 1)) {{ idx += 2; continue; }}
                 const end = text.indexOf('__', idx + 2);
                 if (end > idx) {{
                     decs.push(Decoration.mark({{ class: 'cm-strong-mark' }}).range(line.from + idx, line.from + end + 2));
@@ -1208,6 +1220,7 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
             while (idx < text.length) {{
                 idx = text.indexOf('_', idx);
                 if (idx === -1) break;
+                if (escaped.has(idx)) {{ idx++; continue; }}
                 if (text.charAt(idx - 1) === '_' || text.charAt(idx + 1) === '_') {{ idx++; continue; }} // skip __
                 if (idx > 0 && text.charAt(idx - 1).match(/[a-zA-Z0-9]/)) {{ idx++; continue; }} // mid-word
                 const end = text.indexOf('_', idx + 1);
