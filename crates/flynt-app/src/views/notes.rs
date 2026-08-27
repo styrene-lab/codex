@@ -299,6 +299,31 @@ mod tests {
     }
 
     #[test]
+    fn raw_frontmatter_block_returns_verbatim_delimited_text() {
+        // Trailing newline after the closing fence is included — it comes
+        // along with the fence's own line per content_without_frontmatter's
+        // split_inclusive('\n') walk.
+        assert_eq!(
+            raw_frontmatter_block("+++\ntitle = \"TOML\"\n+++\n\nBody"),
+            Some("+++\ntitle = \"TOML\"\n+++\n")
+        );
+        assert_eq!(
+            raw_frontmatter_block("---\ntitle: YAML\n---\n\nBody"),
+            Some("---\ntitle: YAML\n---\n")
+        );
+        // No frontmatter at all.
+        assert_eq!(raw_frontmatter_block("# Just a heading"), None);
+        // Unterminated — no closing delimiter, so nothing to show.
+        assert_eq!(raw_frontmatter_block("---\ntitle: Broken\nBody"), None);
+        // Malformed TOML content is still returned verbatim — this
+        // function doesn't parse it, just locates the delimited block.
+        assert_eq!(
+            raw_frontmatter_block("+++\ntags = [unterminated\n+++\n\nBody"),
+            Some("+++\ntags = [unterminated\n+++\n")
+        );
+    }
+
+    #[test]
     fn renders_github_admonitions_as_semantic_callouts() {
         let html = render_html("> [!TIP]\n> A failed check returns work to Doing.");
         assert!(html.contains("class=\"admonition admonition-tip\""));
@@ -498,6 +523,19 @@ fn content_without_frontmatter(content: &str) -> &str {
         }
     }
     content
+}
+
+/// The frontmatter delimiters and everything between them, verbatim —
+/// including malformed content that fails to parse into a `Frontmatter`
+/// struct. Source mode needs this: `doc.content` has frontmatter already
+/// stripped, and the parsed `Frontmatter` struct silently defaults on
+/// unparseable input, so neither shows what's actually on disk.
+fn raw_frontmatter_block(content: &str) -> Option<&str> {
+    let body = content_without_frontmatter(content);
+    if body.len() == content.len() {
+        return None;
+    }
+    Some(&content[..content.len() - body.len()])
 }
 
 fn d2_embed_path(content: &str) -> Option<String> {
@@ -2970,6 +3008,16 @@ pub fn NotesView() -> Element {
         };
     };
 
+    // Source mode shows this verbatim, read-only — doc.content already has
+    // frontmatter stripped, and the parsed Frontmatter struct above silently
+    // defaults on unparseable input, so neither reflects what's on disk.
+    let raw_frontmatter: Option<String> = {
+        let project = ctx.project();
+        std::fs::read_to_string(project.root.join(&rel_path))
+            .ok()
+            .and_then(|raw| raw_frontmatter_block(&raw).map(str::to_string))
+    };
+
     // Raw Excalidraw source tabs are editor surfaces, not markdown notes.
     // Route them through the same full-bleed container used by wrappers so
     // the editor is not nested inside the note titlebar/scroll layout.
@@ -3489,6 +3537,12 @@ pub fn NotesView() -> Element {
                         })();"#); }
                             div { class: "editor-split",
                                 div { class: "editor-pane",
+                                    if let Some(fm) = &raw_frontmatter {
+                                        div { class: "source-frontmatter",
+                                            div { class: "source-frontmatter-label", "Frontmatter (read-only)" }
+                                            pre { class: "source-frontmatter-block", "{fm}" }
+                                        }
+                                    }
                                     textarea {
                                         id: "flynt-editor",
                                         class: "editor-textarea",
