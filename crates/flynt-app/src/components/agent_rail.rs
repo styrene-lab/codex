@@ -4,6 +4,7 @@ use crate::acp::{
 use crate::bootstrap::AppContext;
 use crate::host_actions::metadata::{extract_host_action_outcomes, extract_host_actions};
 use crate::host_actions::terminal::extract_terminal_create;
+use crate::omegon_cli_contract::OmegonCliContract;
 use crate::omegon_deployment_diagnostics::{
     DeploymentDiagnostic, DeploymentManifestSource, LoadedDeploymentManifest,
     classify_loaded_deployment,
@@ -175,6 +176,52 @@ pub fn deployment_agent_id(ctx: &AppContext) -> Option<String> {
     resolve_acp_agent_id(&ctx.omegon(), &settings)
 }
 
+/// Where to spawn the ACP agent from and what to spawn it with — resolved
+/// from `FlyntOperatorSettings.agent_runtime`, branching between Omegon's
+/// CLI contract (the default) and a fully operator-configured generic
+/// agent command. Centralizes what used to be duplicated at each connect
+/// call site.
+struct AgentSpawnPlan {
+    binary: PathBuf,
+    args: Vec<String>,
+    agent_id: Option<String>,
+}
+
+fn resolve_agent_spawn(
+    ctx: &AppContext,
+    settings: &flynt_core::models::FlyntOperatorSettings,
+    cwd: &Path,
+) -> Result<AgentSpawnPlan, String> {
+    match &settings.agent_runtime {
+        flynt_core::models::AgentRuntimeKind::Omegon => {
+            let binary = find_omegon_binary_from_ctx(ctx)
+                .ok_or_else(|| "Omegon binary could not be resolved".to_string())?;
+            let agent_id = resolve_acp_agent_id(&ctx.omegon(), settings);
+            let args = OmegonCliContract::current().acp_args(cwd, agent_id.as_deref());
+            Ok(AgentSpawnPlan {
+                binary,
+                args,
+                agent_id,
+            })
+        }
+        flynt_core::models::AgentRuntimeKind::OpenCode => Ok(AgentSpawnPlan {
+            binary: PathBuf::from("opencode"),
+            args: vec!["acp".to_string()],
+            agent_id: None,
+        }),
+        flynt_core::models::AgentRuntimeKind::Generic { command, args } => {
+            if command.trim().is_empty() {
+                return Err("Generic agent command is not configured".to_string());
+            }
+            Ok(AgentSpawnPlan {
+                binary: PathBuf::from(command),
+                args: args.clone(),
+                agent_id: None,
+            })
+        }
+    }
+}
+
 fn is_transport_disconnect(msg: &str) -> bool {
     let lower = msg.to_lowercase();
     lower.contains("broken pipe")
@@ -274,29 +321,31 @@ fn reconnect_acp_session(
             return;
         }
 
-        let Some(binary) = find_omegon_binary_from_ctx(&ctx) else {
-            items.write().push(ChatItem::Message {
-                role: ChatRole::Assistant,
-                content: "Agent transport disconnected, and the Omegon binary could not be resolved for reconnect.".into(),
-            });
-            *agent_status.write() = AgentStatus::Idle;
-            return;
+        let project = ctx.project_root();
+        let operator_settings = load_acp_overrides(&ctx.omegon());
+        let plan = match resolve_agent_spawn(&ctx, &operator_settings, &project) {
+            Ok(plan) => plan,
+            Err(msg) => {
+                items.write().push(ChatItem::Message {
+                    role: ChatRole::Assistant,
+                    content: format!("Agent transport disconnected, and reconnect failed: {msg}"),
+                });
+                *agent_status.write() = AgentStatus::Idle;
+                return;
+            }
         };
 
         tracing::warn!("Reconnecting ACP session after transport disconnect");
         *agent_status.write() = AgentStatus::Connecting;
-        let project = ctx.project_root();
-        let operator_settings = load_acp_overrides(&ctx.omegon());
         let saved_config = operator_settings.acp_config.clone();
-        let agent_id = resolve_acp_agent_id(&ctx.omegon(), &operator_settings);
-        cleanup_project_omegon_acp(&project, agent_id.as_deref());
+        cleanup_project_omegon_acp(&project, plan.agent_id.as_deref());
         session.set(None);
         shared_session.set(None);
         available_commands.write().clear();
         config_options.write().clear();
         *session_title.write() = None;
 
-        match AcpSession::connect(binary, project, agent_id).await {
+        match AcpSession::connect(plan.binary, plan.args, project, plan.agent_id).await {
             Ok((s, rx)) => {
                 let sess = Rc::new(s);
                 for (cfg_id, value) in &saved_config {
@@ -711,13 +760,13 @@ fn upstream_stall_attempt(text: &str) -> Option<u32> {
     }
 }
 
-fn push_or_replace_stall_notice(items: &mut Signal<Vec<ChatItem>>, attempt: u32) {
+fn push_or_replace_stall_notice(items: &mut Signal<Vec<ChatItem>>, attempt: u32, agent_name: &str) {
     let content = if attempt >= 3 {
         format!(
-            "⚠ Upstream LLM stream stalled after {attempt} retry attempts. Flynt is restarting the Omegon transport so the panel can recover."
+            "⚠ Upstream LLM stream stalled after {attempt} retry attempts. Flynt is restarting the {agent_name} transport so the panel can recover."
         )
     } else {
-        format!("⚠ Upstream LLM stream stalled; Omegon is retrying (attempt {attempt}).")
+        format!("⚠ Upstream LLM stream stalled; {agent_name} is retrying (attempt {attempt}).")
     };
     let mut list = items.write();
     if let Some(ChatItem::Message {
@@ -827,8 +876,29 @@ pub fn AgentRail() -> Element {
     let mut transport_generation: Signal<u64> = use_signal(|| 0);
     let mut agent_stopped_by_operator = use_signal(|| false);
 
+    let operator_settings = use_context::<Signal<flynt_core::models::FlyntOperatorSettings>>();
+    let uses_omegon = operator_settings.read().uses_omegon();
+    let agent_name = operator_settings.read().agent_runtime.display_name();
+
     let omegon_binary = find_omegon_binary_from_ctx(&ctx);
-    let binary_found = omegon_binary.is_some();
+    // Whether the currently-selected runtime is ready to spawn. Only the
+    // Omegon arm depends on the Omegon binary being present — OpenCode
+    // and Generic don't share that dependency, so a missing Omegon
+    // install must not disable the composer or trigger Omegon-only
+    // setup UI once the operator has switched away from it.
+    let agent_configured = match &operator_settings.read().agent_runtime {
+        flynt_core::models::AgentRuntimeKind::Omegon => omegon_binary.is_some(),
+        flynt_core::models::AgentRuntimeKind::OpenCode => true,
+        flynt_core::models::AgentRuntimeKind::Generic { command, .. } => {
+            !command.trim().is_empty()
+        }
+    };
+    // Deployment/CLI preflight is an Omegon-only concept (deployment
+    // manifest, `omegon` CLI version compatibility). Kept computed
+    // unconditionally (cheap local reads) so the hook below stays at a
+    // stable call position across renders, but `preflight_blocked` is
+    // forced false outside Omegon mode so a stale/absent Omegon
+    // manifest can never disable the composer for a different runtime.
     let loaded_deployment = load_deployment_for_agent_rail(&ctx.omegon());
     let deployment_diagnostic = classify_loaded_deployment(
         &loaded_deployment,
@@ -837,7 +907,11 @@ pub fn AgentRail() -> Element {
     );
     let cli_probe = ctx.omegon_cli_probe();
     let probe_ctx = ctx.clone();
+    let probe_settings = operator_settings;
     use_effect(move || {
+        if !probe_settings.read().uses_omegon() {
+            return;
+        }
         if probe_ctx.omegon_cli_probe().is_none() {
             let probe_ctx = probe_ctx.clone();
             spawn(async move {
@@ -847,7 +921,8 @@ pub fn AgentRail() -> Element {
             });
         }
     });
-    let preflight_blocked = preflight_is_blocked(&deployment_diagnostic, cli_probe.as_ref());
+    let preflight_blocked =
+        uses_omegon && preflight_is_blocked(&deployment_diagnostic, cli_probe.as_ref());
 
     // ── Eager connect on mount + apply saved config ─────────
     use_effect(move || {
@@ -860,34 +935,30 @@ pub fn AgentRail() -> Element {
             return;
         }
         *agent_status.write() = AgentStatus::Connecting;
-        let binary = match find_omegon_binary_from_ctx(&ctx) {
-            Some(b) => {
-                tracing::info!("Omegon binary resolved: {}", b.display());
-                b
-            }
-            None => {
-                tracing::warn!("Omegon binary not found — agent panel disabled");
+        let project = ctx.project_root();
+        let operator_settings = load_acp_overrides(&ctx.omegon());
+        let plan = match resolve_agent_spawn(&ctx, &operator_settings, &project) {
+            Ok(plan) => plan,
+            Err(msg) => {
+                tracing::warn!("Agent spawn not resolved — agent panel disabled: {msg}");
                 *agent_status.write() = AgentStatus::Idle;
                 return;
             }
         };
-        let project = ctx.project_root();
         tracing::info!(
             "Connecting ACP session: project={}, binary={}",
             project.display(),
-            binary.display()
+            plan.binary.display()
         );
-        let operator_settings = load_acp_overrides(&ctx.omegon());
         let saved_config = operator_settings.acp_config.clone();
-        let agent_id = resolve_acp_agent_id(&ctx.omegon(), &operator_settings);
-        cleanup_project_omegon_acp(&project, agent_id.as_deref());
+        cleanup_project_omegon_acp(&project, plan.agent_id.as_deref());
 
         let terminal_manager_for_loop = terminal_manager_for_connect.clone();
         spawn(async move {
             tracing::info!("ACP connect starting… saved_config={:?}", saved_config);
             match tokio::time::timeout(
                 std::time::Duration::from_secs(20),
-                AcpSession::connect(binary, project, agent_id),
+                AcpSession::connect(plan.binary, plan.args, project, plan.agent_id),
             )
             .await
             {
@@ -957,8 +1028,9 @@ pub fn AgentRail() -> Element {
                 }
                 Err(_) => {
                     tracing::error!("ACP connect timed out");
+                    let agent_name = ctx.omegon().load_operator_settings().agent_runtime.display_name();
                     *session_lifecycle_msg.write() = Some(
-                        "Omegon ACP connection timed out. Flynt is still usable, but the agent runtime did not finish startup. Open Runtime settings or retry after Omegon finishes initializing.".into(),
+                        format!("{agent_name} ACP connection timed out. Flynt is still usable, but the agent runtime did not finish startup. Open Runtime settings or retry after {agent_name} finishes initializing."),
                     );
                     *session.write() = None;
                     *shared_session.write() = None;
@@ -1081,42 +1153,52 @@ pub fn AgentRail() -> Element {
                 class: "agent-status-bar agent-status-bar-clickable",
                 onclick: move |_| {
                     // Land on the Profile sub-page when entering Omegon
-                    // settings from the agent rail.
-                    *settings_page.write() = SettingsPage::OmegonProfile;
+                    // settings from the agent rail; otherwise go straight
+                    // to the runtime picker, since there's no per-runtime
+                    // profile page for OpenCode/Generic.
+                    *settings_page.write() = if uses_omegon {
+                        SettingsPage::OmegonProfile
+                    } else {
+                        SettingsPage::GeneralRuntime
+                    };
                     *settings_open.write() = crate::state::SettingsOpen(true);
                 },
-                title: "Open Omegon settings",
+                title: "Open {agent_name} settings",
                 div { class: "agent-status-row",
                     div { class: "agent-status-left",
-                        span { class: "agent-status-label", "Omegon" }
+                        span { class: "agent-status-label", "{agent_name}" }
                         if !version_label.is_empty() {
                             span { class: "agent-status-version", "{version_label}" }
                         }
                     }
                     span { class: agent_status.read().css_class(), {agent_status.read().label()} }
                 }
-                // Session title — set by omegon from the first prompt's content.
-                // Hidden when None so we don't carve out empty space pre-prompt.
+                // Session title — set by the agent from the first prompt's
+                // content. Hidden when None so we don't carve out empty
+                // space pre-prompt.
                 if let Some(title) = session_title.read().clone() {
                     div { class: "agent-session-title", title: "{title}", "{title}" }
                 }
             }
 
-            // ── Agent preflight ──────────────────────────────────
-            AgentPreflightCard {
-                deployment: deployment_diagnostic.clone(),
-                cli_probe: cli_probe.clone(),
-                on_settings: move |_| {
-                    *settings_page.write() = SettingsPage::OmegonRuntime;
-                    *settings_open.write() = crate::state::SettingsOpen(true);
+            // ── Agent preflight (Omegon-only: deployment manifest/CLI
+            // version diagnostics don't apply to other runtimes) ──────
+            if uses_omegon {
+                AgentPreflightCard {
+                    deployment: deployment_diagnostic.clone(),
+                    cli_probe: cli_probe.clone(),
+                    on_settings: move |_| {
+                        *settings_page.write() = SettingsPage::OmegonRuntime;
+                        *settings_open.write() = crate::state::SettingsOpen(true);
+                    }
                 }
-            }
-            div { class: "agent-surface-link-row",
-                button {
-                    class: "btn btn-ghost btn-xs",
-                    title: "Open project-local Omegon artifacts",
-                    onclick: move |_| *active_route.write() = Route::Omegon,
-                    "Open Omegon surface"
+                div { class: "agent-surface-link-row",
+                    button {
+                        class: "btn btn-ghost btn-xs",
+                        title: "Open project-local Omegon artifacts",
+                        onclick: move |_| *active_route.write() = Route::Omegon,
+                        "Open Omegon surface"
+                    }
                 }
             }
 
@@ -1137,10 +1219,11 @@ pub fn AgentRail() -> Element {
                             let mut agent_status = agent_status;
                             let mut session_lifecycle_msg = session_lifecycle_msg;
                             let project_root = ctx.project_root();
+                            let agent_name = agent_name.clone();
                             move |_| {
                                 *agent_stopped_by_operator.write() = false;
                                 *agent_status.write() = AgentStatus::Connecting;
-                                *session_lifecycle_msg.write() = Some("Starting a new Omegon session…".into());
+                                *session_lifecycle_msg.write() = Some(format!("Starting a new {agent_name} session…"));
                                 let sess = sess.clone();
                                 let project_root = project_root.clone();
                                 spawn(async move {
@@ -1209,6 +1292,7 @@ pub fn AgentRail() -> Element {
                             let mut agent_stopped_by_operator = agent_stopped_by_operator;
                             let project_root = ctx.project_root();
                             let agent_id = resolve_acp_agent_id(&ctx.omegon(), &ctx.omegon().load_operator_settings());
+                            let agent_name = agent_name.clone();
                             move |_| {
                                 let was_busy = agent_status.read().is_busy();
                                 *agent_stopped_by_operator.write() = true;
@@ -1227,7 +1311,7 @@ pub fn AgentRail() -> Element {
                                 *session_title.write() = None;
                                 items.write().push(ChatItem::Message {
                                     role: ChatRole::Assistant,
-                                    content: "Stopped the Omegon agent transport. Use Start agent to reconnect.".into(),
+                                    content: format!("Stopped the {agent_name} agent transport. Use Start agent to reconnect."),
                                 });
                                 *session_lifecycle_msg.write() = Some("Stopping agent transport…".into());
                                 *agent_status.write() = AgentStatus::Idle;
@@ -1254,7 +1338,7 @@ pub fn AgentRail() -> Element {
                             button { class: "btn btn-ghost btn-xs", onclick: move |_| *session_history_open.write() = false, "Close" }
                         }
                         if session_history.read().is_empty() {
-                            div { class: "muted", "No saved sessions reported by Omegon." }
+                            div { class: "muted", "No saved sessions reported by {agent_name}." }
                         }
                         for (session_id, cwd) in session_history.read().iter() {
                             div { class: "agent-session-history-row",
@@ -1272,12 +1356,14 @@ pub fn AgentRail() -> Element {
                                         let mut session_title = session_title;
                                         let mut session_lifecycle_msg = session_lifecycle_msg;
                                         let mut agent_status = agent_status;
+                                        let agent_name = agent_name.clone();
                                         move |_| {
                                             *agent_status.write() = AgentStatus::Connecting;
                                             *session_lifecycle_msg.write() = Some(format!("Resuming session {sid}…"));
                                             let sess = sess.clone();
                                             let sid_for_load = sid.clone();
                                             let cwd = cwd.clone();
+                                            let agent_name = agent_name.clone();
                                             spawn(async move {
                                                 let session_id = agent_client_protocol::schema::SessionId::new(sid_for_load.clone());
                                                 match sess.load_session(session_id, cwd).await {
@@ -1286,7 +1372,7 @@ pub fn AgentRail() -> Element {
                                                         items.write().push(ChatItem::Message {
                                                             role: ChatRole::Assistant,
                                                             content: format!(
-                                                                "Switched to saved Omegon session {sid_for_load}. Flynt does not currently replay the prior transcript, so continue with an explicit prompt rather than relying on earlier chat context."
+                                                                "Switched to saved {agent_name} session {sid_for_load}. Flynt does not currently replay the prior transcript, so continue with an explicit prompt rather than relying on earlier chat context."
                                                             ),
                                                         });
                                                         *session_history_open.write() = false;
@@ -1314,9 +1400,12 @@ pub fn AgentRail() -> Element {
                 div { class: "agent-session-controls",
                     button {
                         class: "btn btn-primary btn-xs",
-                        onclick: move |_| {
-                            *agent_stopped_by_operator.write() = false;
-                            *session_lifecycle_msg.write() = Some("Starting Omegon agent…".into());
+                        onclick: {
+                            let agent_name = agent_name.clone();
+                            move |_| {
+                                *agent_stopped_by_operator.write() = false;
+                                *session_lifecycle_msg.write() = Some(format!("Starting {agent_name} agent…"));
+                            }
                         },
                         "Start agent"
                     }
@@ -1329,22 +1418,40 @@ pub fn AgentRail() -> Element {
                 if let Some(err) = launch_error.read().as_ref() {
                     div { class: "agent-error-banner",
                         p { "Could not start the agent: {err}" }
-                        p { class: "agent-error-hint", "Make sure Omegon is installed. Check Settings for the runtime path." }
+                        p { class: "agent-error-hint", "Make sure {agent_name} is installed and reachable. Check Settings for the runtime configuration." }
                 }
-                    crate::omegon_setup::OmegonSetupPanel {}
+                    SetupPanelFor {
+                        runtime: operator_settings.read().agent_runtime.clone(),
+                        on_settings: move |_| {
+                            *settings_page.write() = SettingsPage::GeneralRuntime;
+                            *settings_open.write() = crate::state::SettingsOpen(true);
+                        },
+                    }
                 }
             }
-            if session.read().is_none() && !binary_found && launch_error.read().is_none() {
-                crate::omegon_setup::OmegonSetupPanel {}
+            if session.read().is_none() && !agent_configured && launch_error.read().is_none() {
+                SetupPanelFor {
+                    runtime: operator_settings.read().agent_runtime.clone(),
+                    on_settings: move |_| {
+                        *settings_page.write() = SettingsPage::GeneralRuntime;
+                        *settings_open.write() = crate::state::SettingsOpen(true);
+                    },
+                }
             }
             if session.read().is_none()
-                && binary_found
+                && agent_configured
                 && launch_error.read().is_none()
                 && *agent_status.read() == AgentStatus::Idle
             {
-                crate::omegon_setup::OmegonSetupPanel {}
+                SetupPanelFor {
+                    runtime: operator_settings.read().agent_runtime.clone(),
+                    on_settings: move |_| {
+                        *settings_page.write() = SettingsPage::GeneralRuntime;
+                        *settings_open.write() = crate::state::SettingsOpen(true);
+                    },
+                }
             }
-            if session.read().is_some() {
+            if uses_omegon && session.read().is_some() {
                 {
                     let setup = crate::omegon_setup::evaluate(&ctx);
                     (!setup.flynt_extension_installed).then(|| rsx! {
@@ -1355,9 +1462,9 @@ pub fn AgentRail() -> Element {
 
             // ── Chat messages ────────────────────────────────────
             div { class: "agent-messages",
-                if items.read().is_empty() && binary_found {
+                if items.read().is_empty() && agent_configured {
                     div { class: "agent-empty",
-                        p { "Ask Omegon about your project, notes, or projects." }
+                        p { "Ask {agent_name} about your project, notes, or projects." }
                         div { class: "agent-suggestions",
                             button { class: "btn btn-ghost btn-xs", onclick: move |_| *input.write() = "/login".into(), "/login" }
                             button { class: "btn btn-ghost btn-xs", onclick: move |_| *input.write() = "/status".into(), "/status" }
@@ -1380,7 +1487,7 @@ pub fn AgentRail() -> Element {
                                 {
                                     rsx! {
                                         div { key: "msg-{idx}", class: "agent-msg assistant",
-                                            div { class: "agent-msg-role", "Omegon" }
+                                            div { class: "agent-msg-role", "{agent_name}" }
                                             div { class: "agent-msg-content", "{content}" }
                                         }
                                     }
@@ -1388,7 +1495,7 @@ pub fn AgentRail() -> Element {
                                     let html = render_md(content);
                                     rsx! {
                                         div { key: "msg-{idx}", class: "agent-msg assistant",
-                                            div { class: "agent-msg-role", "Omegon" }
+                                            div { class: "agent-msg-role", "{agent_name}" }
                                             div { class: "agent-msg-content markdown-body", dangerous_inner_html: "{html}" }
                                         }
                                     }
@@ -1533,7 +1640,7 @@ pub fn AgentRail() -> Element {
                         };
                         (*agent_status.read() == AgentStatus::Thinking && !last_has_content).then(|| rsx! {
                             div { class: "agent-msg assistant",
-                                div { class: "agent-msg-role", "Omegon" }
+                                div { class: "agent-msg-role", "{agent_name}" }
                                 div { class: "agent-msg-content typing", "Thinking…" }
                             }
                         })
@@ -1622,9 +1729,9 @@ pub fn AgentRail() -> Element {
                 div { class: "agent-composer-wrap",
                 textarea {
                     class: "agent-textarea",
-                    placeholder: if *agent_stopped_by_operator.read() { "Agent stopped — Start agent to continue" } else if session.read().is_none() { "Starting Omegon…" } else if binary_found { "Ask Omegon… (type / for commands)" } else { "Omegon binary not found" },
+                    placeholder: if *agent_stopped_by_operator.read() { "Agent stopped — Start agent to continue".to_string() } else if session.read().is_none() { format!("Starting {agent_name}…") } else if agent_configured { format!("Ask {agent_name}… (type / for commands)") } else { format!("{agent_name} not configured") },
                     value: "{input}",
-                    disabled: !binary_found || preflight_blocked || session.read().is_none() || *agent_stopped_by_operator.read(),
+                    disabled: !agent_configured || preflight_blocked || session.read().is_none() || *agent_stopped_by_operator.read(),
                     oninput: move |e| {
                         *input.write() = e.value();
                         *history_idx.write() = None;
@@ -1715,7 +1822,16 @@ pub fn AgentRail() -> Element {
                                 }
 
                                 let trimmed = prompt.trim();
-                                if trimmed == "/login" || trimmed.starts_with("/login ") {
+                                let login_ctx = use_context::<AppContext>();
+                                if (trimmed == "/login" || trimmed.starts_with("/login "))
+                                    && !login_ctx.omegon().load_operator_settings().uses_omegon()
+                                {
+                                    items.write().push(ChatItem::Message {
+                                        role: ChatRole::Assistant,
+                                        content: "Login is not available for the configured agent.".into(),
+                                    });
+                                    *agent_status.write() = AgentStatus::Idle;
+                                } else if trimmed == "/login" || trimmed.starts_with("/login ") {
                                     let provider = trimmed.strip_prefix("/login").unwrap().trim();
                                     let project = use_context::<AppContext>().project_root();
                                     *agent_status.write() = AgentStatus::Thinking;
@@ -1738,7 +1854,12 @@ pub fn AgentRail() -> Element {
                                     let reconnect_settings = load_acp_overrides(&use_context::<AppContext>().omegon());
                                     let saved_config = reconnect_settings.acp_config.clone();
                                     let agent_id = resolve_acp_agent_id(&use_context::<AppContext>().omegon(), &reconnect_settings);
-                                    match AcpSession::connect(binary.clone(), project, agent_id).await {
+                                    // Login always reconnects via Omegon — this branch only
+                                    // runs after a successful `sess.login()` call above, which
+                                    // is itself gated to Omegon mode.
+                                    let reconnect_args =
+                                        OmegonCliContract::current().acp_args(&project, agent_id.as_deref());
+                                    match AcpSession::connect(binary.clone(), reconnect_args, project, agent_id).await {
                                         Ok((s, rx)) => {
                                             let new_sess = Rc::new(s);
                                             for (cfg_id, value) in &saved_config {
@@ -1948,6 +2069,63 @@ fn load_deployment_for_agent_rail(
     }
 }
 
+/// Picks the right "no agent connected yet" panel for the configured
+/// runtime — Omegon's full install/setup flow (`OmegonSetupPanel`,
+/// unchanged) for Omegon, or a much smaller informational panel for
+/// OpenCode/Generic, since none of Omegon's install/extension actions
+/// apply to those.
+#[component]
+fn SetupPanelFor(
+    runtime: flynt_core::models::AgentRuntimeKind,
+    on_settings: EventHandler<()>,
+) -> Element {
+    match runtime {
+        flynt_core::models::AgentRuntimeKind::Omegon => {
+            rsx! {
+                crate::omegon_setup::OmegonSetupPanel {}
+            }
+        }
+        other => rsx! {
+            GenericAgentSetupPanel { runtime: other, on_settings }
+        },
+    }
+}
+
+#[component]
+fn GenericAgentSetupPanel(
+    runtime: flynt_core::models::AgentRuntimeKind,
+    on_settings: EventHandler<()>,
+) -> Element {
+    let (title, body): (&str, Element) = match &runtime {
+        flynt_core::models::AgentRuntimeKind::OpenCode => (
+            "OpenCode setup",
+            rsx! {
+                p { "Flynt spawns " code { "opencode acp" } " to talk to OpenCode." }
+                p { class: "muted", "Make sure the " code { "opencode" } " CLI is on PATH — see opencode.ai/docs/acp for install instructions." }
+            },
+        ),
+        _ => (
+            "Agent setup",
+            rsx! {
+                p { "No agent command is configured." }
+            },
+        ),
+    };
+    rsx! {
+        div { class: "omegon-setup-panel",
+            h3 { class: "armory-launch-title", "{title}" }
+            {body}
+            div { class: "armory-launch-actions",
+                button {
+                    class: "btn btn-primary",
+                    onclick: move |_| on_settings.call(()),
+                    "Open runtime settings"
+                }
+            }
+        }
+    }
+}
+
 #[component]
 fn AgentPreflightCard(
     deployment: DeploymentDiagnostic,
@@ -2072,7 +2250,8 @@ fn handle_acp_event(
         AcpEvent::TextDelta(ref text) => {
             tracing::info!("ACP TextDelta: {} bytes", text.len());
             if let Some(attempt) = upstream_stall_attempt(text) {
-                push_or_replace_stall_notice(items, attempt);
+                let agent_name = ctx.omegon().load_operator_settings().agent_runtime.display_name();
+                push_or_replace_stall_notice(items, attempt, &agent_name);
                 if attempt >= 3 {
                     tracing::warn!(
                         attempt,
@@ -2196,12 +2375,15 @@ fn handle_acp_event(
                                 tc.background = true;
                                 tc.operation_id = operation_id.clone();
                                 tc.status = "Background".into();
+                                let agent_name =
+                                    ctx.omegon().load_operator_settings().agent_runtime.display_name();
                                 let summary = match operation_id.as_deref() {
                                     Some(id) => format!(
-                                        "Started background operation `{}`. Progress will continue through Omegon operation events.",
-                                        id
+                                        "Started background operation `{id}`. Progress will continue through {agent_name} operation events."
                                     ),
-                                    None => "Started background operation. Progress will continue through Omegon operation events.".to_string(),
+                                    None => format!(
+                                        "Started background operation. Progress will continue through {agent_name} operation events."
+                                    ),
                                 };
                                 if tc.output.trim().is_empty()
                                     || tc.output.trim_start().starts_with('{')
@@ -2269,10 +2451,11 @@ fn handle_acp_event(
 
             if let Some(msg) = disconnect_msg {
                 tracing::warn!("ACP tool call reported transport disconnect: {msg}");
+                let agent_name = ctx.omegon().load_operator_settings().agent_runtime.display_name();
                 items.write().push(ChatItem::Message {
                     role: ChatRole::Assistant,
                     content: format!(
-                        "Agent transport disconnected ({msg}). Reconnecting the Omegon session..."
+                        "Agent transport disconnected ({msg}). Reconnecting the {agent_name} session..."
                     ),
                 });
                 reconnect_acp_session(
@@ -2470,10 +2653,11 @@ fn handle_acp_event(
                     "Disconnected",
                     "Agent transport disconnected before ACP closed active tool calls.",
                 );
+                let agent_name = ctx.omegon().load_operator_settings().agent_runtime.display_name();
                 items.write().push(ChatItem::Message {
                     role: ChatRole::Assistant,
                     content: format!(
-                        "Agent transport disconnected ({msg}). Reconnecting the Omegon session..."
+                        "Agent transport disconnected ({msg}). Reconnecting the {agent_name} session..."
                     ),
                 });
                 reconnect_acp_session(

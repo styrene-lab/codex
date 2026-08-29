@@ -12,9 +12,9 @@ related: []
 
 ## Overview
 
-Single-user Rust/Dioxus 0.7 macOS desktop application. Obsidian-style markdown knowledge management with kanban task tracking, a typed entity system, and an MCP agent surface for Omegon AI integration. Project root is a plain directory of markdown files; SQLite provides an indexed cache. Git backing provides durability and portability for project data. Publication pipeline renders read-only static output for external visibility.
+Single-user Rust/Dioxus 0.7 macOS desktop application. Obsidian-style markdown knowledge management with kanban task tracking, a typed entity system, and a project tool surface for Omegon AI integration (also reachable by any MCP client). Project root is a plain directory of markdown files; SQLite provides an indexed cache. Git backing provides durability and portability for project data. Publication pipeline renders read-only static output for external visibility.
 
-Workspace: flynt-core (models + entities + traits) · flynt-store (SQLite + filesystem + git) · flynt-agent (MCP server binary) · flynt-app (Dioxus UI binary)
+Workspace: flynt-core (models + entities + traits) · flynt-store (SQLite + filesystem + git) · flynt-agent (project tools; Omegon's native protocol or MCP via `--mcp`) · flynt-app (Dioxus UI binary)
 
 ## Decisions
 
@@ -48,11 +48,11 @@ Workspace: flynt-core (models + entities + traits) · flynt-store (SQLite + file
 
 **Rationale:** Git backing serves durability, portability, and audit trail for the single user. Multi-user git sync was evaluated and rejected — it breaks down beyond a handful of developers, and a coordination server is premature. A project's git story is just: if the top-level directory has a `.git`, sync it.
 
-### Agent integration: Flynt exposes MCP tools; Omegon is an embedded capability
+### Agent integration: Flynt exposes project tools; Omegon is an embedded capability
 
 **Status:** accepted
 
-**Rationale:** Flynt is the primary product. Omegon enhances it via 14 MCP tools (stdio transport). Flynt functions fully without Omegon. The flynt-agent binary runs as a standalone MCP server that Omegon connects to.
+**Rationale:** Flynt is the primary product. Omegon enhances it via the `flynt-agent` binary's tool surface, reached over Omegon's native v2 protocol by default (stdio). The same tools are reachable by any MCP client via `flynt-agent --mcp`. Flynt functions fully without Omegon.
 
 ### Scope: single-user, no collaboration
 

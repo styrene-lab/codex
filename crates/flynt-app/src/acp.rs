@@ -729,31 +729,37 @@ pub struct AcpSession {
 }
 
 impl AcpSession {
-    /// Spawn `omegon acp` and perform the ACP handshake.
+    /// Spawn the configured agent binary and perform the ACP handshake.
+    /// `args` is the full, pre-built argument list — callers decide
+    /// whether that's Omegon's CLI contract (`OmegonCliContract::acp_args`)
+    /// or a generic agent's configured arguments; this function no
+    /// longer assumes either.
     pub async fn connect(
-        omegon_binary: PathBuf,
+        binary: PathBuf,
+        args: Vec<String>,
         cwd: PathBuf,
         agent_id: Option<String>,
     ) -> Result<(Self, std::sync::mpsc::Receiver<AcpEvent>)> {
         let (tx, rx) = std::sync::mpsc::channel();
         let done_tx = tx.clone();
 
-        let contract = OmegonCliContract::current();
         let mut server =
-            agent_client_protocol::schema::McpServerStdio::new("omegon", omegon_binary.clone());
-        server.args = contract.acp_args(&cwd, agent_id.as_deref());
+            agent_client_protocol::schema::McpServerStdio::new("agent", binary.clone());
+        server.args = args;
         server
             .env
             .push(agent_client_protocol::schema::EnvVariable::new(
                 "FLYNT_PROJECT",
                 cwd.to_string_lossy().to_string(),
             ));
-        server
-            .env
-            .push(agent_client_protocol::schema::EnvVariable::new(
-                "OMEGON_CHILD_ENABLED_EXTENSIONS",
-                "flynt",
-            ));
+        if agent_id.is_some() {
+            server
+                .env
+                .push(agent_client_protocol::schema::EnvVariable::new(
+                    "OMEGON_CHILD_ENABLED_EXTENSIONS",
+                    "flynt",
+                ));
+        }
         let agent = agent_client_protocol::AcpAgent::new(
             agent_client_protocol::schema::McpServer::Stdio(server),
         );

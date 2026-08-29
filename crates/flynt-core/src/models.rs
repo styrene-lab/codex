@@ -837,6 +837,25 @@ pub fn resolve_omegon_binary(config: &LocalRuntimeConfig) -> std::path::PathBuf 
     std::path::PathBuf::from("omegon")
 }
 
+/// Resolve the `flynt-agent` binary on PATH, for surfacing an MCP client config
+/// in Settings. Unlike `resolve_omegon_binary`, there is no override, env var, or
+/// versions-dir fallback — flynt-agent isn't bundled or channel-versioned, so a
+/// plain PATH lookup is the whole story. Returns `None` rather than a guessed
+/// path when not found, since callers need to know whether to show a build hint.
+pub fn resolve_flynt_agent_binary() -> Option<std::path::PathBuf> {
+    let path_var = std::env::var("PATH").ok()?;
+    resolve_flynt_agent_binary_from_path(&path_var)
+}
+
+/// Pure PATH-search core of `resolve_flynt_agent_binary`, split out so tests
+/// don't need to mutate the process-global `PATH` env var (unsafe to do under
+/// a parallel test runner).
+fn resolve_flynt_agent_binary_from_path(path_var: &str) -> Option<std::path::PathBuf> {
+    std::env::split_paths(path_var)
+        .map(|dir| dir.join("flynt-agent"))
+        .find(|candidate| candidate.exists())
+}
+
 /// Parse a version string into (major, minor, patch, prerelease) for sorting.
 /// "v0.17.0-rc.1" → (0, 17, 0, "rc.1"), "0.16.1" → (0, 16, 1, "")
 fn parse_version_key(v: &str) -> (u32, u32, u32, String) {
@@ -1081,6 +1100,47 @@ impl Default for UiThemeSettings {
     }
 }
 
+/// Which agent runtime Flynt's ACP client should spawn. Defaults to
+/// Omegon (today's default runtime). `OpenCode` is a first-class,
+/// pre-configured alternative (spawns `opencode acp`). `Generic` points
+/// at any other ACP-compliant agent binary. Both non-Omegon variants
+/// bypass Omegon's CLI contract, profile/provider settings, and
+/// HostAction extension entirely.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum AgentRuntimeKind {
+    Omegon,
+    OpenCode,
+    Generic { command: String, args: Vec<String> },
+}
+
+impl Default for AgentRuntimeKind {
+    fn default() -> Self {
+        Self::Omegon
+    }
+}
+
+impl AgentRuntimeKind {
+    /// Short human-readable name for this runtime, used in the chat
+    /// panel's role badges, status header, and setup messaging.
+    pub fn display_name(&self) -> String {
+        match self {
+            Self::Omegon => "Omegon".into(),
+            Self::OpenCode => "OpenCode".into(),
+            Self::Generic { command, .. } => {
+                let trimmed = command.trim();
+                if trimmed.is_empty() {
+                    return "Custom agent".into();
+                }
+                std::path::Path::new(trimmed)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| trimmed.to_string())
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FlyntOperatorSettings {
@@ -1092,6 +1152,9 @@ pub struct FlyntOperatorSettings {
     /// None = default agent (no --agent flag passed to omegon acp).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_id: Option<String>,
+    /// Which agent runtime to spawn for ACP sessions. See `AgentRuntimeKind`.
+    #[serde(default)]
+    pub agent_runtime: AgentRuntimeKind,
     pub vox: VoxSettings,
     /// Persisted ACP config — model, thinking level, posture, etc.
     /// Keys are config option IDs, values are the selected value IDs.
@@ -1117,12 +1180,22 @@ impl Default for FlyntOperatorSettings {
             preferred_extensions: vec!["vox".into()],
             rail_extension: "vox".into(),
             agent_id: None,
+            agent_runtime: AgentRuntimeKind::default(),
             vox: VoxSettings::default(),
             acp_config: std::collections::HashMap::new(),
             agent_daemon: crate::daemon::AgentDaemonConfig::default(),
             ui_theme: UiThemeSettings::default(),
             design_board: crate::design_board::DesignBoardSettings::default(),
         }
+    }
+}
+
+impl FlyntOperatorSettings {
+    /// True when Omegon is the configured agent runtime. Gates
+    /// Omegon-only UI surfaces and CLI wiring — false for both
+    /// `OpenCode` and `Generic`.
+    pub fn uses_omegon(&self) -> bool {
+        matches!(self.agent_runtime, AgentRuntimeKind::Omegon)
     }
 }
 
@@ -1174,6 +1247,71 @@ mod tests {
     #[test]
     fn decay_rate_default_is_natural() {
         assert_eq!(DecayRate::default(), DecayRate::Natural);
+    }
+
+    // ── Agent runtime ────────────────────────────────────────────────
+
+    #[test]
+    fn operator_settings_without_agent_runtime_field_defaults_to_omegon() {
+        // Simulates an operator-settings.json written before this field
+        // existed — must not fail to parse, and must fall back to Omegon.
+        let json = serde_json::json!({
+            "activePersona": "off",
+            "enabledSkills": [],
+            "preferredExtensions": ["vox"],
+            "railExtension": "vox",
+            "vox": { "enabled": false, "ttsEnabled": false, "voice": "default" },
+        });
+        let settings: FlyntOperatorSettings = serde_json::from_value(json).unwrap();
+        assert_eq!(settings.agent_runtime, AgentRuntimeKind::Omegon);
+        assert!(settings.uses_omegon());
+    }
+
+    #[test]
+    fn agent_runtime_generic_round_trips_through_json() {
+        let mut settings = FlyntOperatorSettings::default();
+        settings.agent_runtime = AgentRuntimeKind::Generic {
+            command: "my-acp-agent".into(),
+            args: vec!["--stdio".into()],
+        };
+        assert!(!settings.uses_omegon());
+
+        let json = serde_json::to_string(&settings).unwrap();
+        let round_tripped: FlyntOperatorSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(round_tripped.agent_runtime, settings.agent_runtime);
+    }
+
+    #[test]
+    fn agent_runtime_open_code_round_trips_and_is_not_omegon() {
+        let mut settings = FlyntOperatorSettings::default();
+        settings.agent_runtime = AgentRuntimeKind::OpenCode;
+        assert!(!settings.uses_omegon());
+
+        let json = serde_json::to_string(&settings).unwrap();
+        let round_tripped: FlyntOperatorSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(round_tripped.agent_runtime, AgentRuntimeKind::OpenCode);
+    }
+
+    #[test]
+    fn agent_runtime_display_names() {
+        assert_eq!(AgentRuntimeKind::Omegon.display_name(), "Omegon");
+        assert_eq!(AgentRuntimeKind::OpenCode.display_name(), "OpenCode");
+        assert_eq!(
+            AgentRuntimeKind::Generic {
+                command: "/usr/bin/my-agent".into(),
+                args: vec![],
+            }
+            .display_name(),
+            "my-agent"
+        );
+        assert_eq!(
+            AgentRuntimeKind::Generic {
+                command: "".into(),
+                args: vec![],
+            }
+            .display_name(),
+            "Custom agent"
+        );
     }
 
     // ── Task relevance ──────────────────────────────────────────────
@@ -1451,6 +1589,41 @@ mod tests {
         let missing =
             super::resolve_from_versions_dir(tmp.path(), &OmegonChannel::Pinned("0.15.0".into()));
         assert!(missing.is_none());
+    }
+
+    #[test]
+    fn resolve_flynt_agent_binary_finds_it_on_path() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let bin_path = tmp.path().join("flynt-agent");
+        std::fs::write(&bin_path, "bin").unwrap();
+
+        let path_var = tmp.path().to_string_lossy().to_string();
+        let result = super::resolve_flynt_agent_binary_from_path(&path_var);
+        assert_eq!(result, Some(bin_path));
+    }
+
+    #[test]
+    fn resolve_flynt_agent_binary_none_when_absent_from_path() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // Directory exists but has no flynt-agent binary in it.
+        let path_var = tmp.path().to_string_lossy().to_string();
+        assert!(super::resolve_flynt_agent_binary_from_path(&path_var).is_none());
+    }
+
+    #[test]
+    fn resolve_flynt_agent_binary_checks_each_path_entry_in_order() {
+        let empty_dir = tempfile::TempDir::new().unwrap();
+        let bin_dir = tempfile::TempDir::new().unwrap();
+        let bin_path = bin_dir.path().join("flynt-agent");
+        std::fs::write(&bin_path, "bin").unwrap();
+
+        let path_var = format!(
+            "{}:{}",
+            empty_dir.path().display(),
+            bin_dir.path().display()
+        );
+        let result = super::resolve_flynt_agent_binary_from_path(&path_var);
+        assert_eq!(result, Some(bin_path));
     }
 
     #[test]

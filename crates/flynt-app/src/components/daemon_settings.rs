@@ -106,7 +106,7 @@ pub fn DaemonSettingsSection(config: Signal<AgentDaemonConfig>) -> Element {
                 div { class: "settings-row",
                     span { class: "settings-label",
                         "Enabled"
-                        HelpHint { text: "Allow flynt to run a long-lived background daemon for this project. The daemon hosts MCP / JSON-RPC endpoints other tools (Zed, Claude Code, etc.) can connect to.".to_string() }
+                        HelpHint { text: "Allow flynt to run the Omegon binary as a long-lived background process for this project, listening on the port below. What it exposes there is Omegon's own protocol, not something Flynt verifies — for a protocol Flynt itself guarantees, use the flynt-agent binary's MCP mode (--mcp) instead.".to_string() }
                     }
                     div { class: "settings-control",
                         label { class: "checkbox-label",

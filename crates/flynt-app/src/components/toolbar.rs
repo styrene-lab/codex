@@ -840,7 +840,12 @@ pub fn Toolbar(
                         let opening = !*show_agent.read();
                         let omegon = omegon.clone();
                         let project_root = project_root.clone();
-                        if opening {
+                        // The background host is Omegon's own daemon process
+                        // (spawns the `omegon` binary directly) — irrelevant,
+                        // and potentially misleading if it happened to launch
+                        // successfully, for OpenCode/Generic runtimes.
+                        let uses_omegon = ctx.omegon().load_operator_settings().uses_omegon();
+                        if opening && uses_omegon {
                             let mut should_clear_child = false;
                             let mut child_check_error = None;
                             {

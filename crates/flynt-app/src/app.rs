@@ -1187,6 +1187,17 @@ impl ExistingProjectSetup {
 
 #[component]
 fn ProjectView(mut active_route: Signal<Route>) -> Element {
+    let operator_settings = use_context::<Signal<flynt_core::models::FlyntOperatorSettings>>();
+    let non_omegon_agent = !operator_settings.read().uses_omegon();
+
+    // A previously-open Omegon tab/route shouldn't strand the user once
+    // the sidebar tab that got them there has disappeared.
+    use_effect(move || {
+        if non_omegon_agent && *active_route.read() == Route::Omegon {
+            active_route.set(Route::Notes);
+        }
+    });
+
     rsx! {
         div { class: "project-view-shell",
             div { class: "project-subnav", aria_label: "Project views",
@@ -1208,11 +1219,13 @@ fn ProjectView(mut active_route: Signal<Route>) -> Element {
                     title: "Graph — explore project links",
                     onclick: move |_| *active_route.write() = Route::Graph,
                 }
-                ProjectSubnavButton {
-                    active: *active_route.read() == Route::Omegon,
-                    label: "Omegon",
-                    title: "Omegon — inspect project-local agent memory and runtime artifacts",
-                    onclick: move |_| *active_route.write() = Route::Omegon,
+                if !non_omegon_agent {
+                    ProjectSubnavButton {
+                        active: *active_route.read() == Route::Omegon,
+                        label: "Omegon",
+                        title: "Omegon — inspect project-local agent memory and runtime artifacts",
+                        onclick: move |_| *active_route.write() = Route::Omegon,
+                    }
                 }
             }
             match *active_route.read() {

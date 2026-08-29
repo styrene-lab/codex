@@ -130,7 +130,7 @@
 | Tab bar | Hidden during drawing | Reclaimed for design board space |
 | Navigate away | Close tab or switch view | Tab bar restored, React root unmounted, JS state cleaned up |
 
-**Headless SVG export:** When the agent creates a `.excalidraw` file via MCP tool, the desktop watcher detects the file change and triggers SVG export via the webview's Excalidraw bundle — no editor needs to be open. Concurrent exports are serialized via a JS promise queue.
+**Headless SVG export:** When the agent creates a `.excalidraw` file via an agent tool call, the desktop watcher detects the file change and triggers SVG export via the webview's Excalidraw bundle — no editor needs to be open. Concurrent exports are serialized via a JS promise queue.
 
 **Semantic agent authoring:** Agents should prefer the `drawing_*_spec`
 tools for architecture and system diagrams. These tools write a
@@ -561,7 +561,7 @@ Bookmarks are project-portable data stored in `.flynt/bookmarks.toml`.
 
 **D2 PATH enrichment:** The render pipeline prepends `/opt/homebrew/bin`, `/usr/local/bin`, Nix paths, `~/.local/bin` to PATH before invoking `d2`, handling GUI apps that inherit a stripped environment.
 
-### Agent-Created Visuals (MCP Tools)
+### Agent-Created Visuals (Agent Tools)
 
 | Tool | Input | Output | Guard |
 |------|-------|--------|-------|

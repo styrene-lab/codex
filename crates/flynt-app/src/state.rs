@@ -127,6 +127,8 @@ pub enum SettingsPage {
     GeneralSync,
     GeneralIdentity,
     GeneralUpdates,
+    GeneralRuntime,
+    GeneralMcp,
     // Project — project configuration and migration/import tools
     Project,
     ProjectImports,
@@ -149,6 +151,8 @@ impl SettingsPage {
             Self::GeneralSync => "Sync",
             Self::GeneralIdentity => "Identity",
             Self::GeneralUpdates => "Updates",
+            Self::GeneralRuntime => "Agent Runtime",
+            Self::GeneralMcp => "MCP Server",
             Self::Project => "Project",
             Self::ProjectImports => "Imports",
             Self::OmegonProfile => "Profile",
@@ -174,7 +178,9 @@ impl SettingsPage {
             Self::GeneralAppearance
             | Self::GeneralSync
             | Self::GeneralIdentity
-            | Self::GeneralUpdates => SettingsCategory::General,
+            | Self::GeneralUpdates
+            | Self::GeneralRuntime
+            | Self::GeneralMcp => SettingsCategory::General,
             Self::Project | Self::ProjectImports => SettingsCategory::Project,
             Self::OmegonProfile
             | Self::OmegonProviders
@@ -195,6 +201,8 @@ impl SettingsPage {
             Self::GeneralSync,
             Self::GeneralIdentity,
             Self::GeneralUpdates,
+            Self::GeneralRuntime,
+            Self::GeneralMcp,
             Self::Project,
             Self::ProjectImports,
             Self::OmegonProfile,

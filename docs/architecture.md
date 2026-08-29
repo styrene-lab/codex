@@ -18,7 +18,7 @@ Flynt is a **single-user** knowledge management and task tracking desktop applic
 - Kanban task tracker with per-project boards
 - Entity type system (Document, Project, Task, Repo, Link, Custom)
 - Git-backed project persistence for durability, portability, and audit trail
-- MCP tool surface so Omegon can read/write project data
+- Project tool surface (`flynt-agent`) so Omegon or any MCP client can read/write project data
 - Publication pipeline for static read-only output (markdown + HTML)
 
 ### What Flynt Is Not
@@ -34,7 +34,7 @@ Flynt is a **single-user** knowledge management and task tracking desktop applic
 |---|---|
 | `flynt-core` | Domain models, `ProjectStore` trait, `SyncBackend` trait, entity/datum type system, markdown/wikilink parser |
 | `flynt-store` | `SqliteStore` (FTS5, WAL), `Project` (filesystem indexer), `ProjectWatcher` (FSEvents), task file serialization, `GitSync` |
-| `flynt-agent` | Standalone MCP stdio binary; `omegon-extension` 0.15; 14 tools exposed to Omegon |
+| `flynt-agent` | Standalone stdio binary exposing project tools — Omegon's native v2 protocol by default, MCP via `--mcp` |
 | `flynt-app` | Dioxus 0.7 desktop binary; views: notes, graph, kanban, search, settings, publication rules |
 
 ## Data Model
@@ -115,7 +115,7 @@ Visibility is layered: project-wide default policy, per-tag/per-path rules, per-
 
 Flynt is the primary product. Omegon is an embedded AI capability.
 
-- `flynt-agent` exposes 14 MCP tools via stdio transport
+- `flynt-agent` exposes project tools to Omegon over its native v2 protocol (stdio), and the same tools to any MCP client via `flynt-agent --mcp`
 - Omegon can search, read, create, and link documents
 - Omegon stores durable memory facts (`ai/memory/`) and archives communications (`references/comms/`)
 - Agent rail sidebar in the UI shows Omegon status and interaction
@@ -135,7 +135,7 @@ Flynt is the primary product. Omegon is an embedded AI capability.
 | Document identity | UUID embedded in frontmatter; stable across DB wipes |
 | iCloud sync | Passive — project root in iCloud Drive folder; no API calls |
 | Git sync | Auto-commit (debounced 30s), manual push; `git2` crate |
-| MCP transport | stdio; Omegon connects via `command` transport |
+| flynt-agent transport | stdio; Omegon connects via its native v2 protocol by default, MCP clients via `--mcp` |
 | Omegon relationship | Omegon serves Flynt (embedded capability, not dependency) |
 
 ## Open Questions

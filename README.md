@@ -104,7 +104,7 @@ flynt-core     Pure Rust models, query engine, parser, templates, graph layout
 flynt-store    Project I/O, SQLite index, guarded Git sync, iCloud folder sync, file watching
 flynt-app      macOS/Linux desktop UI (Dioxus + wry + muda)
 flynt-mobile   iOS companion app (Dioxus mobile)
-flynt-agent    MCP extension for Omegon (project tools)
+flynt-agent    Project tools for Omegon and any MCP client (Claude Code, Cursor, etc.)
 ```
 
 All crates share a workspace at the repo root. The desktop and mobile apps depend on `flynt-core` and `flynt-store`. The agent extension is a standalone binary.
@@ -114,7 +114,7 @@ All crates share a workspace at the repo root. The desktop and mobile apps depen
 - **Markdown is canonical.** No database is the source of truth — the `.md` files are. The SQLite index is derived and rebuilds from disk on every launch.
 - **Local-first.** Everything works offline. Sync is optional and Git-based.
 - **No Node.js.** All JS (CodeMirror, Excalidraw) is vendored as static bundles. No npm, no node_modules, no build step for frontend code.
-- **No MCP for integration.** The agent extension provides project tools via ACP (Agent Client Protocol), not MCP.
+- **Two separate protocol layers, not one.** `flynt-agent` exposes project tools (documents, tasks, graph, drawings, and more) to Omegon's native protocol by default, or to any MCP client via `flynt-agent --mcp`. Separately, `flynt-app` drives the in-app chat panel over ACP (Agent Client Protocol) against a configurable agent runtime (Omegon, OpenCode, or a custom command) — this is unrelated to `flynt-agent`'s tool surface.
 
 ---
 

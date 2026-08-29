@@ -8,6 +8,7 @@
 
 use crate::acp::AcpSession;
 use crate::bootstrap::AppContext;
+use crate::omegon_cli_contract::OmegonCliContract;
 use dioxus::prelude::*;
 use std::rc::Rc;
 
@@ -160,7 +161,12 @@ pub fn ArmorySection() -> Element {
                                     let project = ctx.project_root();
                                     let operator_settings = ctx.omegon().load_operator_settings();
                                     let agent_id = operator_settings.agent_id.clone();
-                                    match AcpSession::connect(binary, project, agent_id).await {
+                                    // The Armory only browses the Omegon extension
+                                    // registry, so it always launches via Omegon's
+                                    // CLI contract regardless of agent_runtime.
+                                    let args =
+                                        OmegonCliContract::current().acp_args(&project, agent_id.as_deref());
+                                    match AcpSession::connect(binary, args, project, agent_id).await {
                                         Ok((s, _rx)) => {
                                             // Note: the event-loop receiver is dropped here
                                             // because the agent rail owns the canonical

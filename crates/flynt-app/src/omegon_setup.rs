@@ -1,6 +1,7 @@
 use crate::{
     acp::AcpSession,
     bootstrap::{AppContext, runtime_state_for_project_root},
+    omegon_cli_contract::OmegonCliContract,
     state::{SettingsOpen, SettingsPage},
 };
 use dioxus::prelude::*;
@@ -412,7 +413,12 @@ pub fn OmegonSetupPanel() -> Element {
                                 let binary = ctx_start.omegon().resolve_binary();
                                 let project = ctx_start.project_root();
                                 let agent_id = crate::components::agent_rail::deployment_agent_id(&ctx_start);
-                                match crate::acp::AcpSession::connect(binary, project, agent_id).await {
+                                // This panel exists to set up the Omegon binary
+                                // itself, so it always launches via Omegon's CLI
+                                // contract regardless of agent_runtime.
+                                let args =
+                                    OmegonCliContract::current().acp_args(&project, agent_id.as_deref());
+                                match crate::acp::AcpSession::connect(binary, args, project, agent_id).await {
                                     Ok((session, rx)) => {
                                         let sess = std::rc::Rc::new(session);
                                         shared_session.set(Some(sess.clone()));

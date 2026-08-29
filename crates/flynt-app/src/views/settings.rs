@@ -22,6 +22,15 @@ use std::rc::Rc;
 
 // ── Settings view ─────────────────────────────────────────────────────────────
 
+/// UI selection state for the Agent Runtime page's 3-way radio — not
+/// persisted directly, reassembled into `AgentRuntimeKind` on Save.
+#[derive(Clone, Copy, PartialEq)]
+enum RuntimeChoice {
+    Omegon,
+    OpenCode,
+    Custom,
+}
+
 #[component]
 pub fn SettingsView() -> Element {
     let ctx = use_context::<AppContext>();
@@ -161,6 +170,26 @@ pub fn SettingsView() -> Element {
 
     // Daemon config — managed by DaemonSettingsSection
     let daemon_config = use_signal(|| ctx.omegon().load_operator_settings().agent_daemon.clone());
+
+    // Agent runtime — Omegon (default), the first-class OpenCode preset,
+    // or a fully custom ACP agent binary. RuntimeChoice is UI selection
+    // state only (not persisted directly); reassembled into
+    // AgentRuntimeKind on Save. Command/args fields only matter for the
+    // Custom choice.
+    let initial_agent_runtime = ctx.omegon().load_operator_settings().agent_runtime.clone();
+    let mut agent_runtime_choice = use_signal(|| match &initial_agent_runtime {
+        flynt_core::models::AgentRuntimeKind::Omegon => RuntimeChoice::Omegon,
+        flynt_core::models::AgentRuntimeKind::OpenCode => RuntimeChoice::OpenCode,
+        flynt_core::models::AgentRuntimeKind::Generic { .. } => RuntimeChoice::Custom,
+    });
+    let mut agent_runtime_command = use_signal(|| match &initial_agent_runtime {
+        flynt_core::models::AgentRuntimeKind::Generic { command, .. } => command.clone(),
+        _ => String::new(),
+    });
+    let mut agent_runtime_args = use_signal(|| match &initial_agent_runtime {
+        flynt_core::models::AgentRuntimeKind::Generic { args, .. } => args.join(" "),
+        _ => String::new(),
+    });
 
     let mut save_msg = use_signal(|| Option::<(&'static str, &'static str)>::None);
     let registry_msg = use_signal(|| Option::<(&'static str, String)>::None);
@@ -372,6 +401,18 @@ pub fn SettingsView() -> Element {
         // Persist daemon config alongside project config
         let mut operator = omegon_for_save.load_operator_settings();
         operator.agent_daemon = daemon_config.read().clone();
+        operator.agent_runtime = match *agent_runtime_choice.read() {
+            RuntimeChoice::Omegon => flynt_core::models::AgentRuntimeKind::Omegon,
+            RuntimeChoice::OpenCode => flynt_core::models::AgentRuntimeKind::OpenCode,
+            RuntimeChoice::Custom => flynt_core::models::AgentRuntimeKind::Generic {
+                command: agent_runtime_command.read().trim().to_string(),
+                args: agent_runtime_args
+                    .read()
+                    .split_whitespace()
+                    .map(str::to_string)
+                    .collect(),
+            },
+        };
         operator.ui_theme.active_theme = theme.read().0.clone();
         operator.ui_theme.imported_themes = theme_library.read().imported_for_settings();
         if let Err(e) = omegon_for_save.save_operator_settings(&operator) {
@@ -400,7 +441,9 @@ pub fn SettingsView() -> Element {
             // direct link. Categories with multiple pages (Omegon)
             // render as a header with nested children.
             nav { class: "settings-sidebar",
-                for cat in SettingsCategory::all() {
+                for cat in SettingsCategory::all().iter().filter(|c| {
+                    **c != SettingsCategory::Omegon || operator_settings_state.read().uses_omegon()
+                }) {
                     {
                         let pages = SettingsPage::in_category(*cat);
                         let single = pages.len() == 1;
@@ -793,6 +836,142 @@ pub fn SettingsView() -> Element {
                                 }
                             }
                             span { class: "settings-hint muted", "{stable_update_policy_note()}" }
+                        }
+                    }
+                }
+
+                // ════════════════════════════════════════════════════════════
+                // General → Agent Runtime: Omegon vs. a generic ACP agent
+                // ════════════════════════════════════════════════════════════
+                if *active_page.read() == SettingsPage::GeneralRuntime {
+                    SettingsSection { heading: "Agent Runtime",
+                        SettingsRow {
+                            label: "Runtime",
+                            hint: "Omegon owns orchestration, profiles, skills, and safety policy for the agent panel. OpenCode and Custom both bypass Omegon entirely and spawn an ACP-compliant agent binary directly — Omegon's settings pages, HostAction reviews, and session stats are hidden whenever Omegon isn't the selected runtime.",
+                            div { class: "radio-group",
+                                button {
+                                    class: if *agent_runtime_choice.read() == RuntimeChoice::Omegon { "radio-btn active" } else { "radio-btn" },
+                                    onclick: move |_| *agent_runtime_choice.write() = RuntimeChoice::Omegon,
+                                    "Omegon"
+                                }
+                                button {
+                                    class: if *agent_runtime_choice.read() == RuntimeChoice::OpenCode { "radio-btn active" } else { "radio-btn" },
+                                    onclick: move |_| *agent_runtime_choice.write() = RuntimeChoice::OpenCode,
+                                    "OpenCode"
+                                }
+                                button {
+                                    class: if *agent_runtime_choice.read() == RuntimeChoice::Custom { "radio-btn active" } else { "radio-btn" },
+                                    onclick: move |_| *agent_runtime_choice.write() = RuntimeChoice::Custom,
+                                    "Custom ACP agent"
+                                }
+                            }
+                        }
+                        if *agent_runtime_choice.read() == RuntimeChoice::OpenCode {
+                            SettingsRow {
+                                label: "OpenCode",
+                                hint: "",
+                                span { class: "settings-hint muted",
+                                    "Runs "
+                                    code { "opencode acp" }
+                                    " — requires the "
+                                    code { "opencode" }
+                                    " CLI on PATH (see opencode.ai/docs/acp). No configuration needed."
+                                }
+                            }
+                        }
+                        if *agent_runtime_choice.read() == RuntimeChoice::Custom {
+                            SettingsRow {
+                                label: "Command",
+                                hint: "Path or name of the ACP agent binary to spawn (must be on PATH, or an absolute path).",
+                                input {
+                                    class: "input settings-input",
+                                    r#type: "text",
+                                    placeholder: "my-acp-agent",
+                                    value: "{agent_runtime_command}",
+                                    oninput: move |e| *agent_runtime_command.write() = e.value(),
+                                }
+                            }
+                            SettingsRow {
+                                label: "Arguments",
+                                hint: "Space-separated CLI arguments passed to the command above. Flynt does not add --cwd, --agent, or any other Omegon-specific flags in this mode.",
+                                input {
+                                    class: "input settings-input",
+                                    r#type: "text",
+                                    placeholder: "--stdio",
+                                    value: "{agent_runtime_args}",
+                                    oninput: move |e| *agent_runtime_args.write() = e.value(),
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ════════════════════════════════════════════════════════════
+                // General → MCP Server: expose this project's tools to any
+                // MCP client (Claude Desktop, Cursor, Zed, Claude Code, ...)
+                // via `flynt-agent --mcp`. Unrelated to Agent Runtime above —
+                // that page controls which agent Flynt's chat panel *drives*;
+                // this one is Flynt's own tool surface for external clients,
+                // so it's not gated on the configured runtime.
+                // ════════════════════════════════════════════════════════════
+                if *active_page.read() == SettingsPage::GeneralMcp {
+                    SettingsSection { heading: "MCP Server",
+                        {
+                            let resolved = flynt_core::models::resolve_flynt_agent_binary();
+                            match resolved {
+                                Some(binary_path) => {
+                                    let config = serde_json::json!({
+                                        "mcpServers": {
+                                            "flynt": {
+                                                "command": binary_path.to_string_lossy(),
+                                                "args": ["--mcp"],
+                                                "env": { "FLYNT_PROJECT": ctx.project_root().to_string_lossy() }
+                                            }
+                                        }
+                                    });
+                                    let config_text = serde_json::to_string_pretty(&config).unwrap_or_default();
+                                    rsx! {
+                                        SettingsRow {
+                                            label: "Status",
+                                            hint: "",
+                                            span { class: "settings-hint", "flynt-agent found at {binary_path.display()}" }
+                                        }
+                                        SettingsRow {
+                                            label: "Client config",
+                                            hint: "Paste this into your MCP client's config (Claude Desktop, Cursor, Zed, Claude Code) to give it access to this project's documents, tasks, and graph.",
+                                            div { class: "identity-ssh-key",
+                                                pre { class: "identity-key-text", "{config_text}" }
+                                                button {
+                                                    class: "btn btn-ghost btn-xs",
+                                                    onclick: {
+                                                        let config_text = config_text.clone();
+                                                        move |_| {
+                                                            let js = format!(
+                                                                "navigator.clipboard.writeText({})",
+                                                                serde_json::to_string(&config_text).unwrap_or_default()
+                                                            );
+                                                            document::eval(&js);
+                                                        }
+                                                    },
+                                                    "Copy"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                None => rsx! {
+                                    SettingsRow {
+                                        label: "Status",
+                                        hint: "",
+                                        span { class: "settings-hint", "flynt-agent not found on PATH." }
+                                    }
+                                    SettingsRow {
+                                        label: "",
+                                        hint: "",
+                                        span { class: "settings-hint muted", "Build it with " code { "cargo build --release -p flynt-agent" } " and make sure it's on PATH, then reopen this page." }
+                                    }
+                                },
+                            }
                         }
                     }
                 }
