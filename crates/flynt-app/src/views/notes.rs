@@ -1153,8 +1153,27 @@ fn cm6_init_js(doc_id: &DocumentId, content: &str, embed_index_json: &str) -> St
             }}
         }}
 
+        // Fenced code blocks (```...```) are also skipped, same reasoning
+        // as frontmatter: `# {{{{title}}}}` or `**bold**` inside a code fence
+        // is literal code content, not markdown syntax, and must render
+        // verbatim with its marker characters visible. Mirrors the
+        // inCodeBlock tracking in combinedPlugin below, which already
+        // classifies these same lines for CSS but doesn't share state with
+        // this plugin.
+        const fenceLines = new Set();
+        {{
+            let inFence = false;
+            for (let j = 1; j <= doc.lines; j++) {{
+                const t = doc.line(j).text.trim();
+                if (!inFence && t.startsWith('```')) {{ inFence = true; fenceLines.add(j); }}
+                else if (inFence && t.startsWith('```')) {{ fenceLines.add(j); inFence = false; }}
+                else if (inFence) {{ fenceLines.add(j); }}
+            }}
+        }}
+
         for (let i = 1; i <= doc.lines; i++) {{
             if (fmStart > 0 && fmEnd > 0 && i >= fmStart && i <= fmEnd) continue; // skip frontmatter lines
+            if (fenceLines.has(i)) continue; // skip fenced code block lines
             const line = doc.line(i);
             const text = line.text;
 
