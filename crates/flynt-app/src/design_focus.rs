@@ -75,8 +75,7 @@ pub fn write_active_focus(project_root: &Path, focus: &DesignFocusState) -> std:
     std::fs::create_dir_all(&dir)?;
     let final_path = dir.join("design-focus.json");
     let tmp_path = dir.join("design-focus.json.tmp");
-    let body = serde_json::to_vec_pretty(focus)
-        .map_err(std::io::Error::other)?;
+    let body = serde_json::to_vec_pretty(focus).map_err(std::io::Error::other)?;
     std::fs::write(&tmp_path, body)?;
     std::fs::rename(tmp_path, final_path)?;
     Ok(())

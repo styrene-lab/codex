@@ -889,9 +889,7 @@ pub fn AgentRail() -> Element {
     let agent_configured = match &operator_settings.read().agent_runtime {
         flynt_core::models::AgentRuntimeKind::Omegon => omegon_binary.is_some(),
         flynt_core::models::AgentRuntimeKind::OpenCode => true,
-        flynt_core::models::AgentRuntimeKind::Generic { command, .. } => {
-            !command.trim().is_empty()
-        }
+        flynt_core::models::AgentRuntimeKind::Generic { command, .. } => !command.trim().is_empty(),
     };
     // Deployment/CLI preflight is an Omegon-only concept (deployment
     // manifest, `omegon` CLI version compatibility). Kept computed
@@ -1028,10 +1026,14 @@ pub fn AgentRail() -> Element {
                 }
                 Err(_) => {
                     tracing::error!("ACP connect timed out");
-                    let agent_name = ctx.omegon().load_operator_settings().agent_runtime.display_name();
-                    *session_lifecycle_msg.write() = Some(
-                        format!("{agent_name} ACP connection timed out. Flynt is still usable, but the agent runtime did not finish startup. Open Runtime settings or retry after {agent_name} finishes initializing."),
-                    );
+                    let agent_name = ctx
+                        .omegon()
+                        .load_operator_settings()
+                        .agent_runtime
+                        .display_name();
+                    *session_lifecycle_msg.write() = Some(format!(
+                        "{agent_name} ACP connection timed out. Flynt is still usable, but the agent runtime did not finish startup. Open Runtime settings or retry after {agent_name} finishes initializing."
+                    ));
                     *session.write() = None;
                     *shared_session.write() = None;
                     *agent_status.write() = AgentStatus::Idle;
@@ -2250,7 +2252,11 @@ fn handle_acp_event(
         AcpEvent::TextDelta(ref text) => {
             tracing::info!("ACP TextDelta: {} bytes", text.len());
             if let Some(attempt) = upstream_stall_attempt(text) {
-                let agent_name = ctx.omegon().load_operator_settings().agent_runtime.display_name();
+                let agent_name = ctx
+                    .omegon()
+                    .load_operator_settings()
+                    .agent_runtime
+                    .display_name();
                 push_or_replace_stall_notice(items, attempt, &agent_name);
                 if attempt >= 3 {
                     tracing::warn!(
@@ -2375,8 +2381,11 @@ fn handle_acp_event(
                                 tc.background = true;
                                 tc.operation_id = operation_id.clone();
                                 tc.status = "Background".into();
-                                let agent_name =
-                                    ctx.omegon().load_operator_settings().agent_runtime.display_name();
+                                let agent_name = ctx
+                                    .omegon()
+                                    .load_operator_settings()
+                                    .agent_runtime
+                                    .display_name();
                                 let summary = match operation_id.as_deref() {
                                     Some(id) => format!(
                                         "Started background operation `{id}`. Progress will continue through {agent_name} operation events."
@@ -2451,7 +2460,11 @@ fn handle_acp_event(
 
             if let Some(msg) = disconnect_msg {
                 tracing::warn!("ACP tool call reported transport disconnect: {msg}");
-                let agent_name = ctx.omegon().load_operator_settings().agent_runtime.display_name();
+                let agent_name = ctx
+                    .omegon()
+                    .load_operator_settings()
+                    .agent_runtime
+                    .display_name();
                 items.write().push(ChatItem::Message {
                     role: ChatRole::Assistant,
                     content: format!(
@@ -2653,7 +2666,11 @@ fn handle_acp_event(
                     "Disconnected",
                     "Agent transport disconnected before ACP closed active tool calls.",
                 );
-                let agent_name = ctx.omegon().load_operator_settings().agent_runtime.display_name();
+                let agent_name = ctx
+                    .omegon()
+                    .load_operator_settings()
+                    .agent_runtime
+                    .display_name();
                 items.write().push(ChatItem::Message {
                     role: ChatRole::Assistant,
                     content: format!(

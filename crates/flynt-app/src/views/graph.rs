@@ -449,7 +449,6 @@ pub fn GraphView() -> Element {
 
 // ── Filtering ───────────────────────────────────────────────────────────────
 
-
 const LARGE_GRAPH_OVERVIEW_THRESHOLD: usize = 750;
 const LARGE_GRAPH_OVERVIEW_NODE_CAP: usize = 300;
 

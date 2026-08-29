@@ -1106,18 +1106,16 @@ impl Default for UiThemeSettings {
 /// at any other ACP-compliant agent binary. Both non-Omegon variants
 /// bypass Omegon's CLI contract, profile/provider settings, and
 /// HostAction extension entirely.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", tag = "kind")]
 pub enum AgentRuntimeKind {
+    #[default]
     Omegon,
     OpenCode,
-    Generic { command: String, args: Vec<String> },
-}
-
-impl Default for AgentRuntimeKind {
-    fn default() -> Self {
-        Self::Omegon
-    }
+    Generic {
+        command: String,
+        args: Vec<String>,
+    },
 }
 
 impl AgentRuntimeKind {
@@ -1269,10 +1267,12 @@ mod tests {
 
     #[test]
     fn agent_runtime_generic_round_trips_through_json() {
-        let mut settings = FlyntOperatorSettings::default();
-        settings.agent_runtime = AgentRuntimeKind::Generic {
-            command: "my-acp-agent".into(),
-            args: vec!["--stdio".into()],
+        let settings = FlyntOperatorSettings {
+            agent_runtime: AgentRuntimeKind::Generic {
+                command: "my-acp-agent".into(),
+                args: vec!["--stdio".into()],
+            },
+            ..Default::default()
         };
         assert!(!settings.uses_omegon());
 
@@ -1283,8 +1283,10 @@ mod tests {
 
     #[test]
     fn agent_runtime_open_code_round_trips_and_is_not_omegon() {
-        let mut settings = FlyntOperatorSettings::default();
-        settings.agent_runtime = AgentRuntimeKind::OpenCode;
+        let settings = FlyntOperatorSettings {
+            agent_runtime: AgentRuntimeKind::OpenCode,
+            ..Default::default()
+        };
         assert!(!settings.uses_omegon());
 
         let json = serde_json::to_string(&settings).unwrap();

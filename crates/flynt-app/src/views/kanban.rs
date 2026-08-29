@@ -318,7 +318,9 @@ impl TaskFilterKind {
     }
     fn title(&self) -> &'static str {
         match self {
-            Self::All => "All non-archived human tasks; lifecycle projections are shown under Lifecycle",
+            Self::All => {
+                "All non-archived human tasks; lifecycle projections are shown under Lifecycle"
+            }
             Self::Actionable => {
                 "Tasks that sentry would pick up next: column=Scheduled, status=Todo"
             }

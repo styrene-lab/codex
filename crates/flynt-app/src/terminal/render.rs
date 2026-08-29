@@ -284,7 +284,10 @@ pub fn TerminalSnapshotView(props: TerminalSnapshotViewProps) -> Element {
     }
 }
 
-fn selected_or_visible_text(snapshot: &TerminalSnapshot, selection: Option<TerminalSelection>) -> String {
+fn selected_or_visible_text(
+    snapshot: &TerminalSnapshot,
+    selection: Option<TerminalSelection>,
+) -> String {
     if let Some(selection) = selection {
         if !selection.is_empty() {
             return snapshot_selected_text(snapshot, selection);

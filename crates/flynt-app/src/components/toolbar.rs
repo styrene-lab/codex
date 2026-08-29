@@ -5,10 +5,10 @@ use crate::{
 use dioxus::prelude::*;
 use flynt_core::{models::SearchResult, store::ProjectStore};
 use flynt_store::sync::{
+    AutoSyncStatus,
     git::{GitSync, SyncDiagnostic},
     runner::BackgroundSyncRunner,
     vcs::{GitVcsAdapter, SyncOutcome},
-    AutoSyncStatus,
 };
 
 #[derive(Clone)]

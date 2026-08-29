@@ -1,0 +1,8 @@
+# Pinned to latest stable. Policy: track latest stable, not N-1 —
+# bump this pin (and workspace edition/rust-version if relevant) each
+# Rust release cycle (~6 weeks). Matches the pinning policy used by
+# styrene-lab/styrene-rs.
+[toolchain]
+channel = "1.97.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

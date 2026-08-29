@@ -16,8 +16,8 @@ use std::{
     path::{Path, PathBuf},
     process::Stdio,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
@@ -674,8 +674,8 @@ impl OmegonRuntimeContext {
 #[cfg(test)]
 mod tests {
     use super::{
-        publication_output_path, KnownProject, LauncherProfile, OmegonRuntimeContext,
-        PendingProjectSetup,
+        KnownProject, LauncherProfile, OmegonRuntimeContext, PendingProjectSetup,
+        publication_output_path,
     };
     use crate::self_update::UpdateChannel;
     use flynt_core::{

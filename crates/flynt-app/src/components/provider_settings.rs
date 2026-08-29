@@ -14,7 +14,9 @@ enum ProviderActionMessage {
 impl ProviderActionMessage {
     fn text(&self) -> &str {
         match self {
-            Self::Info(text) | Self::Progress(text) | Self::Success(text) | Self::Error(text) => text,
+            Self::Info(text) | Self::Progress(text) | Self::Success(text) | Self::Error(text) => {
+                text
+            }
         }
     }
 

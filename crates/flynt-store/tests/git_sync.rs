@@ -533,7 +533,10 @@ fn pull_diverged_conflicting_histories_report_manual_resolution() {
         "diverged histories should require manual resolution: {:?}",
         result.conflicts
     );
-    assert_eq!(fs::read_to_string(local.join("init.md")).unwrap(), "# Local change\n");
+    assert_eq!(
+        fs::read_to_string(local.join("init.md")).unwrap(),
+        "# Local change\n"
+    );
 }
 
 #[test]
